@@ -90,6 +90,8 @@ export interface MediaModel {
   durationResolutionMap?: { duration: number[]; resolution: string[] }[];
   audio?: boolean | "optional";
   voices?: { title: string; voice: string }[];
+  // ACT: 仅表示「在节点中隐藏」，模型仍可被已保存的任务解析和使用。
+  hidden?: boolean;
 }
 
 export interface MediaReference {

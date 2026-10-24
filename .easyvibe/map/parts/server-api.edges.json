@@ -4,42 +4,42 @@
     {
       "id": "e8",
       "from": "server-api",
-      "to": "agent-runtime",
+      "to": "shared-foundation",
       "type": "import",
-      "label": "agent.run / a2a / bridge",
-      "strength": "strong"
+      "strength": "strong",
+      "label": "file/i18n/模型图标"
     },
     {
       "id": "e9",
       "from": "server-api",
-      "to": "agent-tools",
+      "to": "agent-runtime",
       "type": "import",
-      "label": "MCP 与工具运行时",
-      "strength": "strong"
+      "strength": "strong",
+      "label": "agent.run / a2a / teams"
     },
     {
       "id": "e10",
       "from": "server-api",
-      "to": "ai-providers",
+      "to": "agent-tools",
       "type": "import",
-      "label": "供应商清单与模型目录",
-      "strength": "strong"
+      "strength": "strong",
+      "label": "MCP 与工具运行时"
     },
     {
       "id": "e11",
       "from": "server-api",
-      "to": "media-toolkit",
+      "to": "ai-providers",
       "type": "import",
-      "label": "ffmpeg 执行",
-      "strength": "normal"
+      "strength": "normal",
+      "label": "供应商清单与模型目录"
     },
     {
       "id": "e12",
       "from": "server-api",
-      "to": "shared-foundation",
+      "to": "media-toolkit",
       "type": "import",
-      "label": "file/i18n",
-      "strength": "strong"
+      "strength": "normal",
+      "label": "ffmpeg 执行"
     }
   ]
 }

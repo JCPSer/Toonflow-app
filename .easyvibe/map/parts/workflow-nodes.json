@@ -20,26 +20,26 @@
       "kind": "class"
     },
     {
+      "file": "packages/nodeShared/src/useNodeGeneration.ts",
+      "symbol": "useNodeGeneration",
+      "kind": "function"
+    },
+    {
       "file": "packages/nodes/director3dNode/src/index.vue",
       "symbol": "director3dNode",
       "kind": "class"
-    },
-    {
-      "file": "packages/nodes/textNode/src/markdownEditor.vue",
-      "symbol": "markdownEditor",
-      "kind": "class"
     }
   ],
-  "dependencies": [],
   "health": {
-    "score": 76,
+    "score": 72,
     "coupling": "medium",
     "complexity": "high",
-    "churn": "low",
+    "churn": "high",
     "decay_flags": [
-      "build_duplication"
+      "build_duplication",
+      "large_module"
     ],
-    "review_note": "93 文件 16,146 行，9 个节点各自维护 vite.config 与 build.ts；nodeSkeleton.vue 786 行为全部节点提供 UI 基座。建议把重复构建配置收敛为共享 preset，并为节点元数据与端口契约加统一校验。",
+    "review_note": "93 文件 16,146 行，9 个节点包各自维护 vite.config.ts 与构建脚本；nodeSkeleton.vue 786 行为全部节点提供 UI 基座，近 3 个月 16 次提交、171 次文件变更。建议把重复构建配置收敛为共享 preset，并把骨架拆成布局/状态/操作三段、版本化接口。",
     "concerns": [
       {
         "id": "c-workflow-nodes-1",
@@ -55,5 +55,10 @@
       }
     ]
   },
-  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+  "dependencies": [
+    "agent-tools",
+    "media-toolkit",
+    "shared-foundation"
+  ],
+  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
 }

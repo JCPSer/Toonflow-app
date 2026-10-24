@@ -2,7 +2,7 @@
   "id": "shared-foundation",
   "name": "共享基础",
   "layer": "foundation",
-  "responsibility": "文件读写、国际化、模型图标与品牌资产等零业务基础件",
+  "responsibility": "文件原子读写、21 语国际化、模型图标与品牌资产",
   "files": [
     "packages/file/**",
     "packages/i18n/**",
@@ -21,27 +21,27 @@
       "kind": "function"
     },
     {
-      "file": "packages/modelIcons/src/index.ts",
+      "file": "packages/modelIcons/src/getModelIcon.ts",
       "symbol": "getModelIcon",
       "kind": "function"
     }
   ],
-  "dependencies": [],
   "health": {
-    "score": 86,
+    "score": 84,
     "coupling": "high",
     "complexity": "low",
-    "churn": "low",
+    "churn": "medium",
     "decay_flags": [],
-    "review_note": "15 文件 1,077 行，出边为 0、被 9 个模块引用，是干净的基础叶子；file 统一原子写与 Android/OHOS 独占重命名，i18n 承担编译期文案抽取。入边多是基础件的正常形态，但建议为 transform.ts（299 行）补回归用例，并把 locales 按语言拆包以缩短构建链路。",
+    "review_note": "15 文件 1,077 行，出边 0、入边 9，是最干净的基础叶子；file 统一原子写与独占重命名，i18n 通过构建期 transform 抽取文案。近 3 个月 8 次提交、21 次文件变更。建议把 transform.ts 的消息键映射纳入 CI 校验并补回归用例，避免 21 种语言包键漂移。",
     "concerns": [
       {
         "id": "c-shared-foundation-1",
         "severity": "high",
-        "finding": "i18n 通过 transform.ts（299 行）在构建期改写源码提取文案，消息键与 messageSources.json 靠全量构建校验，键漂移在类型层无法发现。",
-        "suggestion": "为消息键生成类型声明并在 CI 跑键存在性检查，把 transform 映射表纳入受控清单与回归测试。"
+        "finding": "i18n 在构建期由 transform.ts（299 行）改写源码提取文案，消息键与 messageSources.json 只靠全量构建校验，键漂移在类型层无法发现。",
+        "suggestion": "为消息键生成类型声明并在 CI 执行键存在性检查，把 transform 映射表纳入受控清单与回归测试。"
       }
     ]
   },
-  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+  "dependencies": [],
+  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
 }

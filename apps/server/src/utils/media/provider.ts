@@ -12,6 +12,7 @@ import conf from "@/utils/conf";
 import { convertAudio } from "@/utils/media/audioProcessor";
 import { createWorkspaceFfmpeg } from "@/utils/ffmpeg";
 import { lockWorkspaceFiles, writeWorkspaceFile } from "@/utils/workspace/files";
+import { forgetHidden } from "@/utils/ai/visibility";
 
 type Expression = Extract<ReturnType<typeof parseExpression>, { type: "ParenthesizedExpression" }>["expression"];
 type ObjectExpression = Extract<Expression, { type: "ObjectExpression" }>;
@@ -377,6 +378,7 @@ export async function deleteMediaProvider(fileName: string, revision: string) {
     if (current.revision !== revision) invalid("供应商文件已被修改，请刷新页面后再删除", 409);
     await unlink(file);
     conf.delete(`settings.mediaProviderConfigs.${current.id}`);
+    forgetHidden("media", current.id);
   } finally { release(); }
 }
 

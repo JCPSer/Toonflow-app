@@ -38,10 +38,10 @@
     "agent-tools",
     "agent-runtime",
     "server-api",
-    "canvas-extensions",
     "workflow-nodes",
+    "canvas-extensions",
     "web-console",
-    "mobile-shell",
-    "desktop-shell"
+    "desktop-shell",
+    "mobile-shell"
   ]
 }

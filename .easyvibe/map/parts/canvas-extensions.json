@@ -24,16 +24,15 @@
       "kind": "class"
     }
   ],
-  "dependencies": [],
   "health": {
-    "score": 83,
+    "score": 82,
     "coupling": "low",
     "complexity": "medium",
     "churn": "low",
     "decay_flags": [
       "duplicated_code"
     ],
-    "review_note": "26 文件 1,963 行，扩展统一通过 defineExt 注册；md 扩展 847 行，且 markdownExtensions.ts 与 textNode 的实现逐行重复。建议抽出共享 markdown 渲染包，md 扩展只保留宿主差异。",
+    "review_note": "26 文件 1,963 行，扩展统一通过 defineExt 注册；md 扩展 847 行，且 markdownExtensions.ts 与 textNode 的实现逐行重复。近 3 个月仅 2 次提交。建议抽共享 markdown 渲染包，扩展只保留宿主差异。",
     "concerns": [
       {
         "id": "c-canvas-extensions-1",
@@ -43,5 +42,8 @@
       }
     ]
   },
-  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+  "dependencies": [
+    "shared-foundation"
+  ],
+  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
 }

@@ -34,17 +34,16 @@
       "kind": "class"
     }
   ],
-  "dependencies": [],
   "health": {
-    "score": 72,
+    "score": 62,
     "coupling": "high",
     "complexity": "high",
-    "churn": "low",
+    "churn": "high",
     "decay_flags": [
-      "god_module",
+      "large_module",
       "coupling_high"
     ],
-    "review_note": "147 文件 35,103 行，是最大的呈现模块；canvas/index.vue 1,246 行、pluginMarket 1,145 行、home 1,016 行，且 30 处 import 插件运行时包。建议把画布/设置/首页拆为子模块，把插件 UI 改为注册表加载，前后端共享类型下沉为契约包。",
+    "review_note": "147 文件 35,114 行，是最大呈现模块；canvas/index.vue 1,250 行、pluginMarket/index.vue 1,145 行、home/index.vue 1,016 行；30 处编译期 import 节点/工具/扩展包，68 处引用 server 契约与 API。近 3 个月 43 次提交、459 次文件变更。建议把画布/设置/首页拆子模块、插件 UI 改为注册表动态加载、共享类型下沉 contracts 包。",
     "concerns": [
       {
         "id": "c-web-console-1",
@@ -61,10 +60,20 @@
       {
         "id": "c-web-console-3",
         "severity": "high",
-        "finding": "39 处直接 import @toonflow/server 的运行时/类型文件（其中 26 处 type-only），前后端契约没有独立包。",
+        "finding": "68 处直接引用 @toonflow/server 的运行时/类型文件与 /api 接口，前后端契约没有独立包。",
         "suggestion": "把 agent types、documentFormats、nodeMenu 等契约抽到独立 contracts 包，web 不再引用 server 源码。"
       }
     ]
   },
-  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+  "dependencies": [
+    "agent-runtime",
+    "agent-tools",
+    "ai-providers",
+    "canvas-extensions",
+    "media-toolkit",
+    "server-api",
+    "shared-foundation",
+    "workflow-nodes"
+  ],
+  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
 }

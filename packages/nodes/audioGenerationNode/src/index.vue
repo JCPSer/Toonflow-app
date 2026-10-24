@@ -118,7 +118,7 @@ const { generating } = generationState;
 const busy = computed(() => generating.value || uploading.value || deleting.value || transcribing.value || !!actions.value?.processing);
 watch(busy, value => { if (!value && modelsRefreshPending) void refreshProviderModels(); });
 const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === data.value.model));
-const modelGroups = computed(() => groupNodeModels(models.value));
+const modelGroups = computed(() => groupNodeModels(models.value, data.value.model));
 const generationPrompt = computed(() => [data.value.prompt.trim(), ...refList.value.flatMap((item, index) =>
   item.dataType === "STRING" && item.value?.trim() ? [`参考 ${index + 1}：\n${item.value.trim()}`] : [])].filter(Boolean).join("\n\n"));
 const generationInput = computed<Omit<NodeAudioRequest, "directory"> | undefined>(() => {
@@ -187,7 +187,7 @@ function loadModels() {
     models.value = items.filter(item => item.type === "audio");
     // ACT: 仅空配置选择默认模型，临时不可用的模型保持原选择，避免静默换供应商。
     if (!data.value.model) {
-      const first = models.value[0];
+      const first = models.value.find(item => !item.hidden);
       data.value.model = first ? JSON.stringify([first.providerId, first.modelId]) : "";
     }
   }).finally(() => {

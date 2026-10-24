@@ -2,20 +2,35 @@ import axios from "axios";
 import type useWorkspaceFiles from "@/lib/workspaceFiles";
 
 type CanvasAssetNode = { id: string; data?: unknown };
+// ACT: 节点 data 可能有 promptModel、outputs、anchors 等深层结构，不设深度上限，只限制总工作量防止异常数据拖死界面。
+const ASSET_SCAN_WORK_LIMIT = 500000;
 
-export function getCanvasAssetDirectories(nodes: CanvasAssetNode[], retainedNodes: CanvasAssetNode[]) {
-  const retained = new Set(retainedNodes.map(node => node.id.toLowerCase()));
-  const pending = retainedNodes.map(node => node.data);
-  const visited = new WeakSet<object>();
+export function collectAssetReferences(nodes: CanvasAssetNode[], visited = new WeakSet<object>()) {
+  const references = new Set<string>();
+  const pending = nodes.map(node => node.data);
+  let work = nodes.length;
+  for (const node of nodes) references.add(node.id.toLowerCase());
   while (pending.length) {
+    if (++work > ASSET_SCAN_WORK_LIMIT) throw new Error("画布素材引用扫描工作量超出上限");
     const value = pending.pop();
     if (typeof value === "string") {
       const parts = value.replaceAll("\\", "/").split("/").filter(part => part && part !== ".");
-      if (parts[0]?.toLowerCase() === "assets" && parts[1] && !parts.includes("..")) retained.add(parts[1].toLowerCase());
+      if (parts[0]?.toLowerCase() === "assets" && parts[1] && !parts.includes("..")) references.add(parts[1].toLowerCase());
     } else if (value && typeof value === "object" && !visited.has(value)) {
       visited.add(value);
       for (const item of Object.values(value)) pending.push(item);
     }
+  }
+  return references;
+}
+
+export function getCanvasAssetDirectories(nodes: CanvasAssetNode[], retainedNodes: CanvasAssetNode[]) {
+  let retained: Set<string>;
+  try {
+    retained = collectAssetReferences(retainedNodes);
+  } catch {
+    // ACT: 删除画布已在文件系统完成，扫描超限时退化为只按节点 ID 判定，不能把失败抛回删除流程。
+    retained = new Set(retainedNodes.map(node => node.id.toLowerCase()));
   }
   // ACT: 仅清理节点所属目录，不把引用路径当作目录归属，避免误删 assets/generated 等共享目录。
   return [...new Set(nodes.map(node => node.id))]

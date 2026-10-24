@@ -1,6 +1,6 @@
 import { markRaw, ref, shallowReactive, type Component } from "vue";
 import axios from "axios";
-import type { ExtContext, ExtDefinition, ExtResource } from "@toonflow/ext-scaffold/runtime";
+import type { DocumentExtResource, ExtContext, ExtDefinition } from "@toonflow/ext-scaffold/runtime";
 import useWorkspaceFiles, { type TextSnapshot } from "@/lib/workspaceFiles";
 import { writeClipboardText } from "@/lib/clipboard";
 import { extensionConfig, saveExtensionConfig } from "./extensions";
@@ -12,7 +12,7 @@ export function documentError(error: unknown) {
   return axios.isAxiosError(error) ? error.response?.data?.message || error.message : error instanceof Error ? error.message : t`文档操作失败`;
 }
 
-export function createDocumentSession(resource: ExtResource, extension: ExtDefinition, mountNode: ExtContext["mountNode"], observeNode?: NodeObserver, onDeleted?: () => void, openFile?: ExtContext["openFile"]) {
+export function createDocumentSession(resource: DocumentExtResource, extension: ExtDefinition, mountNode: ExtContext["mountNode"], observeNode?: NodeObserver, onDeleted?: () => void, openFile?: ExtContext["openFile"]) {
   const files = useWorkspaceFiles(resource.directory);
   let disposed = false;
   let revision = 0;
@@ -26,6 +26,7 @@ export function createDocumentSession(resource: ExtResource, extension: ExtDefin
   const loading = ref(true);
   const extensionDisabled = ref(false);
   const locks = ref(0);
+  // ACT: 文档宿主只会传文件/画布节点资源，这里收窄类型，调用方不必再判断 canvasOverlay。
   const context = shallowReactive<ExtContext>({
     resource, files, text: "", error: "", dirty: false, active: true,
     get loading() { return loading.value || locks.value > 0 || extensionDisabled.value; },

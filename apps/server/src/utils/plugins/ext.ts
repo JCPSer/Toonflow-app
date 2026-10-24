@@ -11,7 +11,7 @@ const metadataSchema = z.object({
   id: extNameSchema,
   displayName: z.string().trim().min(1),
   extensions: z.array(z.string().regex(/^[a-z0-9]+$/)),
-  resourceKind: z.enum(["file", "canvasNode"]),
+  resourceKind: z.enum(["file", "canvasNode", "canvasOverlay"]),
   text: z.boolean().optional(),
   version: z.string().trim().min(1),
   readme: z.string().default(""),
@@ -49,12 +49,29 @@ export async function readExt(name: string) {
   return { ...parseExt(source, name), revision: Bun.hash(source).toString(16) };
 }
 
-export function getExtConfig(extension: { name: string; configRules: z.infer<typeof configRulesSchema> }) {
-  const configs = conf.get("extConfigs", {});
-  return declaredConfig(extension.configRules, Object.hasOwn(configs, extension.name) ? configs[extension.name]! : {});
+const maxOverlayConfigBytes = 64 * 1024;
+
+// ACT: 画布浮层的配置是开放的（目标列表、显示项、位置），无法用固定表单声明，按整体 JSON 存取并限长。
+function overlayConfig(config: unknown) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return {};
+  const text = JSON.stringify(config);
+  if (text.length > maxOverlayConfigBytes) throw Object.assign(new Error("浮层配置过大"), { status: 413 });
+  return JSON.parse(text) as Record<string, unknown>;
 }
 
-export function validateExtConfig(rules: z.infer<typeof configRulesSchema>, config: Record<string, unknown>) {
+export function getExtConfig(extension: { name: string; configRules: z.infer<typeof configRulesSchema>; resourceKind?: string }) {
+  const configs = conf.get("extConfigs", {});
+  const saved = Object.hasOwn(configs, extension.name) ? configs[extension.name]! : {};
+  // ACT: 读路径不能因为历史超限配置让整个扩展列表失败，读不出来就按空配置处理。
+  if (extension.resourceKind === "canvasOverlay") {
+    try { return overlayConfig(saved); }
+    catch { return {}; }
+  }
+  return declaredConfig(extension.configRules, saved);
+}
+
+export function validateExtConfig(rules: z.infer<typeof configRulesSchema>, config: Record<string, unknown>, resourceKind?: string) {
+  if (resourceKind === "canvasOverlay") return overlayConfig(config);
   const parsed = validateNodeConfig(rules, config);
   for (const { rule } of configFields(rules)) {
     if (typeof rule.field !== "string" || !Object.hasOwn(parsed, rule.field)) continue;

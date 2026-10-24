@@ -3,6 +3,14 @@
     .providerItem {
       margin-bottom: 12px;
 
+      // ACT: 隐藏只降存在感，编辑与删除仍然可用。
+      &.isHidden {
+        opacity: 0.6;
+
+        &:hover,
+        &:focus-within { opacity: 1; }
+      }
+
       .providerHeader {
         display: flex;
         align-items: center;
@@ -75,6 +83,14 @@
         .itemActions {
           max-width: 100%;
           margin-left: auto;
+
+          .visibilityToggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+
+            > .el-switch { flex-shrink: 0; }
+          }
         }
       }
     }

@@ -6,10 +6,19 @@ import { isCanvasFile } from "@/pages/workspace/canvasFile";
 type Files = ReturnType<typeof useWorkspaceFiles>;
 type CanvasFile = { toonflowCanvas: true; nodes: Node[]; edges: Edge[]; viewport: ViewportTransform };
 export type DocumentNode = { canvasPath: string; nodeId: string; label: string; nodeType?: string; parentNode?: string };
-export type DocumentNodeOptions = { canvasPath?: string; includeGroups?: boolean; signal?: AbortSignal; onError?: (path: string, error: unknown) => void };
+export type DocumentNodeOptions = { canvasPath?: string; includeGroups?: boolean; signal?: AbortSignal; onError?: (path: string, error: unknown) => void;
+  skipDirectories?: string[]; skipPrefixes?: string[]; failOnMissing?: boolean };
+
+// ACT: 复制画布会先建素材目录、后写临时画布 JSON；清理必须避开整个复制窗口，不能靠扫描临时目录判断。
+let assetCopyDepth = 0;
+export function assetCopyInProgress() {
+  return assetCopyDepth > 0;
+}
 
 export async function readCanvasFiles(files: Files, path = "", options: Omit<DocumentNodeOptions, "canvasPath"> = {}) {
   const { signal, onError } = options;
+  const skipDirectories = new Set((options.skipDirectories ?? []).map(name => name.toLowerCase()));
+  const skipPrefixes = (options.skipPrefixes ?? []).map(prefix => prefix.toLowerCase());
   signal?.throwIfAborted();
   const entries = path ? (await files.list(path.slice(0, path.lastIndexOf("/") + 1), signal)).entries.filter(entry => entry.path === path) : (await files.list("", signal)).entries;
   signal?.throwIfAborted();
@@ -20,10 +29,19 @@ export async function readCanvasFiles(files: Files, path = "", options: Omit<Doc
     const entry = entries[index]!;
     try {
       if (entry.type === "directory") {
-        if (entry.name.toLowerCase() !== "assets") entries.push(...(await files.list(entry.path, signal)).entries);
+        const name = entry.name.toLowerCase();
+        if (name === "assets" || skipDirectories.has(name) || skipPrefixes.some(prefix => name.startsWith(prefix))) continue;
+        entries.push(...(await files.list(entry.path, signal)).entries);
         continue;
       }
-      if (!/\.json$/i.test(entry.name) || !await isCanvasFile(files, entry.path, signal)) continue;
+      if (!/\.json$/i.test(entry.name)) continue;
+      const canvasFile = await isCanvasFile(files, entry.path, signal);
+      // ACT: 404/400 视为扫描期间消失；清理引用时必须整轮放弃，不能当作不存在而漏掉其素材。
+      if (canvasFile === undefined) {
+        if (options.failOnMissing) throw new Error(`画布在扫描期间消失：${entry.path}`);
+        continue;
+      }
+      if (!canvasFile) continue;
       const data = await files.readJson<CanvasFile>(entry.path, signal);
       signal?.throwIfAborted();
       if (data?.toonflowCanvas !== true || !Array.isArray(data.nodes) || !Array.isArray(data.edges) || !data.viewport
@@ -44,6 +62,15 @@ export async function readCanvasFiles(files: Files, path = "", options: Omit<Doc
 }
 
 export async function copyCanvasFiles(files: Files, path: string, target: string) {
+  assetCopyDepth++;
+  try {
+    return await copyCanvasFilesInternal(files, path, target);
+  } finally {
+    assetCopyDepth--;
+  }
+}
+
+async function copyCanvasFilesInternal(files: Files, path: string, target: string) {
   const canvases = await readCanvasFiles(files, path);
   if (!canvases.length) { await files.copy(path, target); return []; }
   const temporary = `.toonflowCopy${crypto.randomUUID()}`;

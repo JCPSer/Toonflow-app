@@ -2,7 +2,7 @@
   "id": "server-api",
   "name": "服务边界与业务编排",
   "layer": "application",
-  "responsibility": "Express 路由边界、媒体/插件/工作区业务编排与应用装配",
+  "responsibility": "Express 路由边界、媒体/插件/MCP/工作区业务编排与应用装配",
   "files": [
     "apps/server/src/app.ts",
     "apps/server/src/index.ts",
@@ -33,43 +33,54 @@
       "kind": "function"
     },
     {
+      "file": "apps/server/src/routes/exec/index.ts",
+      "symbol": "POST /api/exec",
+      "kind": "route"
+    },
+    {
       "file": "apps/server/src/routes/settings/get.ts",
       "symbol": "GET /api/settings/get",
       "kind": "route"
     }
   ],
-  "dependencies": [],
   "health": {
-    "score": 62,
+    "score": 54,
     "coupling": "critical",
     "complexity": "high",
-    "churn": "low",
+    "churn": "high",
     "decay_flags": [
       "god_module",
       "circular_dep",
       "coupling_high"
     ],
-    "review_note": "201 文件 10,856 行、138 个单接口路由，模块同时承载 HTTP 边界、媒体生成/计费、插件安装、MCP、工作区与单 Agent；出边 5、入边 4。建议先按媒体、插件市场、工作区拆子模块，再把 agent 依赖的基础能力端口化，最后让 routes 只做校验与编排。",
+    "review_note": "204 文件 11,106 行、138 个单接口路由，同时承载 HTTP 边界、媒体生成/计费、插件安装、MCP、工作区与新增的本机命令执行；出边 5、入边 4。近 3 个月 31 次提交、429 次文件变更。建议先按 media/plugins/workspace/exec 拆子模块，把 agent 依赖的基础能力端口化，routes 只做校验与编排。",
     "concerns": [
       {
         "id": "c-server-api-1",
         "severity": "critical",
-        "finding": "201 文件的模块同时承载 138 个路由、媒体生成/计费、插件安装、MCP 与工作区能力，god module 使任何改动都要全量回归。",
+        "finding": "204 文件的模块同时承载 138 个路由、媒体生成/计费、插件安装、MCP 与工作区能力，god module 使任何改动都要全量回归。",
         "suggestion": "按 routes/media/plugins/workspace 拆成独立模块，保留 app.ts 作为唯一组合根。"
       },
       {
         "id": "c-server-api-2",
         "severity": "critical",
-        "finding": "server-api 与 agent-runtime 双向引用（server→agent 23 处、agent→server 66 处），应用层与领域层的依赖方向被打破。",
+        "finding": "server-api 与 agent-runtime 双向引用（server→agent 25 处、agent→server 66 处），应用层与领域层的依赖方向被打破。",
         "suggestion": "把 agent 需要的配置、工作区、模型能力抽成 foundation 端口，utils.ts 不再聚合导出 agent，由 app.ts 负责装配。"
       },
       {
         "id": "c-server-api-3",
         "severity": "high",
-        "finding": "路由由 core.ts 扫描文件生成 router.ts（281 行），仅 dev 环境自动刷新，源文件与生成文件存在漂移风险。",
-        "suggestion": "把 router.ts 纳入构建校验（重新生成后 diff 必须为空），并在 CI 执行 bun run routes 检查。"
+        "finding": "/api/exec 允许本机页面执行任意 shell 命令，权限只依赖本机来源、应用请求头与工作区路径校验，缺少命令审批、审计与更细的资源配额。",
+        "suggestion": "把命令执行下沉为独立 exec 服务，增加显式用户确认与审计日志，并暴露按工作区的并发/时长配额。"
       }
     ]
   },
-  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+  "dependencies": [
+    "agent-runtime",
+    "agent-tools",
+    "ai-providers",
+    "media-toolkit",
+    "shared-foundation"
+  ],
+  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
 }

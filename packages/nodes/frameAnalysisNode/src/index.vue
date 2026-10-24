@@ -173,7 +173,7 @@ const models = ref<NodeAiModel[]>([]);
 const modelsLoading = ref(false);
 const modelError = ref("");
 const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === settings.aiModel));
-const modelGroups = computed(() => groupNodeModels(models.value));
+const modelGroups = computed(() => groupNodeModels(models.value, settings.aiModel));
 const retryOverview = computed(() => !!lastResult.value?.ai?.overviewError
   && lastResult.value.ai.providerId === selectedModel.value?.providerId
   && lastResult.value.ai.modelId === selectedModel.value?.modelId
@@ -241,7 +241,8 @@ async function loadModels() {
     const available = await ai.getModels();
     if (!disposed) {
       models.value = available;
-      if (!settings.aiModel && available[0]) settings.aiModel = JSON.stringify([available[0].providerId, available[0].modelId]);
+      const first = available.find(item => !item.hidden);
+      if (!settings.aiModel && first) settings.aiModel = JSON.stringify([first.providerId, first.modelId]);
     }
   } catch (error) {
     if (!disposed) modelError.value = readError(error, "模型列表加载失败");

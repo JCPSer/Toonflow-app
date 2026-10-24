@@ -4,58 +4,66 @@
     {
       "id": "e17",
       "from": "web-console",
-      "to": "agent-tools",
-      "type": "import",
-      "label": "工具面板与运行时",
-      "strength": "strong"
+      "to": "server-api",
+      "type": "api",
+      "strength": "strong",
+      "label": "REST /api 与 server 契约类型"
     },
     {
       "id": "e18",
       "from": "web-console",
-      "to": "ai-providers",
+      "to": "agent-runtime",
       "type": "import",
-      "label": "供应商清单与模板",
-      "strength": "strong"
+      "strength": "strong",
+      "label": "agent 会话类型"
     },
     {
       "id": "e19",
       "from": "web-console",
-      "to": "canvas-extensions",
+      "to": "agent-tools",
       "type": "import",
-      "label": "ext-scaffold 运行时",
-      "strength": "normal"
+      "strength": "strong",
+      "label": "工具面板与运行时"
     },
     {
       "id": "e20",
       "from": "web-console",
-      "to": "media-toolkit",
+      "to": "ai-providers",
       "type": "import",
-      "label": "@toonflow/asr",
-      "strength": "weak"
+      "strength": "strong",
+      "label": "供应商清单与模板"
     },
     {
       "id": "e21",
       "from": "web-console",
-      "to": "server-api",
-      "type": "api",
-      "label": "REST /api 与共享类型",
-      "strength": "strong"
+      "to": "workflow-nodes",
+      "type": "import",
+      "strength": "strong",
+      "label": "节点 UI 与运行时"
     },
     {
       "id": "e22",
       "from": "web-console",
       "to": "shared-foundation",
       "type": "import",
-      "label": "i18n/assets",
-      "strength": "strong"
+      "strength": "strong",
+      "label": "i18n/assets/模型图标"
     },
     {
       "id": "e23",
       "from": "web-console",
-      "to": "workflow-nodes",
+      "to": "canvas-extensions",
       "type": "import",
-      "label": "节点 UI 与运行时",
-      "strength": "strong"
+      "strength": "weak",
+      "label": "ext-scaffold 运行时"
+    },
+    {
+      "id": "e24",
+      "from": "web-console",
+      "to": "media-toolkit",
+      "type": "import",
+      "strength": "weak",
+      "label": "asr 语音输入"
     }
   ]
 }

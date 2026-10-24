@@ -2,11 +2,12 @@
   "id": "desktop-shell",
   "name": "桌面壳与更新分发",
   "layer": "host-shell",
-  "responsibility": "Electrobun 桌面壳、原生安装/更新程序与更新分发服务",
+  "responsibility": "Electrobun 桌面壳、原生安装/更新程序、兼容层与更新分发",
   "files": [
     "apps/desktop/**",
     "apps/updateServer/**",
     "packages/startup/**",
+    "compat/macIntel/**",
     "electrobun.config.ts",
     "hutch.config.ts"
   ],
@@ -37,22 +38,25 @@
       "kind": "function"
     }
   ],
-  "dependencies": [],
   "health": {
-    "score": 80,
+    "score": 78,
     "coupling": "low",
     "complexity": "medium",
-    "churn": "low",
+    "churn": "high",
     "decay_flags": [],
-    "review_note": "32 文件 3,736 行，Electrobun 壳、NSIS/原生辅助程序、startup 启动画面与 updateServer 同属交付链路；运行期只依赖 server-api 与 file/i18n。建议把 apps/desktop/src/index.ts 拆为 window/protocol/installer/updater 四段装配。",
+    "review_note": "37 文件 4,269 行；Electrobun 壳、NSIS/原生辅助程序、startup 启动画面、macIntel 兼容层与 updateServer 同属交付链路；运行期只依赖 server-api 与 file/i18n，近 3 个月 37 次提交、121 次文件变更。建议把 apps/desktop/src/index.ts 拆为 window/protocol/installer/updater 四段装配，并让更新清单/签名校验集中在 updateServer。",
     "concerns": [
       {
         "id": "c-desktop-shell-1",
         "severity": "high",
-        "finding": "apps/desktop/src/index.ts（365 行）单文件同时处理窗口创建、协议注册、插件安装队列、启动画面与更新启动，桌面入口难以分平台测试。",
+        "finding": "apps/desktop/src/index.ts（372 行）单文件同时处理窗口创建、协议注册、插件安装队列、启动画面与更新启动，桌面入口难以分平台测试。",
         "suggestion": "拆为 window/protocol/installer/updater 模块，index.ts 只做装配与事件转发，平台分支收敛到各自模块。"
       }
     ]
   },
-  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+  "dependencies": [
+    "server-api",
+    "shared-foundation"
+  ],
+  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
 }

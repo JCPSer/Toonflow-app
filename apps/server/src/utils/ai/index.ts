@@ -14,9 +14,11 @@ import { readFile, stat } from "@toonflow/file";
 import { resolveWorkspacePath } from "@/utils/workspace/files";
 import { getReadableFileMimeType } from "@/lib/documentFormats";
 import { readDocument } from "@/utils/documents";
+import { isHidden, readModelVisibility } from "@/utils/ai/visibility";
 
 export { fetchProviderModels } from "@/utils/ai/models";
 export { refreshProviderModels } from "@/utils/ai/initialize";
+export { readModelsHidden, type ModelsHidden, type ModelKind } from "@/utils/ai/visibility";
 
 export const reasoningEffortsSchema = z.union([
   z.literal(false),
@@ -106,6 +108,8 @@ export function getConfiguredModel(providerId: string, modelId: string) {
 export function listAiModels() {
   const providers = conf.get("settings", {}).customProviders;
   if (!Array.isArray(providers)) return [];
+  // ACT: 节点只隐藏展示，不影响解析；hidden 由客户端在保留当前选中项的前提下过滤。
+  const visibility = readModelVisibility("language");
   return providers.flatMap(item => {
     const parsed = providerSchema.extend({ id: z.string().min(1), label: z.string() }).safeParse(item);
     if (!parsed.success) return [];
@@ -116,6 +120,7 @@ export function listAiModels() {
         providerId: provider.id, providerLabel: provider.label, protocol: provider.protocol, modelId: model.id, label: model.label,
         contextWindow: limits.contextWindow, maxOutputTokens: limits.maxTokens,
         reasoningLevels: getModelReasoning(provider.id, model, provider.protocol).reasoningLevels,
+        hidden: isHidden(visibility, provider.id, model.id),
       };
     });
   });

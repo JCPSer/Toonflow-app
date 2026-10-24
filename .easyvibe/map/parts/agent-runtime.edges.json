@@ -6,16 +6,16 @@
       "from": "agent-runtime",
       "to": "agent-tools",
       "type": "import",
-      "label": "tool-canvas/asset-operator 运行时",
-      "strength": "strong"
+      "strength": "strong",
+      "label": "tools-scaffold 运行时与工具上下文"
     },
     {
       "id": "e6",
       "from": "agent-runtime",
       "to": "server-api",
       "type": "import",
-      "label": "@/utils 与 @/lib 应用能力",
       "strength": "strong",
+      "label": "conf/workspace/ai/teams 应用能力",
       "direction_violation": true
     },
     {
@@ -23,8 +23,8 @@
       "from": "agent-runtime",
       "to": "shared-foundation",
       "type": "import",
-      "label": "@toonflow/file 会话文件",
-      "strength": "weak"
+      "strength": "normal",
+      "label": "file 会话文件"
     }
   ]
 }

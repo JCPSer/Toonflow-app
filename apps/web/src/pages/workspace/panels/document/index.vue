@@ -11,7 +11,7 @@
 import { onActivated, onBeforeUnmount, onDeactivated, ref, shallowReactive, shallowRef, watch } from "vue";
 import { DockviewVue, type DockviewApi, type DockviewReadyEvent } from "dockview-vue";
 import { ElMessage } from "element-plus";
-import type { ExtResource } from "@toonflow/ext-scaffold/runtime";
+import type { DocumentExtResource } from "@toonflow/ext-scaffold/runtime";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { settings, settingsStorage } from "@/stores/settings";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
@@ -146,7 +146,7 @@ async function restoreLayout() {
   finally { restoring = false; saveLayout(); }
 }
 
-async function chooseExtension(resource: ExtResource, force: boolean) {
+async function chooseExtension(resource: DocumentExtResource, force: boolean) {
   const options = await extensionCandidates(resource);
   if (!options.length) throw new Error(`尚未启用支持此文件的扩展，请到插件市场安装或启用：${resource.label}`);
   const key = resource.kind === "canvasNode" ? "canvasNode" : resource.path.split(".").at(-1)!.toLowerCase();
@@ -159,7 +159,7 @@ async function chooseExtension(resource: ExtResource, force: boolean) {
   return resolveExtension(resource, choice.id);
 }
 
-function selectionOf(resource: ExtResource): TreeSelection {
+function selectionOf(resource: DocumentExtResource): TreeSelection {
   return resource.kind === "file" ? { filePath: resource.path, label: resource.label }
     : { canvasPath: resource.path, nodeId: resource.nodeId, label: resource.label };
 }
@@ -248,7 +248,7 @@ async function openSelectionNow(selection: TreeSelection, signal: AbortSignal, f
   if (changingFiles) throw new Error("文件操作尚未完成，请稍后再打开");
   if (!directory || workspace.project?.directory !== directory) throw new Error("工作目录已切换");
   const api = await waitForControlValue(() => editorApi.value, signal);
-  const resource: ExtResource = "filePath" in selection
+  const resource: DocumentExtResource = "filePath" in selection
     ? { kind: "file", directory, path: relativePath(selection.filePath), label: selection.label }
     : { kind: "canvasNode", directory, path: relativePath(selection.canvasPath), nodeId: selection.nodeId, label: selection.label };
   if (resource.kind === "file" && /\.json$/i.test(resource.path) && await isCanvasFile(useWorkspaceFiles(directory), resource.path)) {
@@ -565,7 +565,7 @@ async function executeFileAction(action: FileAction, item: FileTreeItem, target?
     pending.forEach(({ release }) => release());
   }
   for (const entry of renamed.sort((left, right) => Number(left.wasActive) - Number(right.wasActive))) {
-    const resource: ExtResource = "filePath" in entry.selection
+    const resource: DocumentExtResource = "filePath" in entry.selection
       ? { kind: "file", directory, path: entry.selection.filePath, label: entry.selection.label }
       : { kind: "canvasNode", directory, path: entry.selection.canvasPath, label: entry.selection.label, nodeId: entry.selection.nodeId };
     const supported = (await extensionCandidates(resource)).some(extension => extension.id === entry.extensionId);

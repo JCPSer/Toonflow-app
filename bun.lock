@@ -181,6 +181,23 @@
         "vue": "^3.5.42",
       },
     },
+    "packages/ext/comfyMonitor": {
+      "name": "@toonflow/ext-comfy-monitor",
+      "version": "0.1.0",
+      "dependencies": {
+        "@tabler/icons-vue": "^3.46.0",
+        "@toonflow/ext-scaffold": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "~6.0.3",
+        "vite": "^8.2.2",
+        "vue-tsc": "^3.3.11",
+      },
+      "peerDependencies": {
+        "element-plus": "^2.14.5",
+        "vue": "^3.5.42",
+      },
+    },
     "packages/ext/image": {
       "name": "@toonflow/ext-image",
       "version": "0.1.0",
@@ -1364,6 +1381,8 @@
     "@toonflow/desktop": ["@toonflow/desktop@workspace:apps/desktop"],
 
     "@toonflow/ext-canvas-node": ["@toonflow/ext-canvas-node@workspace:packages/ext/canvasNode"],
+
+    "@toonflow/ext-comfy-monitor": ["@toonflow/ext-comfy-monitor@workspace:packages/ext/comfyMonitor"],
 
     "@toonflow/ext-image": ["@toonflow/ext-image@workspace:packages/ext/image"],
 
@@ -2796,6 +2815,8 @@
     "@tiptap/markdown/marked": ["marked@17.0.6", "https://registry.npmmirror.com/marked/-/marked-17.0.6.tgz", { "bin": { "marked": "bin/marked.js" } }, "sha512-gB0gkNafnonOw0obSTEGZTT86IuhILt2Wfx0mWH/1Au83kybTayroZ/V6nS25mN7u8ASy+5fMhgB3XPNrOZdmA=="],
 
     "@toonflow/ext-canvas-node/typescript": ["typescript@6.0.3", "https://registry.npmmirror.com/typescript/-/typescript-6.0.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
+
+    "@toonflow/ext-comfy-monitor/typescript": ["typescript@6.0.3", "https://registry.npmmirror.com/typescript/-/typescript-6.0.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "@toonflow/ext-image/typescript": ["typescript@6.0.3", "https://registry.npmmirror.com/typescript/-/typescript-6.0.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 

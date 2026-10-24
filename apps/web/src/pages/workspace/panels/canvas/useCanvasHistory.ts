@@ -4,8 +4,13 @@ import { useVueFlow, type Node, type Edge } from "@vue-flow/core";
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
 
 type CanvasSnapshot = { nodes: Node[]; edges: Edge[]; key: string };
+type CanvasHistoryOptions = {
+  directory?: () => string | undefined;
+  // ACT: 只在 commit 裁剪历史时上报被淘汰的节点，watch(binding) 清空引用不代表节点已删除。
+  onNodesDropped?: (directory: string, nodeIds: string[]) => void;
+};
 
-export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: () => string) {
+export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: () => string, options: CanvasHistoryOptions = {}) {
   const snapshots = shallowRef<CanvasSnapshot[]>([]);
   const cursor = ref(-1);
   const applying = ref(false);
@@ -42,8 +47,11 @@ export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: (
     cursor.value = snapshots.value.length - 1;
     const nodeIds = new Set(snapshots.value.flatMap(item => item.nodes.map(node => node.id)));
     const edgeIds = new Set(snapshots.value.flatMap(item => item.edges.map(edge => edge.id)));
-    for (const id of nodeReferences.keys()) if (!nodeIds.has(id)) nodeReferences.delete(id);
+    const dropped: string[] = [];
+    for (const id of nodeReferences.keys()) if (!nodeIds.has(id)) { dropped.push(id); nodeReferences.delete(id); }
     for (const id of edgeReferences.keys()) if (!edgeIds.has(id)) edgeReferences.delete(id);
+    const directory = dropped.length ? options.directory?.() : undefined;
+    if (directory) options.onNodesDropped?.(directory, dropped);
   }
 
   const record = debounce(commit, 0);

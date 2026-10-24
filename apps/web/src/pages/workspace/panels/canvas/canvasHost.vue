@@ -16,6 +16,8 @@
       :activateCanvas="activateCanvas"
       :resolveCanvasContext="resolveCanvasContext"
       :flushCanvases="flushSave" />
+    <!-- ACT: 浮层挂在宿主而不是每个画布实例上，避免后台画布重复渲染与重复轮询。 -->
+    <overlayHost v-if="active" />
   </div>
 </template>
 
@@ -24,11 +26,13 @@ import { computed, nextTick, onScopeDispose, provide, shallowReactive, shallowRe
 import type { CanvasContext } from "@toonflow/tool-canvas/runtime";
 import { waitForControlValue } from "@/lib/mcpControl";
 import canvasPanel from "./index.vue";
+import overlayHost from "./overlayHost.vue";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { createCanvasMention, mentionNodeOutputs, queryMentionNodes, type MentionCanvasSource } from "@toonflow/server/agent/mentionSources";
 import type { NodeDocumentState } from "@toonflow/nodes-scaffold/nodeDocument";
 import { copyCanvasFiles, readCanvasFiles, type DocumentNode, type DocumentNodeOptions } from "./canvasFiles";
+import { createNodeAssetCleanup } from "./nodeAssetCleanup";
 
 const props = withDefaults(defineProps<{ active?: boolean; settingsVisible?: boolean }>(), { active: true, settingsVisible: false });
 const selectedTool = defineModel<"move" | "hand">("selectedTool", { default: "move" });
@@ -43,10 +47,11 @@ const canvasListReady = computed(() => activeInstance.value?.canvasListReady ?? 
 const lifetime = new AbortController();
 const workspaceStore = useWorkspaceStore();
 const canvases = shallowRef<{ id: string; name: string }[]>([]);
+const loadedDirectories = shallowRef<string[]>([]);
 let fileActionBusy = false;
 provide("canvasList", canvases);
 provide("canvasFolders", shallowRef([]));
-provide("canvasLoadedDirectories", shallowRef<string[]>([]));
+provide("canvasLoadedDirectories", loadedDirectories);
 provide("canvasAssetNodes", (id: string) => [...instances.values()].find(panel => panel.canvasId === id)?.getRetainedNodes() ?? []);
 watch(canvases, (current, previous) => {
   const removed = new Set(previous.filter(canvas => !current.includes(canvas)).map(canvas => canvas.id));
@@ -61,6 +66,61 @@ watch(canvases, (current, previous) => {
   if (!entries.value.some(entry => entry.key === activeKey.value)) activeKey.value = entries.value[0]?.key ?? "";
 }, { flush: "sync" });
 onScopeDispose(() => lifetime.abort(new Error("工作区已关闭")));
+
+const assetCleanup = createNodeAssetCleanup({
+  directory: () => workspaceStore.project?.directory,
+  getRetainedNodes: () => [...instances.values()].flatMap(panel => panel.getRetainedNodes()),
+  signal: lifetime.signal,
+});
+const entryCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// ACT: 全量轮最多尝试两次；文件树刷新会反复触发 watch，必须计数而不是只在成功后标记，避免长任务窗口被误扫。
+const entryCleanupAttempts = new Map<string, number>();
+const droppedCandidates = new Map<string, Set<string>>();
+const droppedTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleEntryCleanup(directory: string, delay = 1000) {
+  if ((entryCleanupAttempts.get(directory) ?? 0) >= 2 || entryCleanupTimers.has(directory)) return;
+  const timer = setTimeout(() => {
+    entryCleanupTimers.delete(directory);
+    if (workspaceStore.project?.directory !== directory) return;
+    if (!loadedDirectories.value.includes("") && !activeInstance.value?.canvasReady) return;
+    entryCleanupAttempts.set(directory, (entryCleanupAttempts.get(directory) ?? 0) + 1);
+    void assetCleanup.request(directory).then(completed => { if (!completed) scheduleEntryCleanup(directory, 5000); });
+  }, delay);
+  entryCleanupTimers.set(directory, timer);
+}
+
+function requestNodeAssetsCleanup(directory: string, nodeIds: string[]) {
+  if (!directory || !nodeIds.length || workspaceStore.project?.directory !== directory) return;
+  let candidates = droppedCandidates.get(directory);
+  if (!candidates) { candidates = new Set(); droppedCandidates.set(directory, candidates); }
+  for (const id of nodeIds) if (id) candidates.add(id.toLowerCase());
+  const existing = droppedTimers.get(directory);
+  if (existing) clearTimeout(existing);
+  droppedTimers.set(directory, setTimeout(() => {
+    droppedTimers.delete(directory);
+    const pending = droppedCandidates.get(directory);
+    droppedCandidates.delete(directory);
+    if (!pending?.size || workspaceStore.project?.directory !== directory) return;
+    void assetCleanup.request(directory, pending);
+  }, 800));
+}
+provide("requestNodeAssetsCleanup", requestNodeAssetsCleanup);
+
+// ACT: 画布列表加载成功（loadedDirectories 写入 ""）或直接打开画布已就绪时才清理；列表加载失败也会置 initialized，不能用它判断。
+watch([() => loadedDirectories.value.includes(""), () => activeInstance.value?.canvasReady, () => workspaceStore.project?.directory],
+  ([listed, ready, directory]) => {
+    if (directory && (listed || ready)) scheduleEntryCleanup(directory);
+  }, { immediate: true });
+
+onScopeDispose(() => {
+  for (const timer of entryCleanupTimers.values()) clearTimeout(timer);
+  for (const timer of droppedTimers.values()) clearTimeout(timer);
+  entryCleanupTimers.clear();
+  droppedTimers.clear();
+  droppedCandidates.clear();
+  assetCleanup.dispose();
+});
 
 function setInstance(key: string, value: Element | ComponentPublicInstance | null) {
   if (value) instances.set(key, value as CanvasInstance);
@@ -275,6 +335,7 @@ async function performFileAction(directory: string, action: "copy" | "rename" | 
     if (action === "rename" || action === "move") checkNodeResources(path);
     const files = useWorkspaceFiles(directory);
     const deletingPanels = new Set<CanvasInstance>();
+    let removedNodeIds: string[] = [];
     if (action === "delete") {
       const stored = await readCanvasFiles(files, path);
       checkDirectory(directory);
@@ -283,6 +344,11 @@ async function performFileAction(directory: string, action: "copy" | "rename" | 
         checkDirectory(directory);
       }
       for (const panel of instances.values()) if (panel.canvasId && containsPath(path, panel.canvasId)) deletingPanels.add(panel);
+      // ACT: 候选仅用于提示清理范围；实际删除仍由清理入口全量重算画布与运行时引用。
+      const candidates = new Set<string>();
+      for (const canvas of stored) for (const node of canvas.data.nodes) candidates.add(node.id);
+      for (const panel of deletingPanels) for (const node of panel.getRetainedNodes()) candidates.add(node.id);
+      removedNodeIds = [...candidates];
     }
     const removed = action === "delete" ? canvases.value.filter(canvas => containsPath(path, canvas.id)) : [];
     if (removed.length) {
@@ -322,6 +388,7 @@ async function performFileAction(directory: string, action: "copy" | "rename" | 
         }
         await files.remove(path, true);
         checkDirectory(directory);
+        requestNodeAssetsCleanup(directory, removedNodeIds);
         // 共享列表移除会同步取消匹配实例的保存；只删除所选路径，不连带清理画布的素材。
         canvases.value = canvases.value.filter(canvas => !affected.includes(canvas));
         if (!entries.value.length) {

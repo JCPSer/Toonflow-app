@@ -1,7 +1,7 @@
 <template>
   <div class="providerList">
     <div class="itemList">
-      <el-card v-for="item in sortedProviders" :key="item.id" class="providerItem" shadow="never">
+      <el-card v-for="item in sortedProviders" :key="item.id" class="providerItem" :class="{ isHidden: isProviderHidden('language', item.id) }" shadow="never">
         <div class="providerHeader">
           <div v-if="item.icon || isTfRouterProvider(item)" class="providerMark" aria-hidden="true">
             <img class="providerLogo" :class="{ monochrome: isTfRouterProvider(item) }" :src="item.icon || logoUrl" alt="" />
@@ -10,6 +10,7 @@
             <div class="providerHeading">
               <el-text class="providerName" tag="strong">{{ item.label }}</el-text>
               <el-tag v-if="isTfRouterProvider(item)" size="small">官方</el-tag>
+              <el-tag v-if="isProviderHidden('language', item.id)" size="small" type="info" effect="plain">已隐藏</el-tag>
             </div>
             <el-text class="providerId" size="small" type="info" :title="item.id">{{ item.id }}</el-text>
           </div>
@@ -19,8 +20,19 @@
           <div class="providerMeta">
             <el-tag v-if="getProviderVersion(item)" size="small" type="info" effect="plain">v{{ getProviderVersion(item) }}</el-tag>
             <el-text size="small" type="info">{{ item.models.length }} 个模型</el-text>
+            <el-text v-if="isProviderHidden('language', item.id)" size="small" type="info">· 已隐藏 全部</el-text>
+            <el-text v-else-if="hiddenCount(item)" size="small" type="info">· 已隐藏 {{ hiddenCount(item) }}</el-text>
           </div>
           <el-space class="itemActions" wrap>
+            <span class="visibilityToggle">
+              <el-text size="small" type="info">在节点中显示</el-text>
+              <el-switch
+                :modelValue="!isProviderHidden('language', item.id)"
+                :loading="visibilityBusy === item.id"
+                :disabled="!!deletingId"
+                :aria-label="`在节点中显示 ${item.label}`"
+                @change="(value) => toggleProvider(item.id, value === true)" />
+            </span>
             <el-button v-if="isTfRouterProvider(item) && item.apiKey?.trim() && !item.models.length" text :icon="IconRefresh" :loading="fetchingId === item.id" :disabled="!!deletingId || !!fetchingId" @click="fetchProviderModels(item)">获取模型</el-button>
             <el-button text :icon="IconEdit" :disabled="!!deletingId" @click="openCustomProvider(item)">编辑</el-button>
             <el-popconfirm title="确定删除此供应商及其模型？" confirmButtonText="删除" cancelButtonText="取消" @confirm="deleteProvider(item.id)">
@@ -43,7 +55,8 @@
 import { computed, defineAsyncComponent, ref, shallowRef, type Component } from "vue";
 import axios from "axios";
 import { ElMessage } from "element-plus";
-import { customProviders, saveSettings, type CustomProvider, type CustomProviderModel } from "@/stores/settings";
+import { customProviders, forgetProviderHidden, isProviderHidden, modelsHidden, saveSettings, setProviderHidden, type CustomProvider, type CustomProviderModel } from "@/stores/settings";
+import { hiddenModelCount } from "@/lib/modelVisibility";
 import { IconPlus, IconSettings, IconEdit, IconTrash, IconRefresh } from "@tabler/icons-vue";
 import { languageProviders } from "@toonflow/providers";
 import logoUrl from "@toonflow/assets/logo.svg";
@@ -58,11 +71,24 @@ const customProviderDialogVisible = ref(false);
 const editingProvider = ref<CustomProvider>();
 const deletingId = ref("");
 const fetchingId = ref("");
+const visibilityBusy = ref("");
 const sortedProviders = computed(() => [...customProviders.value].sort((a, b) => Number(isTfRouterProvider(b)) - Number(isTfRouterProvider(a))));
 
 function getProviderVersion(provider: CustomProvider) {
   const version = languageProviders.find(item => item.id.toLowerCase() === provider.id.toLowerCase())?.version ?? provider.version;
   return typeof version === "string" ? version.trim() : "";
+}
+
+function hiddenCount(item: CustomProvider) {
+  return hiddenModelCount("language", modelsHidden.value, item.id, item.models.map(model => model.id));
+}
+
+async function toggleProvider(id: string, visible: boolean) {
+  if (visibilityBusy.value) return;
+  visibilityBusy.value = id;
+  try { await setProviderHidden("language", id, !visible); }
+  catch { ElMessage.error("保存显示设置失败，请重试"); }
+  finally { visibilityBusy.value = ""; }
 }
 
 function openProvider() {
@@ -85,6 +111,8 @@ async function deleteProvider(id: string) {
       if (!Array.isArray(current)) throw new Error("配置格式错误");
       return { customProviders: current.filter(item => item?.id !== id) };
     });
+    // ACT: 顺手清掉该供应商的隐藏记录，避免以后同名供应商复活时带出旧状态。
+    await forgetProviderHidden("language", id).catch(() => {});
   } catch { ElMessage.error("删除失败，请重试"); }
   finally { deletingId.value = ""; }
 }

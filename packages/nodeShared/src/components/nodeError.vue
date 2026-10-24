@@ -3,15 +3,15 @@
     <div class="errorLabel">错误详情</div>
     <div class="errorDetail" tabindex="0">{{ message }}</div>
     <div v-if="!explanation || explaining" class="explainControls">
-      <template v-if="models.length">
+      <template v-if="modelGroups.length">
         <div class="errorLabel">用于解释错误的文本模型</div>
-        <el-select v-model="modelValue" filterable size="small" :disabled="explaining" placeholder="请选择能正常使用的文本模型" aria-label="用于解释错误的文本模型">
+        <el-select v-model="modelValue" filterable size="small" :disabled="explaining" placeholder="请选择能正常使用的文本模型" aria-label="用于解释错误的文本模型" noDataText="没有可用的文本模型，请在设置中取消隐藏">
           <el-option-group v-for="provider in modelGroups" :key="provider.id" :label="provider.label">
             <el-option v-for="item in provider.models" :key="item.modelId" :label="item.label" :value="JSON.stringify([item.providerId, item.modelId])" />
           </el-option-group>
         </el-select>
       </template>
-      <el-button class="explainButton" size="small" :loading="explaining" :disabled="explaining || (models.length > 0 && !selectedModel)" @click="explainError">
+      <el-button class="explainButton" size="small" :loading="explaining" :disabled="explaining || (modelGroups.length > 0 && !selectedModel)" @click="explainError">
         {{ explaining ? "正在准备解释…" : explanationError ? "重试 AI 解释" : "AI 解释" }}
       </el-button>
     </div>
@@ -39,7 +39,7 @@ const modelLabel = ref("");
 const models = ref<NodeAiModel[]>([]);
 const modelValue = ref("");
 const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === modelValue.value));
-const modelGroups = computed(() => groupNodeModels(models.value));
+const modelGroups = computed(() => groupNodeModels(models.value, modelValue.value));
 
 watch([models, explanation, explanationError, explaining], () => ElNotification.updateOffsets(), { flush: "post" });
 

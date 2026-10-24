@@ -2,12 +2,12 @@
   "module": "canvas-extensions",
   "edges": [
     {
-      "id": "e13",
+      "id": "e16",
       "from": "canvas-extensions",
       "to": "shared-foundation",
       "type": "import",
-      "label": "file/i18n",
-      "strength": "weak"
+      "strength": "weak",
+      "label": "file/i18n"
     }
   ]
 }

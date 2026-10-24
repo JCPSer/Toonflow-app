@@ -34,6 +34,15 @@
             <div class="modelRow">
               <el-input v-model="item.id" placeholder="模型 ID" aria-label="模型 ID" />
               <el-input v-model="item.label" placeholder="显示名称" aria-label="模型显示名称" />
+              <el-tooltip :content="modelVisibilityHint(item)" placement="top">
+                <el-switch
+                  class="visibilitySwitch"
+                  :modelValue="!isModelRowHidden(item)"
+                  :disabled="!canToggleModel(item)"
+                  :loading="visibilityBusy === item.key"
+                  :aria-label="`在节点中显示 ${item.label || item.id || '模型'}`"
+                  @change="(value) => toggleModel(item, value === true)" />
+              </el-tooltip>
               <el-button
                 text
                 :icon="expandedModels.has(item.key) ? IconChevronUp : IconChevronDown"
@@ -146,7 +155,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, reactive, ref, shallowRef, watch } from "vue";
 import axios from "axios";
-import { ElCheckbox, type FormInstance, type FormRules, type Column } from "element-plus";
+import { ElCheckbox, ElMessage, type FormInstance, type FormRules, type Column } from "element-plus";
 import {
   IconPlus,
   IconDownload,
@@ -155,7 +164,7 @@ import {
   IconChevronUp,
   IconSearch,
 } from "@tabler/icons-vue";
-import { saveSettings, type CustomProvider, type CustomProviderModel } from "@/stores/settings";
+import { forgetProviderHidden, isModelHidden, isProviderHidden, saveSettings, setModelHidden, type CustomProvider, type CustomProviderModel } from "@/stores/settings";
 import { languageProviders } from "@toonflow/providers";
 import { isTfRouterProvider } from "@/lib/tf";
 import { thinkingLevels, type ThinkingLevel, type ReasoningEfforts } from "@toonflow/server/modelReasoning";
@@ -170,6 +179,33 @@ const fetchedModels = shallowRef<CustomProviderModel[]>([]);
 const selectedIds = ref(new Set<string>());
 const modelSearch = ref("");
 const saving = ref(false);
+const visibilityBusy = ref("");
+const modelKeyOf = (item: { key: string }) => item.key;
+
+function modelVisibilityHint(item: CustomProviderModel & { key: string }) {
+  if (!form.id.trim()) return "保存供应商后可用";
+  if (!item.id.trim()) return "填写模型 ID 后可用";
+  if (isProviderHidden("language", form.id.trim())) return "供应商已隐藏，请在供应商列表重新打开显示";
+  return isModelHidden("language", form.id.trim(), item.id.trim()) ? "已从节点下拉中隐藏，点击显示" : "在节点下拉中显示，点击隐藏";
+}
+
+function canToggleModel(item: CustomProviderModel & { key: string }) {
+  return !saving.value && !!form.id.trim() && !!item.id.trim() && !isProviderHidden("language", form.id.trim());
+}
+
+function isModelRowHidden(item: CustomProviderModel & { key: string }) {
+  return !!form.id.trim() && !!item.id.trim() && isModelHidden("language", form.id.trim(), item.id.trim());
+}
+
+async function toggleModel(item: CustomProviderModel & { key: string }, visible: boolean) {
+  const providerId = form.id.trim();
+  const modelId = item.id.trim();
+  if (visibilityBusy.value || !providerId || !modelId) return;
+  visibilityBusy.value = modelKeyOf(item);
+  try { await setModelHidden("language", providerId, modelId, !visible); }
+  catch { ElMessage.error("保存显示设置失败，请重试"); }
+  finally { visibilityBusy.value = ""; }
+}
 const thinkingLevelLabels: Record<ThinkingLevel, string> = { off: "关闭", minimal: "最小", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最高" };
 const protocols = ["openai-completions", "openai-responses", "anthropic-messages"];
 const addedIds = computed(() => new Set(models.value.map((item) => item.id.trim())));
@@ -389,6 +425,8 @@ async function addProvider() {
         ? existing!.map(item => item.id === providerId ? { ...item, ...updatedProvider } : item)
         : [...(existing ?? []), updatedProvider] };
     });
+    // ACT: 供应商 ID 改名后旧隐藏记录会变成孤儿，清掉以免以后同名供应商继承隐藏状态。
+    if (providerId && providerId !== updatedProvider.id) await forgetProviderHidden("language", providerId).catch(() => {});
     visible.value = false;
   } catch (error) {
     formError.value = error instanceof Error ? error.message : "保存失败，请重试；当前填写的内容已保留";
@@ -426,13 +464,18 @@ async function addProvider() {
 
       .modelRow {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px 28px;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px 28px 28px;
         align-items: center;
         gap: 8px;
 
         .el-button {
           margin: 0;
           padding: 4px;
+        }
+
+        .visibilitySwitch {
+          flex-shrink: 0;
+          justify-self: center;
         }
       }
 

@@ -1,9 +1,11 @@
 import type { Component } from "vue";
 import type { Rule } from "@form-create/element-ui";
 
-export type ExtResource =
+export type DocumentExtResource =
   | { kind: "file"; directory: string; path: string; label: string }
   | { kind: "canvasNode"; directory: string; path: string; nodeId: string; label: string };
+// ACT: 画布浮层不绑定任何文件或节点，只借用同一套加载与配置机制；文档宿主只接受 DocumentExtResource。
+export type ExtResource = DocumentExtResource | { kind: "canvasOverlay" };
 
 export interface ExtFiles {
   list(path?: string, signal?: AbortSignal): Promise<{ directory: string; entries: { name: string; path: string; type: "file" | "directory" }[] }>;
@@ -20,8 +22,9 @@ export interface ExtFiles {
   mkdir(path: string): Promise<void>;
 }
 
-export interface ExtContext {
-  resource: ExtResource;
+// ACT: 文档类扩展默认拿到文件/节点资源；画布浮层可显式传 { kind: "canvasOverlay" }，既有插件无需改动。
+export interface ExtContext<R extends ExtResource = DocumentExtResource> {
+  resource: R;
   files: ExtFiles;
   text: string;
   loading: boolean;
@@ -58,7 +61,7 @@ export function defineExt(definition: ExtDefinition): ExtDefinition {
       && !(URL.canParse(icon) && ["http:", "https:"].includes(new URL(icon).protocol)))) throw new Error("扩展图标必须是 HTTP、HTTPS 或图片 data URL");
   }
   if (definition.configRules !== undefined && (!Array.isArray(definition.configRules) || definition.configRules.length > 100)) throw new Error("扩展配置规则必须为最多 100 项的表单规则数组");
-  if (definition.resourceKind !== "file" && definition.resourceKind !== "canvasNode") throw new Error("扩展资源类型无效");
+  if (!["file", "canvasNode", "canvasOverlay"].includes(definition.resourceKind)) throw new Error("扩展资源类型无效");
   if (definition.text !== undefined && typeof definition.text !== "boolean") throw new Error("扩展文本标记必须为布尔值");
   if (!Array.isArray(definition.extensions) || definition.extensions.some(extension => typeof extension !== "string" || !/^[a-z0-9]+$/.test(extension))) throw new Error("文件后缀必须是不带点的小写字母或数字");
   if (definition.resourceKind === "file" && !definition.extensions.length) throw new Error("文件扩展至少需要一个后缀");

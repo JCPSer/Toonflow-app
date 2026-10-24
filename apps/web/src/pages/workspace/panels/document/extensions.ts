@@ -3,7 +3,7 @@ import * as vue from "vue";
 import * as elementPlus from "element-plus";
 import * as i18n from "@toonflow/i18n/vue";
 import { saveSettings, settings } from "@/stores/settings";
-import { defineExt, type ExtDefinition, type ExtResource } from "@toonflow/ext-scaffold/runtime";
+import { defineExt, type DocumentExtResource, type ExtDefinition } from "@toonflow/ext-scaffold/runtime";
 
 export type InstalledExtension = Omit<ExtDefinition, "load"> & { name: string; enabled: boolean; url: string; version: string; revision?: string; loadError?: string; config?: Record<string, unknown> };
 const host = window as typeof window & { toonflowExts?: Record<string, ExtDefinition> };
@@ -68,7 +68,7 @@ export function listExtensions(refresh = false): Promise<InstalledExtension[]> {
   return installed.then(() => definitions.value);
 }
 
-function loadExtension(extension: InstalledExtension) {
+export function loadExtension(extension: InstalledExtension) {
   const requestedRevision = revision;
   const key = JSON.stringify([extension.id, extension.url, extension.version, extension.revision, requestedRevision]);
   let request = requests.get(key);
@@ -109,18 +109,18 @@ function loadExtension(extension: InstalledExtension) {
   return request;
 }
 
-export async function extensionCandidates(resource: ExtResource) {
+export async function extensionCandidates(resource: DocumentExtResource) {
   await listExtensions();
   return matchingExtensions(resource);
 }
 
-function matchingExtensions(resource: ExtResource) {
+function matchingExtensions(resource: DocumentExtResource) {
   const suffix = resource.path.split(".").at(-1)?.toLowerCase();
   return definitions.value.filter(extension => extension.enabled && !extension.loadError && extension.resourceKind === resource.kind
     && (resource.kind === "canvasNode" || extension.extensions.includes(suffix ?? "")));
 }
 
-export function extensionIcon(resource: ExtResource) {
+export function extensionIcon(resource: DocumentExtResource) {
   const candidates = matchingExtensions(resource);
   const key = resource.kind === "canvasNode" ? "canvasNode" : resource.path.split(".").at(-1)!.toLowerCase();
   return (candidates.find(extension => extension.id === extensionAssociations.value[key]) ?? (candidates.length === 1 ? candidates[0] : undefined))?.icon;
@@ -169,7 +169,7 @@ import.meta.hot?.dispose(() => {
   window.removeEventListener("toonflow:ext-config-updated", configUpdated);
 });
 
-export async function resolveExtension(resource: ExtResource, id: string): Promise<ExtDefinition> {
+export async function resolveExtension(resource: DocumentExtResource, id: string): Promise<ExtDefinition> {
   const extension = (await extensionCandidates(resource)).find(extension => extension.id === id);
   if (!extension) throw new Error(`尚未启用支持此文件的扩展，请到插件市场安装或启用：${resource.label}`);
   return defineExt({ ...extension, load: async () => (await loadExtension(extension)).load() });

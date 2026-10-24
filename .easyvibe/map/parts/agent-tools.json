@@ -2,11 +2,11 @@
   "id": "agent-tools",
   "name": "Agent 工具与 MCP",
   "layer": "domain",
-  "responsibility": "Agent 工具插件与 MCP 服务：浏览器、画布、资产、检索等能力",
+  "responsibility": "Agent 工具插件与 MCP 服务：浏览器、画布、资产、检索与技能操作",
   "files": [
     "packages/tools/**",
-    "packages/mcp/**",
-    "packages/toolScaffold/**"
+    "packages/toolScaffold/**",
+    "packages/mcp/**"
   ],
   "key_entries": [
     {
@@ -30,22 +30,25 @@
       "kind": "function"
     }
   ],
-  "dependencies": [],
   "health": {
     "score": 78,
     "coupling": "medium",
     "complexity": "medium",
-    "churn": "low",
+    "churn": "medium",
     "decay_flags": [],
-    "review_note": "37 文件 3,579 行，工具以 .tool.js 产物被 server 装载，MCP 复用同一批工具定义；browser 工具自带宿主协议与 Vue 面板。建议为工具清单加契约测试，并把 browser 的协议/宿主/面板拆成三个显式出口。",
+    "review_note": "37 文件 3,579 行；工具以 .tool.js 产物由 server 装载，MCP 复用同一批工具定义，browser 工具自带 CDP 宿主与 Vue 面板。近 3 个月 13 次提交、66 次文件变更。建议为工具清单加契约测试，并把 browser 的 protocol/host/panel 拆成显式出口。",
     "concerns": [
       {
         "id": "c-agent-tools-1",
         "severity": "high",
-        "finding": "browser 工具在 host.ts（717 行）内自建浏览器会话、CDP 协议与元素引用解析，协议、宿主与面板同包演进，升级 Puppeteer 时需三处同步。",
+        "finding": "browser 工具在 host.ts（717 行）内自建浏览器会话、CDP 协议与元素引用解析，协议、宿主与面板同包演进，升级 Puppeteer 时需多处同步。",
         "suggestion": "抽出 browser-protocol/client 包并锁定宿主版本，面板只依赖协议客户端，宿主实现可独立替换。"
       }
     ]
   },
-  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+  "dependencies": [
+    "media-toolkit",
+    "shared-foundation"
+  ],
+  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
 }

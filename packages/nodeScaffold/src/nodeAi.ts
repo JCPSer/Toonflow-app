@@ -13,6 +13,8 @@ export type NodeAiModel = {
   protocol: "openai-completions" | "openai-responses" | "anthropic-messages";
   contextWindow?: number;
   maxOutputTokens?: number;
+  // ACT: 设置里隐藏的模型仍由服务端解析，仅在下拉中过滤；当前选中项需保留展示。
+  hidden?: boolean;
 };
 export type NodeMediaModel = Omit<MediaModel, "mode"> & {
   mode?: (string | string[])[];

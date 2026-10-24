@@ -2,20 +2,20 @@
   "module": "desktop-shell",
   "edges": [
     {
-      "id": "e27",
+      "id": "e25",
       "from": "desktop-shell",
       "to": "server-api",
       "type": "call",
-      "label": "sidecar 启动 @toonflow/server/app",
-      "strength": "strong"
+      "strength": "strong",
+      "label": "内嵌 createApp / sidecar / remoteConnection"
     },
     {
-      "id": "e28",
+      "id": "e26",
       "from": "desktop-shell",
       "to": "shared-foundation",
       "type": "import",
-      "label": "file/i18n",
-      "strength": "normal"
+      "strength": "strong",
+      "label": "file/i18n/startup"
     }
   ]
 }

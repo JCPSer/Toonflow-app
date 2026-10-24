@@ -1,0 +1,117 @@
+files 625 unowned 0
+
+MODULE STATS
+shared-foundation    files=  15 loc=  1077
+media-toolkit        files=   8 loc=  1062
+ai-providers         files=   8 loc=  3009
+agent-tools          files=  37 loc=  3579
+agent-runtime        files=  30 loc=  3492
+workflow-nodes       files=  93 loc= 16146
+canvas-extensions    files=  26 loc=  1963
+web-console          files= 147 loc= 35114
+server-api           files= 204 loc= 11106
+desktop-shell        files=  37 loc=  4269
+mobile-shell         files=  20 loc=  3502
+
+EDGES
+server-api           -> shared-foundation    n=  69 types={'import': 69}
+     apps/server/scripts/build.ts -> @toonflow/file
+     apps/server/scripts/buildStandalone.ts -> @toonflow/file
+web-console          -> server-api           n=  68 types={'import': 20, 'api': 48}
+     apps/web/src/App.vue -> @toonflow/server/desktop
+     apps/web/src/components/agent/conversation.vue -> @toonflow/server/documentFormats
+agent-runtime        -> server-api           n=  66 types={'import': 66}
+     apps/server/src/agent/a2a/index.ts -> @/utils/teams
+     apps/server/src/agent/a2a/index.ts -> @/utils/mcp/control
+web-console          -> shared-foundation    n=  51 types={'import': 51}
+     apps/web/src/App.vue -> @toonflow/i18n/elementPlus
+     apps/web/src/App.vue -> @toonflow/i18n/vue
+web-console          -> workflow-nodes       n=  30 types={'import': 30}
+     apps/web/src/components/settings/panels/developer/providerDebugDialog.vue -> @toonflow/nodes-scaffold/nodeAi
+     apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue -> @toonflow/nodes-scaffold/nodeAi
+desktop-shell        -> shared-foundation    n=  25 types={'import': 25}
+     apps/desktop/installer/initializeInstall.ts -> @toonflow/file
+     apps/desktop/installer/initializeInstall.ts -> @toonflow/file/bun
+server-api           -> agent-runtime        n=  25 types={'import': 25}
+     apps/server/src/app.ts -> @/agent/a2a
+     apps/server/src/routes/agent.ts -> @/agent/runtime/types
+server-api           -> agent-tools          n=  25 types={'import': 25}
+     apps/server/src/app.ts -> @toonflow/mcp
+     apps/server/src/routes/agent.ts -> @toonflow/tools-scaffold/runtime
+web-console          -> agent-runtime        n=  19 types={'import': 19}
+     apps/web/src/components/agent/conversation.vue -> @toonflow/server/agent/types
+     apps/web/src/components/agent/conversation/contextUsage.vue -> @toonflow/server/agent/types
+desktop-shell        -> server-api           n=  17 types={'import': 17}
+     apps/desktop/scripts/build.ts -> ../../server/scripts/copyDocumentPackages
+     apps/desktop/src/connection.ts -> @toonflow/server/remoteConnection
+agent-runtime        -> agent-tools          n=  16 types={'import': 16}
+     apps/server/src/agent/a2a/index.ts -> @toonflow/tools-scaffold/runtime
+     apps/server/src/agent/assets.ts -> @toonflow/tool-asset-operator/runtime
+web-console          -> agent-tools          n=  16 types={'import': 16}
+     apps/web/src/components/agent/conversation.vue -> @toonflow/tool-canvas/runtime
+     apps/web/src/components/agent/conversation/messageInput.vue -> @toonflow/tool-canvas/runtime
+web-console          -> ai-providers         n=  15 types={'import': 15}
+     apps/web/src/components/settings/panels/developer/providerDebugDialog.vue -> @toonflow/providers
+     apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue -> @toonflow/providers
+mobile-shell         -> shared-foundation    n=  14 types={'import': 14}
+     apps/mobile/scripts/build.ts -> @toonflow/file
+     apps/mobile/scripts/prepare.ts -> @toonflow/file
+agent-runtime        -> shared-foundation    n=  12 types={'import': 12}
+     apps/server/src/agent/a2a/settings.ts -> @toonflow/file
+     apps/server/src/agent/assets.ts -> @toonflow/file
+agent-tools          -> shared-foundation    n=   9 types={'import': 9}
+     packages/mcp/scripts/build.ts -> @toonflow/file
+     packages/mcp/src/index.ts -> @toonflow/i18n
+server-api           -> ai-providers         n=   9 types={'import': 9}
+     apps/server/src/utils/ai/initialize.ts -> @toonflow/providers/language/tfRouter
+     apps/server/src/utils/ai/initialize.ts -> @toonflow/providers/media/tfRouter
+media-toolkit        -> shared-foundation    n=   7 types={'import': 7}
+     packages/ffmpeg/src/index.ts -> @toonflow/i18n
+     packages/ffmpeg/src/index.ts -> @toonflow/i18n/errors
+workflow-nodes       -> media-toolkit        n=   7 types={'import': 7}
+     packages/nodeScaffold/src/nodeAsr.ts -> @toonflow/asr
+     packages/nodeScaffold/src/nodeAsr.ts -> @toonflow/asr
+agent-tools          -> media-toolkit        n=   5 types={'import': 5}
+     packages/toolScaffold/src/client.ts -> @toonflow/asr
+     packages/toolScaffold/src/client.ts -> @toonflow/asr
+mobile-shell         -> server-api           n=   5 types={'import': 5}
+     apps/mobile/src/server.ts -> @toonflow/server/remoteConnection
+     apps/mobile/src/server.ts -> @toonflow/server/i18n
+server-api           -> media-toolkit        n=   4 types={'import': 4}
+     apps/server/src/routes/ffmpeg/execute.ts -> @toonflow/ffmpeg
+     apps/server/src/utils/ffmpeg/index.ts -> @toonflow/ffmpeg
+canvas-extensions    -> shared-foundation    n=   3 types={'import': 3}
+     packages/ext/md/src/index.vue -> @toonflow/i18n/vue
+     packages/extScaffold/create.ts -> @toonflow/file
+mobile-shell         -> desktop-shell        n=   3 types={'import': 3}
+     apps/mobile/scripts/build.ts -> ../../../electrobun.config
+     apps/mobile/src/server.ts -> ../../../electrobun.config
+web-console          -> canvas-extensions    n=   3 types={'import': 3}
+     apps/web/src/pages/workspace/panels/document/documentSession.ts -> @toonflow/ext-scaffold/runtime
+     apps/web/src/pages/workspace/panels/document/extensions.ts -> @toonflow/ext-scaffold/runtime
+workflow-nodes       -> agent-tools          n=   3 types={'import': 3}
+     packages/nodeScaffold/src/nodeAi.ts -> @toonflow/tools-scaffold/runtime
+     packages/nodeScaffold/src/nodeTools.ts -> @toonflow/tools-scaffold/runtime
+ai-providers         -> media-toolkit        n=   2 types={'import': 2}
+     packages/providers/index.ts -> @toonflow/ffmpeg/types
+     packages/providers/types.d.ts -> @toonflow/ffmpeg/types
+server-api           -> desktop-shell        n=   2 types={'import': 2}
+     apps/server/scripts/build.ts -> ../../../electrobun.config
+     apps/server/src/index.ts -> ../../../electrobun.config
+web-console          -> media-toolkit        n=   2 types={'import': 2}
+     apps/web/src/components/agent/conversation/useVoiceInput.ts -> @toonflow/asr
+     apps/web/src/pages/workspace/panels/canvas/useCanvasTools.ts -> @toonflow/asr
+agent-tools          -> web-console          n=   1 types={'import': 1}
+     packages/toolScaffold/index.ts -> ../../postcss.config.ts
+mobile-shell         -> canvas-extensions    n=   1 types={'import': 1}
+     compat/ohos/runtime.ts -> ../../packages/extScaffold/node_modules/typescript
+mobile-shell         -> web-console          n=   1 types={'import': 1}
+     apps/mobile/src/server.ts -> @toonflow/web/browserCapabilities
+web-console          -> desktop-shell        n=   1 types={'import': 1}
+     apps/web/vite.config.ts -> ../../electrobun.config.ts
+workflow-nodes       -> shared-foundation    n=   1 types={'import': 1}
+     packages/nodeScaffold/index.ts -> @toonflow/file
+workflow-nodes       -> web-console          n=   1 types={'import': 1}
+     packages/nodeScaffold/index.ts -> ../../postcss.config.ts
+
+wrote /Users/liyuhang/Documents/git_projects/Toonflow-app/.easyvibe/map/_analysis/repo_profile.json

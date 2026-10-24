@@ -6,8 +6,8 @@
       "from": "media-toolkit",
       "to": "shared-foundation",
       "type": "import",
-      "label": "file/i18n 基础调用",
-      "strength": "normal"
+      "strength": "normal",
+      "label": "file/i18n 基础调用"
     }
   ]
 }

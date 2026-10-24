@@ -10,8 +10,8 @@ export default Router().put("/", validateFields({ name: u.extPlugins.extNameSche
   const { name, config } = req.body;
   const release = u.workspaceFile.lockWorkspaceFiles([resolve(u.extPlugins.extDirectory, `${name}.umd.js`)]);
   try {
-    const { configRules } = await u.extPlugins.readExt(name);
-    const parsed = u.extPlugins.validateExtConfig(configRules, config);
+    const { configRules, resourceKind } = await u.extPlugins.readExt(name);
+    const parsed = u.extPlugins.validateExtConfig(configRules, config, resourceKind);
     u.conf.set("extConfigs", { ...u.conf.get("extConfigs", {}), [name]: parsed });
     res.json(success(parsed, "文件扩展配置已保存"));
   } finally { release(); }

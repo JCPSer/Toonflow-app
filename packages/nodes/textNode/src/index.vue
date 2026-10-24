@@ -94,7 +94,7 @@ const models = ref<NodeAiModel[]>([]);
 const modelsLoading = ref(false);
 const generating = ref(false);
 const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === model.value));
-const modelGroups = computed(() => groupNodeModels(models.value));
+const modelGroups = computed(() => groupNodeModels(models.value, model.value));
 const textReady = ref(false);
 const textReloading = ref(false);
 const textPath = `assets/${node.id}/content.md`;
@@ -212,7 +212,7 @@ async function loadModels() {
   try {
     models.value = await ai.getModels();
     if (!model.value) {
-      const first = models.value[0];
+      const first = models.value.find(item => !item.hidden);
       model.value = first ? JSON.stringify([first.providerId, first.modelId]) : "";
     }
   } catch (error) {

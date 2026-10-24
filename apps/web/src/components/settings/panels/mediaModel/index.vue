@@ -1,7 +1,7 @@
 <template>
   <div v-if="loaded" class="providerList">
     <div class="itemList">
-      <el-card v-for="item in sortedProviders" :key="item.fileName" class="providerItem" shadow="never">
+      <el-card v-for="item in sortedProviders" :key="item.fileName" class="providerItem" :class="{ isHidden: isProviderHidden('media', item.id) }" shadow="never">
         <div class="providerHeader">
           <div v-if="item.icon || item.id.toLowerCase() === 'tfrouter'" class="providerMark" aria-hidden="true">
             <img class="providerLogo" :class="{ monochrome: item.id.toLowerCase() === 'tfrouter' }" :src="item.icon || logoUrl" alt="" />
@@ -10,6 +10,7 @@
             <div class="providerHeading">
               <el-text class="providerName" tag="strong">{{ item.label }}</el-text>
               <el-tag v-if="item.id.toLowerCase() === 'tfrouter'" size="small">官方</el-tag>
+              <el-tag v-if="isProviderHidden('media', item.id)" size="small" type="info" effect="plain">已隐藏</el-tag>
             </div>
             <el-text class="providerId" size="small" type="info" :title="item.fileName">{{ item.fileName }}</el-text>
           </div>
@@ -20,8 +21,19 @@
           <div class="providerMeta">
             <el-tag v-if="item.version" size="small" type="info" effect="plain">v{{ item.version }}</el-tag>
             <el-text size="small" type="info">{{ item.models.length }} 个模型</el-text>
+            <el-text v-if="isProviderHidden('media', item.id)" size="small" type="info">· 已隐藏 全部</el-text>
+            <el-text v-else-if="hiddenCount(item)" size="small" type="info">· 已隐藏 {{ hiddenCount(item) }}</el-text>
           </div>
           <el-space class="itemActions" wrap>
+            <span class="visibilityToggle">
+              <el-text size="small" type="info">在节点中显示</el-text>
+              <el-switch
+                :modelValue="!isProviderHidden('media', item.id)"
+                :loading="visibilityBusy === item.id"
+                :disabled="!!fetchingFile || !!deletingFile || !!item.loadError"
+                :aria-label="`在节点中显示 ${item.label}`"
+                @change="(value) => toggleProvider(item.id, value === true)" />
+            </span>
             <el-button v-if="item.modelsUrl" text :icon="IconDownload" :loading="fetchingFile === item.fileName" :disabled="!!fetchingFile || !!deletingFile || !!item.loadError || !item.revision" @click="fetchModels(item)">获取模型</el-button>
             <el-button text :icon="IconEdit" :disabled="!!fetchingFile || !!deletingFile || !!item.loadError" @click="editProvider(item)">编辑模型</el-button>
             <el-popconfirm title="确定删除此供应商及其模型？" confirmButtonText="删除" cancelButtonText="取消" @confirm="deleteProvider(item)">
@@ -47,7 +59,8 @@ import { ElMessage } from "element-plus";
 import { IconPlus, IconSettings, IconEdit, IconTrash, IconDownload } from "@tabler/icons-vue";
 import logoUrl from "@toonflow/assets/logo.svg";
 import type { MediaProvider } from "./types";
-import { settings, saveSettings } from "@/stores/settings";
+import { forgetProviderHidden, isProviderHidden, modelsHidden, setProviderHidden, settings, saveSettings } from "@/stores/settings";
+import { hiddenModelCount } from "@/lib/modelVisibility";
 import { invalidateNodeModels } from "@toonflow/nodes-scaffold/nodeAi";
 import tfAccount from "../../tfAccount.vue";
 
@@ -63,7 +76,20 @@ const addMode = ref<"builtin" | "custom">("builtin");
 const editingProvider = ref<MediaProvider>();
 const deletingFile = ref("");
 const fetchingFile = ref("");
+const visibilityBusy = ref("");
 let loadRequest = 0;
+
+function hiddenCount(provider: MediaProvider) {
+  return hiddenModelCount("media", modelsHidden.value, provider.id, provider.models.map(model => model.id));
+}
+
+async function toggleProvider(id: string, visible: boolean) {
+  if (visibilityBusy.value) return;
+  visibilityBusy.value = id;
+  try { await setProviderHidden("media", id, !visible); }
+  catch { ElMessage.error("保存显示设置失败，请重试"); }
+  finally { visibilityBusy.value = ""; }
+}
 
 function getProviderApiKey(id: string) {
   const configs = settings.value.mediaProviderConfigs as Record<string, { apiKey?: unknown }> | undefined;
@@ -151,6 +177,7 @@ async function deleteProvider(provider: MediaProvider) {
       delete current[provider.id];
       return { mediaProviderConfigs: current };
     });
+    await forgetProviderHidden("media", provider.id).catch(() => {});
   } catch (error) {
     const message = axios.isAxiosError(error) ? error.response?.data?.message || error.message : error instanceof Error ? error.message : "删除失败，请重试";
     ElMessage.error(deleted ? `供应商已删除，连接配置未清理：${message}` : message);

@@ -192,7 +192,7 @@ watch(
   },
   { flush: "sync" }
 );
-const modelGroups = computed(() => groupNodeModels(models.value));
+const modelGroups = computed(() => groupNodeModels(models.value, data.value.model));
 const generationPrompt = computed(() =>
   [
     (editor.value?.mode === "inpaint" ? data.value.inpaintPrompt : data.value.prompt).trim(),
@@ -293,7 +293,7 @@ function loadModels() {
     models.value = items.filter((item) => item.type === "image");
     // ACT: 只给空配置选默认模型，保留暂时不可用的旧选择及其参数。
     if (!data.value.model) {
-      const first = models.value[0];
+      const first = models.value.find(item => !item.hidden);
       data.value.model = first ? JSON.stringify([first.providerId, first.modelId]) : "";
     }
   }).finally(() => {

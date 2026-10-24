@@ -95,12 +95,102 @@ export const customProviders = computed<CustomProvider[]>(() => Array.isArray(se
     && item.models.every((model: CustomProviderModel) => !!model && typeof model.id === "string" && typeof model.label === "string"))
   : []);
 
+export type HiddenKind = "language" | "media";
+export type ModelsHidden = {
+  providers: Record<HiddenKind, string[]>;
+  models: Record<HiddenKind, Record<string, string[]>>;
+};
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item !== "") : [];
+}
+
+function stringRecord(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, list]) => [key, stringList(list)]).filter(([, list]) => list.length));
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+// ACT: 隐藏状态是旁路设置，不进供应商或模型对象；媒体供应商配置会原样传给插件运行时。
+export const modelsHidden = computed<ModelsHidden>(() => {
+  const raw = record(settings.value.modelsHidden);
+  const providers = record(raw.providers);
+  const models = record(raw.models);
+  return {
+    providers: { language: stringList(providers.language), media: stringList(providers.media) },
+    models: { language: stringRecord(models.language), media: stringRecord(models.media) },
+  };
+});
+
+export function isProviderHidden(kind: HiddenKind, providerId: string) {
+  return modelsHidden.value.providers[kind].includes(providerId);
+}
+
+export function isModelHidden(kind: HiddenKind, providerId: string, modelId: string) {
+  return modelsHidden.value.models[kind][providerId]?.includes(modelId) ?? false;
+}
+
+function writeHidden(kind: HiddenKind, update: (current: { providers: string[]; models: Record<string, string[]> }) => { providers: string[]; models: Record<string, string[]> }) {
+  return saveSettings(current => {
+    const raw = record(current.modelsHidden);
+    const providers = record(raw.providers);
+    const models = record(raw.models);
+    const next = update({ providers: stringList(providers[kind]), models: stringRecord(models[kind]) });
+    const nextModels = Object.fromEntries(Object.entries(next.models).filter(([, list]) => list.length));
+    return {
+      modelsHidden: {
+        ...raw,
+        providers: { ...providers, [kind]: next.providers },
+        models: { ...models, [kind]: nextModels },
+      },
+    };
+  });
+}
+
+// ACT: 隐藏只影响下拉展示；模型仍可按 id 解析，因此这里无需改动任何供应商数据。
+export async function setProviderHidden(kind: HiddenKind, providerId: string, hidden: boolean) {
+  const saved = await writeHidden(kind, current => ({
+    providers: hidden ? [...new Set([...current.providers, providerId])] : current.providers.filter(id => id !== providerId),
+    models: current.models,
+  }));
+  if (saved) invalidateNodeModels(kind);
+  return saved;
+}
+
+export async function setModelHidden(kind: HiddenKind, providerId: string, modelId: string, hidden: boolean) {
+  const saved = await writeHidden(kind, current => {
+    const ids = current.models[providerId] ?? [];
+    return {
+      providers: current.providers,
+      models: { ...current.models, [providerId]: hidden ? [...new Set([...ids, modelId])] : ids.filter(id => id !== modelId) },
+    };
+  });
+  if (saved) invalidateNodeModels(kind);
+  return saved;
+}
+
+export async function forgetProviderHidden(kind: HiddenKind, providerId: string) {
+  return writeHidden(kind, current => {
+    const models = { ...current.models };
+    delete models[providerId];
+    return { providers: current.providers.filter(id => id !== providerId), models };
+  });
+}
+
 type ResolvedAiModel = { providerId: string; modelId: string; reasoningLevels: ThinkingLevel[] };
 const resolvedModelReasoning = ref<Partial<Record<string, ThinkingLevel[]>>>({});
-export const modelChoices = computed(() => customProviders.value.flatMap(provider => provider.models.map(model => ({
-  value: JSON.stringify([provider.id, model.id]), providerId: provider.id, modelId: model.id, label: model.label, contextWindow: model.contextWindow,
-  reasoningLevels: resolvedModelReasoning.value[JSON.stringify([provider.id, model.id])],
-}))));
+export const modelChoices = computed(() => customProviders.value.flatMap(provider => {
+  const providerHidden = isProviderHidden("language", provider.id);
+  return provider.models.map(model => ({
+    value: JSON.stringify([provider.id, model.id]), providerId: provider.id, modelId: model.id, label: model.label, contextWindow: model.contextWindow,
+    reasoningLevels: resolvedModelReasoning.value[JSON.stringify([provider.id, model.id])],
+    // ACT: 查表用途保留全部模型，hidden 仅供选择器跳过默认项与标注使用。
+    hidden: providerHidden || isModelHidden("language", provider.id, model.id),
+  }));
+}));
 
 function applyModelReasoning(models: ResolvedAiModel[]) {
   resolvedModelReasoning.value = Object.fromEntries(models.map(model => [JSON.stringify([model.providerId, model.modelId]), model.reasoningLevels]));

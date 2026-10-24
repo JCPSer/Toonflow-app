@@ -122,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, shallowReactive, shallowRef, watch } from "vue";
+import { computed, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, shallowReactive, shallowRef, watch } from "vue";
 import axios from "axios";
 import { debounce } from "lodash-es";
 import { ElMessage } from "element-plus";
@@ -258,8 +258,10 @@ flow.onNodeDragStop(({ nodes }) => {
   if (copy) copy.finish();
   else finishGroupDrag(flow.getNodes.value, nodes);
 });
+const requestNodeAssetsCleanup = inject<((directory: string, nodeIds: string[]) => void) | undefined>("requestNodeAssetsCleanup");
 const canvasHistory = useCanvasHistory(flow, () =>
-  project.value?.directory && canvasId.value ? JSON.stringify([project.value.directory, canvasId.value]) : ""
+  project.value?.directory && canvasId.value ? JSON.stringify([project.value.directory, canvasId.value]) : "",
+  { directory: () => project.value?.directory, onNodesDropped: (directory, nodeIds) => requestNodeAssetsCleanup?.(directory, nodeIds) }
 );
 const { canUndo, canRedo } = canvasHistory;
 provide("batchCanvasHistory", canvasHistory.batch);

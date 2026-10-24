@@ -12,7 +12,7 @@
       <template #reference>
         <el-button class="modelButton" text :disabled="disabled" aria-label="模型与思考强度设置">
           <modelIcon v-if="selectedModelChoice" :model="selectedModelChoice.modelId" :size="14" />
-          <span class="modelName">{{ selectedModelChoice?.label ?? "选择模型" }}</span>
+          <span class="modelName">{{ selectedModelLabel }}</span>
           <template v-if="reasoningLevels.length">
             ·
             <span class="reasoningLabel">{{ reasoningLabel }}</span>
@@ -55,7 +55,8 @@ import { computed, ref, useId, watch } from "vue";
 import { IconChevronDown, IconChevronUp } from "@tabler/icons-vue";
 import { modelIcon } from "@toonflow/model-icons";
 import type { ThinkingLevel } from "@toonflow/server/modelReasoning";
-import { customProviders, modelChoices } from "@/stores/settings";
+import { customProviders, isModelHidden, isProviderHidden, modelChoices, modelsHidden } from "@/stores/settings";
+import { visibleLanguageProviders } from "@/lib/modelVisibility";
 
 const selectedModel = defineModel<string>({ default: "" });
 const reasoningEffort = defineModel<string>("reasoningEffort", { default: "" });
@@ -63,14 +64,27 @@ const props = withDefaults(defineProps<{ active?: boolean; disabled?: boolean }>
 const visible = ref(false);
 const reasoningId = useId();
 const reasoningLabels: Record<ThinkingLevel, string> = { off: "关闭", minimal: "最小", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最高" };
-const modelGroups = computed(() => customProviders.value.toSorted((left, right) => Number(right.id === "tfRouter") - Number(left.id === "tfRouter")));
+// ACT: 与画布节点下拉一致：隐藏模型不展示，当前选中项保留并标注「已隐藏」。
+const modelGroups = computed(() => visibleLanguageProviders(
+  customProviders.value.toSorted((left, right) => Number(right.id === "tfRouter") - Number(left.id === "tfRouter")),
+  modelsHidden.value,
+  selectedModel.value,
+));
 const selectedModelChoice = computed(() => modelChoices.value.find(item => item.value === selectedModel.value));
+// ACT: 已选中的隐藏模型仍要能看出当前用的是哪一项，按钮上同样标注。
+const selectedModelLabel = computed(() => {
+  const choice = selectedModelChoice.value;
+  if (!choice) return "选择模型";
+  const hidden = isProviderHidden("language", choice.providerId) || isModelHidden("language", choice.providerId, choice.modelId);
+  return hidden ? `${choice.label}（已隐藏）` : choice.label;
+});
 const reasoningLevels = computed(() => selectedModelChoice.value?.reasoningLevels ?? []);
 const reasoningOptions = computed(() => [{ label: "默认", value: "" }, ...reasoningLevels.value.map(value => ({ label: reasoningLabels[value], value }))]);
 const reasoningColumns = computed(() => Math.min(4, reasoningOptions.value.length > 4 ? Math.ceil(reasoningOptions.value.length / 2) : reasoningOptions.value.length));
 const reasoningLabel = computed(() => reasoningOptions.value.find(item => item.value === reasoningEffort.value)?.label ?? "默认");
 watch(modelChoices, items => {
-  if (!selectedModel.value) selectedModel.value = items[0]?.value ?? "";
+  // ACT: 默认项跳过隐藏模型；全部隐藏时留空，与画布节点一致，不偷偷用隐藏模型。
+  if (!selectedModel.value) selectedModel.value = items.find(item => !item.hidden)?.value ?? "";
 }, { immediate: true });
 watch([() => selectedModelChoice.value?.reasoningLevels, reasoningEffort], ([levels, effort]) => {
   if (levels && effort && !levels.includes(effort as ThinkingLevel)) reasoningEffort.value = "";

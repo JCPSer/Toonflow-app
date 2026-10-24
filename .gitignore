@@ -31,3 +31,6 @@ Thumbs.db
 *.keychain
 *.keychain-db
 .tmp/
+
+# ComfyUI 采集脚本的字节码缓存
+packages/ext/comfyMonitor/sidecar/__pycache__/

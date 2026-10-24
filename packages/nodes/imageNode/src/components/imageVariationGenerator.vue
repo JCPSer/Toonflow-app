@@ -45,7 +45,7 @@ const createVariation = useImageVariationNode();
 const models = ref<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
 const busy = computed(() => props.disabled || generating.value);
-const modelGroups = computed(() => groupNodeModels(models.value));
+const modelGroups = computed(() => groupNodeModels(models.value, props.settings.model));
 const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === props.settings.model));
 const sizeOptions = computed(() => selectedModel.value?.imageSizes?.length ? selectedModel.value.imageSizes : ["2K"]);
 const ratioOptions = computed(() => selectedModel.value?.imageRatios?.length ? selectedModel.value.imageRatios : ["16:9"]);
@@ -88,7 +88,7 @@ async function refreshModels() {
     }
     models.value = result.filter(item => item.type === "image");
     if (!props.settings.model) {
-      const choice = models.value[0];
+      const choice = models.value.find(item => !item.hidden);
       props.settings.model = choice ? JSON.stringify([choice.providerId, choice.modelId]) : "";
     }
   } catch (error) { if (!disposed) showNodeError(error, "模型读取失败"); }

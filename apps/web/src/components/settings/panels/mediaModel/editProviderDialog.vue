@@ -28,6 +28,16 @@
               </div>
             </div>
             <div class="actionButtons">
+              <el-tooltip :content="visibilityHint(item)" placement="top">
+                <el-switch
+                  class="visibilitySwitch"
+                  :modelValue="!isModelRowHidden(item)"
+                  :disabled="saving || !provider?.id || isProviderHidden('media', provider.id)"
+                  :loading="visibilityBusy === item.id"
+                  :aria-label="`在节点中显示 ${item.label}`"
+                  @change="(value) => toggleModel(item, value === true)" />
+              </el-tooltip>
+              <el-tag v-if="isModelRowHidden(item)" size="small" type="info" effect="plain">已隐藏</el-tag>
               <el-button text size="small" :icon="IconEdit" :disabled="saving" :aria-label="`编辑模型 ${item.label}`" @click="editModel(index)">编辑</el-button>
               <el-button text size="small" type="danger" :icon="IconTrash" :disabled="saving" :aria-label="`删除模型 ${item.label}`" @click="models.splice(index, 1)">删除</el-button>
             </div>
@@ -58,13 +68,14 @@
 import { translate } from "@toonflow/i18n/vue";
 
 import axios from "axios";
+import { ElMessage } from "element-plus";
 import { computed, defineAsyncComponent, ref, shallowRef, toRaw, watch, type Component } from "vue";
 import { IconPlus, IconTrash, IconDeviceFloppy, IconEdit } from "@tabler/icons-vue";
 import formCreate, { type Api, type Options } from "../../formCreate";
 import { modelIcon } from "@toonflow/model-icons";
 import messageMarkdown from "@/components/messageMarkdown.vue";
 import type { MediaProvider, MediaProviderModel } from "./types";
-import { settings, saveSettings } from "@/stores/settings";
+import { isModelHidden, isProviderHidden, saveSettings, setModelHidden, settings } from "@/stores/settings";
 import { invalidateNodeModels } from "@toonflow/nodes-scaffold/nodeAi";
 
 const { provider } = defineProps<{ provider?: MediaProvider }>();
@@ -75,6 +86,30 @@ const models = ref<MediaProviderModel[]>([]);
 const modelEditorVisible = ref(false);
 const editingModelIndex = ref<number>();
 const saving = ref(false);
+const visibilityBusy = ref("");
+
+function isModelRowHidden(item: MediaProviderModel) {
+  const providerId = provider?.id;
+  return !!providerId && !!item.id.trim() && isModelHidden("media", providerId, item.id.trim());
+}
+
+function visibilityHint(item: MediaProviderModel) {
+  const providerId = provider?.id;
+  if (!providerId) return "保存供应商后可用";
+  if (isProviderHidden("media", providerId)) return "供应商已隐藏，请在供应商列表重新打开显示";
+  return isModelHidden("media", providerId, item.id.trim()) ? "已从节点下拉中隐藏，点击显示" : "在节点下拉中显示，点击隐藏";
+}
+
+async function toggleModel(item: MediaProviderModel, visible: boolean) {
+  const providerId = provider?.id;
+  const modelId = item.id.trim();
+  if (visibilityBusy.value || !providerId || !modelId) return;
+  visibilityBusy.value = item.id;
+  try { await setModelHidden("media", providerId, modelId, !visible); }
+  catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "保存显示设置失败，请重试");
+  } finally { visibilityBusy.value = ""; }
+}
 const formApi = shallowRef<Api>();
 const formRules = shallowRef<ReturnType<typeof formCreate.copyRules>>([]);
 const formValues = ref<Record<string, unknown>>({});
@@ -229,8 +264,12 @@ async function saveModels() {
 
         .actionButtons {
           display: flex;
+          align-items: center;
           flex-shrink: 0;
+          gap: 4px;
           margin-left: auto;
+
+          .visibilitySwitch { flex-shrink: 0; }
         }
       }
 

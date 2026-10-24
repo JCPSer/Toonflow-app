@@ -1,0 +1,10 @@
+{
+  "decision_reason": "compliant_generated",
+  "at": "2026-10-24T16:36:02+0800",
+  "map_backup": null,
+  "growth_archives": [
+    "growth.log.20261024-120325.bak",
+    "growth.log.20261024-163355.bak",
+    "growth.log.20261024-163602.bak"
+  ]
+}

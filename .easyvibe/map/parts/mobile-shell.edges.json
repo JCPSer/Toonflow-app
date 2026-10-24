@@ -2,28 +2,28 @@
   "module": "mobile-shell",
   "edges": [
     {
-      "id": "e24",
+      "id": "e27",
       "from": "mobile-shell",
       "to": "server-api",
       "type": "call",
-      "label": "内嵌 createApp 与 remoteConnection",
-      "strength": "strong"
+      "strength": "normal",
+      "label": "内嵌 createApp 与 remoteConnection"
     },
     {
-      "id": "e25",
+      "id": "e28",
       "from": "mobile-shell",
       "to": "shared-foundation",
       "type": "import",
-      "label": "file",
-      "strength": "strong"
+      "strength": "normal",
+      "label": "file"
     },
     {
-      "id": "e26",
+      "id": "e29",
       "from": "mobile-shell",
       "to": "web-console",
       "type": "import",
-      "label": "browserCapabilities 探针",
-      "strength": "normal"
+      "strength": "weak",
+      "label": "browserCapabilities 探针"
     }
   ]
 }

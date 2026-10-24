@@ -1,0 +1,72 @@
+{
+  "task_id": "task_261024_image_scale_and_orphan_gc",
+  "created_at": "2026-10-24 23:36",
+  "owner": "liyuhang",
+  "goal": "图片节点内置缩放 + 孤立节点素材自动回收，两个功能并行实现",
+  "repo": "/Users/liyuhang/Documents/git_projects/Toonflow-app",
+  "docs": {
+    "scale_matrix": ".claude/development_docs/liyuhang/1_requirements_matrix/2026-10-24-23-07-image-node-scale.md",
+    "scale_solution": ".claude/development_docs/liyuhang/2_requirements_solutions/2026-10-24-23-07-image-node-scale.md",
+    "orphan_analysis": ".claude/development_docs/liyuhang/4_bugs_fix/bug_analysis-2026-10-24-23-20-orphan-node-assets.md",
+    "orphan_solution": ".claude/development_docs/liyuhang/4_bugs_fix/bug_solution-2026-10-24-23-20-orphan-node-assets.md"
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "图片节点内置缩放（imageScale.vue + index.vue 集成）",
+      "owner": "scale-impl",
+      "status": "completed",
+      "scope": [
+        "packages/nodes/imageNode/src/components/imageScale.vue",
+        "packages/nodes/imageNode/src/index.vue",
+        "packages/nodes/imageNode/readme.md"
+      ],
+      "acceptance": [
+        "vue-tsc 通过",
+        "参数/尺寸/64MP/MIME 规则与方案一致",
+        "子组件 emit applied/restore，父组件写 outputs",
+        "save/delete/setImage 与全部按钮禁用接入 scaling"
+      ]
+    },
+    {
+      "id": "T2",
+      "subject": "孤立节点素材回收（共用引用扫描 + 两个触发点）",
+      "owner": "orphan-impl",
+      "status": "completed",
+      "scope": [
+        "apps/web/src/pages/workspace/canvasFile.ts",
+        "apps/web/src/pages/workspace/panels/canvas/canvasFiles.ts",
+        "apps/web/src/pages/workspace/panels/canvas/nodeAssetCleanup.ts",
+        "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue",
+        "apps/web/src/pages/workspace/panels/canvas/useCanvasHistory.ts",
+        "apps/web/src/pages/workspace/panels/canvas/index.vue"
+      ],
+      "acceptance": [
+        "vue-tsc 通过",
+        "复制期间不清理",
+        "只删 UUID 目录，跳过 .agent/.toonflowCopy*",
+        "删除前逐项复核目录与运行时引用",
+        "历史回调只来自 commit diff"
+      ]
+    },
+    {
+      "id": "T3",
+      "subject": "集成评审 + 类型检查 + 构建",
+      "owner": "Team Lead",
+      "status": "completed",
+      "depends_on": [
+        "T1",
+        "T2"
+      ]
+    },
+    {
+      "id": "T4",
+      "subject": "实测（缩放全路径 + 孤儿清理场景）与文档归档",
+      "owner": "Team Lead",
+      "status": "completed",
+      "depends_on": [
+        "T3"
+      ]
+    }
+  ]
+}

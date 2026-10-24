@@ -4,18 +4,18 @@
     {
       "id": "e3",
       "from": "agent-tools",
-      "to": "media-toolkit",
+      "to": "shared-foundation",
       "type": "import",
-      "label": "ffmpeg/asr 运行时",
-      "strength": "strong"
+      "strength": "normal",
+      "label": "file/i18n"
     },
     {
       "id": "e4",
       "from": "agent-tools",
-      "to": "shared-foundation",
+      "to": "media-toolkit",
       "type": "import",
-      "label": "file/i18n",
-      "strength": "strong"
+      "strength": "normal",
+      "label": "ffmpeg/asr 运行时"
     }
   ]
 }

@@ -58,7 +58,7 @@ const props = defineProps<{ result?: DirectorPlan; referenceCount: number; initi
 const emit = defineEmits<{ editInstruction: [value: string]; selectPlan: [id: string]; send: []; loadModels: [] }>();
 const prompt = defineModel<string>("prompt", { default: "" });
 const model = defineModel<string>("model", { default: "" });
-const modelGroups = computed(() => groupNodeModels(props.models));
+const modelGroups = computed(() => groupNodeModels(props.models, model.value));
 function sendInstruction() {
   if (props.initializing || !prompt.value.trim() || !model.value) return;
   emit("send");
