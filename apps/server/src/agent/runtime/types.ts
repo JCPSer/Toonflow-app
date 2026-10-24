@@ -39,6 +39,7 @@ export type AgentEvent =
   | ({ type: "canvasCall"; callId: string } & CanvasToolCall)
   | ({ type: "question"; callId: string; toolCallId: string } & QuestionRequest)
   | { type: "error"; message: string }
+  | { type: "retry"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
   | { type: "session"; file: string }
   | { type: "userMessage"; id: string; content?: string; attachments?: { name: string; path: string; mimeType: string }[]; mentions?: AgentMention[] }
   | { type: "subAgent"; agent: AgentSubAgent }

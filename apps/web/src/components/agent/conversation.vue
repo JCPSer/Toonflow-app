@@ -21,6 +21,14 @@
       <el-icon class="is-loading" aria-hidden="true"><icon-loader-2 :size="14" /></el-icon>
       <span>正在压缩上下文…</span>
     </div>
+    <div v-else-if="retryNotice" class="retryStatus" role="status">
+      <el-icon class="is-loading" aria-hidden="true"><icon-loader-2 :size="14" /></el-icon>
+      <span>{{ retryNotice }}</span>
+    </div>
+    <div v-else-if="busy && silentSeconds >= 10" class="compactionStatus" role="status">
+      <el-icon class="is-loading" aria-hidden="true"><icon-loader-2 :size="14" /></el-icon>
+      <span>等待模型响应… {{ silentSeconds }}s</span>
+    </div>
     <messageInput
       ref="input"
       v-model:selectedModel="selectedModel"
@@ -74,6 +82,10 @@ const stats = ref(props.initialSession?.stats);
 const contextUsage = ref(props.initialSession?.contextUsage);
 const busy = ref(false);
 const compacting = ref(false);
+const retryNotice = ref<string>();
+const silentSeconds = ref(0);
+let silenceTimer: ReturnType<typeof setInterval> | undefined;
+let lastEventAt = 0;
 const deletingId = ref<string>();
 const restoringAttachment = ref(false);
 const input = ref<InstanceType<typeof messageInput>>();
@@ -101,6 +113,16 @@ function applyEvent(event: AgentEvent) {
     case "compaction": compacting.value = event.active; break;
     case "session": emit("session", event.file); break;
     case "stats": stats.value = event.stats; contextUsage.value = event.contextUsage; break;
+    // ACT: 服务端看门狗触发自动重试时，告诉用户还在推进，而不是只有转圈。
+    case "retry":
+      retryNotice.value = `连接异常（${event.errorMessage}），${Math.max(1, Math.round(event.delayMs / 1000))} 秒后自动重试（${event.attempt}/${event.maxAttempts}）`;
+      break;
+    case "text":
+    case "thinking":
+    case "tool":
+      retryNotice.value = undefined;
+      stream.receive(event);
+      break;
     default: stream.receive(event);
   }
 }
@@ -110,7 +132,24 @@ function receiveEvent(event: AgentEvent) {
     remoteRunning.value = false;
     compacting.value = false;
   } else if (["userMessage", "text", "thinking", "tool"].includes(event.type)) remoteRunning.value = true;
+  lastEventAt = performance.now();
   applyEvent(event);
+}
+
+function startSilenceWatch() {
+  stopSilenceWatch();
+  lastEventAt = performance.now();
+  silentSeconds.value = 0;
+  silenceTimer = setInterval(() => {
+    silentSeconds.value = busy.value ? Math.floor((performance.now() - lastEventAt) / 1000) : 0;
+  }, 1000);
+}
+
+function stopSilenceWatch() {
+  if (silenceTimer) clearInterval(silenceTimer);
+  silenceTimer = undefined;
+  silentSeconds.value = 0;
+  retryNotice.value = undefined;
 }
 
 defineExpose({ receiveEvent });
@@ -230,6 +269,7 @@ async function sendMessage(source?: AgentMessage) {
   controller = requestController;
   busy.value = true;
   compacting.value = false;
+  startSilenceWatch();
   const reply = reactive<AgentMessage>({ id: crypto.randomUUID(), role: "assistant", content: "", parts: [], streaming: true });
   const userMessage = reactive<AgentMessage>({ id: crypto.randomUUID(), role: "user", content: prompt, attachments, mentions });
   let ownsStream = !remoteRunning.value;
@@ -255,6 +295,7 @@ async function sendMessage(source?: AgentMessage) {
       signal: requestController.signal,
     });
     for await (const event of readAgentEvents(response, requestController.signal)) {
+      lastEventAt = performance.now();
       // 子任务复用发起委派时的画布与取消通道，界面切换不改变工具执行目标。
       let toolEvent: AgentEvent = event;
       let scope = "";
@@ -326,6 +367,9 @@ async function sendMessage(source?: AgentMessage) {
       }).catch(() => {});
     }
     if (ownsStream && !forwarded) stream.finish();
+    // ACT: replyStream 处理 error 行时直接抛错、不会走到 receiveEvent，这里兜底复位。
+    if (ownsStream) remoteRunning.value = false;
+    stopSilenceWatch();
     compacting.value = false;
     busy.value = false;
     controller = undefined;
@@ -341,7 +385,10 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
   if (input.value === instance && props.active) void sendMessage();
 }, { flush: "post" });
 
-onBeforeUnmount(() => controller?.abort());
+onBeforeUnmount(() => {
+  controller?.abort();
+  stopSilenceWatch();
+});
 </script>
 
 <style lang="scss">
@@ -359,6 +406,16 @@ onBeforeUnmount(() => controller?.abort());
     gap: 6px;
     margin: 0 12px 8px;
     color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
+
+  .retryStatus {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    margin: 0 12px 8px;
+    color: var(--el-color-warning);
     font-size: 12px;
   }
 }

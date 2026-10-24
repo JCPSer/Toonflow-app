@@ -9,7 +9,12 @@ import { isMemoryEnabled, readDocument } from "@/utils/personalization";
 import conf from "@/utils/conf";
 import { getRuntimePlatform } from "@/lib/platform";
 
-export async function createAgentResources(cwd: string, tools: ToolDefinition[], settings = SettingsManager.inMemory(), instructions = "") {
+// ACT: 重试由 requests.ts 的空闲看门狗触发，次数上限压到 2，避免长时间静默等待。
+export function createAgentSettings() {
+  return SettingsManager.inMemory({ retry: { enabled: true, maxRetries: 2, baseDelayMs: 2000 } });
+}
+
+export async function createAgentResources(cwd: string, tools: ToolDefinition[], settings = createAgentSettings(), instructions = "") {
   const savedPrompt = conf.get("settings", {}).agentSystemPrompt;
   const systemPrompt = typeof savedPrompt === "string" ? savedPrompt : undefined;
   const agentDir = join(cwd, ".agent");

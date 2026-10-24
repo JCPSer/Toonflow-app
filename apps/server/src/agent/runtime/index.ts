@@ -301,6 +301,10 @@ export async function run(
           compactionError = t`上下文压缩失败：${event.errorMessage}`;
         }
       }
+      // ACT: 自动重试期间前端原本完全静默，透出后可以显示「正在重试（n/m）」。
+      if (event.type === "auto_retry_start") {
+        send({ type: "retry", attempt: event.attempt, maxAttempts: event.maxAttempts, delayMs: event.delayMs, errorMessage: event.errorMessage });
+      }
       if (event.type === "message_start" && event.message.role === "assistant") {
         sendUserMessage();
         messageIndex++;
