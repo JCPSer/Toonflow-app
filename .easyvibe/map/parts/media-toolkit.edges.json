@@ -1,0 +1,13 @@
+{
+  "module": "media-toolkit",
+  "edges": [
+    {
+      "id": "e1",
+      "from": "media-toolkit",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "file/i18n 基础调用",
+      "strength": "normal"
+    }
+  ]
+}

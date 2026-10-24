@@ -1,0 +1,47 @@
+{
+  "id": "canvas-extensions",
+  "name": "画布扩展插件",
+  "layer": "presentation",
+  "responsibility": "画布扩展插件（文本/图片/媒体/Markdown/节点）及注册脚手架",
+  "files": [
+    "packages/ext/**",
+    "packages/extScaffold/**"
+  ],
+  "key_entries": [
+    {
+      "file": "packages/extScaffold/src/runtime.ts",
+      "symbol": "defineExt",
+      "kind": "function"
+    },
+    {
+      "file": "packages/ext/md/src/index.ts",
+      "symbol": "default",
+      "kind": "config"
+    },
+    {
+      "file": "packages/ext/canvasNode/src/index.vue",
+      "symbol": "canvasNodeExtension",
+      "kind": "class"
+    }
+  ],
+  "dependencies": [],
+  "health": {
+    "score": 83,
+    "coupling": "low",
+    "complexity": "medium",
+    "churn": "low",
+    "decay_flags": [
+      "duplicated_code"
+    ],
+    "review_note": "26 文件 1,963 行，扩展统一通过 defineExt 注册；md 扩展 847 行，且 markdownExtensions.ts 与 textNode 的实现逐行重复。建议抽出共享 markdown 渲染包，md 扩展只保留宿主差异。",
+    "concerns": [
+      {
+        "id": "c-canvas-extensions-1",
+        "severity": "high",
+        "finding": "packages/ext/md 与 packages/nodes/textNode 各存一份 markdownExtensions.ts（各 122 行，内容相同）和近似重复的 markdownContent.ts，渲染行为改动需双份同步。",
+        "suggestion": "抽 @toonflow/markdown 共享包，两处改为依赖同一实现，扩展只保留宿主差异。"
+      }
+    ]
+  },
+  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+}

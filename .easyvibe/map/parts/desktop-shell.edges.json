@@ -1,0 +1,21 @@
+{
+  "module": "desktop-shell",
+  "edges": [
+    {
+      "id": "e27",
+      "from": "desktop-shell",
+      "to": "server-api",
+      "type": "call",
+      "label": "sidecar 启动 @toonflow/server/app",
+      "strength": "strong"
+    },
+    {
+      "id": "e28",
+      "from": "desktop-shell",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "file/i18n",
+      "strength": "normal"
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "task_id": "task_261024_exec_node",
+  "created_at": "2026-10-24",
+  "owner": "liyuhang",
+  "goal": "为 Toonflow 增加「运行指令」能力：服务端执行路由 + 画布节点，支持实时流式 stdout/stderr",
+  "decisions": {
+    "route": "改源码补 /api/exec 路由（用户自有 fork JCPSer/Toonflow-app）",
+    "command_scope": "任意命令，不做白名单",
+    "output": "SSE 实时流式回显",
+    "upstream_injection": "不做，命令纯手填",
+    "delivery": "打包未签名 .app，用户自行测试"
+  },
+  "repos": {
+    "app": "/Users/liyuhang/Documents/git_projects/Toonflow-app",
+    "node_project": "/Users/liyuhang/Downloads/AI临时目录/toonflow-image-resize"
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "服务端 POST /api/exec 流式执行路由",
+      "repo": "app",
+      "owner_name": "服务端",
+      "depends_on": [],
+      "status": "pending",
+      "deliverable": "apps/server/src/routes/exec/index.ts + router.ts 注册；本机来源校验、进程组终止、超时、并发上限"
+    },
+    {
+      "id": "T2",
+      "subject": "画布节点 execNode",
+      "repo": "node_project",
+      "owner_name": "节点",
+      "depends_on": [],
+      "status": "pending",
+      "deliverable": "src/exec/index.vue + vite.config NODES 条目；命令输入、运行/停止、流式输出、STRING 输出、节点函数"
+    },
+    {
+      "id": "T3",
+      "subject": "在线串联验证",
+      "repo": "app",
+      "owner_name": "Team Lead",
+      "depends_on": ["T1", "T2"],
+      "status": "pending",
+      "deliverable": "起 server(3000) + web(5173)，装节点，真跑 ls / 复合命令 / 中途停止，记录证据"
+    },
+    {
+      "id": "T4",
+      "subject": "打包 .app",
+      "repo": "app",
+      "owner_name": "Team Lead",
+      "depends_on": ["T3"],
+      "status": "pending",
+      "deliverable": "build:web + build:server + build:nodes + build:desktop + package:desktop，产出可替换的 toonflow.app"
+    },
+    {
+      "id": "T5",
+      "subject": "代码审查 + 归档",
+      "repo": "app",
+      "owner_name": "审查",
+      "depends_on": ["T3"],
+      "status": "pending",
+      "deliverable": "子 agent 审查路由与节点；测试文档、STAR 记忆、操作归档"
+    }
+  ]
+}

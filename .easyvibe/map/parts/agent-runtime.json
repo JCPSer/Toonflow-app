@@ -1,0 +1,60 @@
+{
+  "id": "agent-runtime",
+  "name": "Agent 运行时",
+  "layer": "domain",
+  "responsibility": "Agent 会话运行、子代理/团队/技能与 A2A 协作编排",
+  "files": [
+    "apps/server/src/agent/**",
+    "packages/skills/**",
+    "packages/teams/**",
+    "packages/teamScaffold/**"
+  ],
+  "key_entries": [
+    {
+      "file": "apps/server/src/agent/runtime/index.ts",
+      "symbol": "run",
+      "kind": "function"
+    },
+    {
+      "file": "apps/server/src/agent/runtime/sessions.ts",
+      "symbol": "getActiveAgentSession",
+      "kind": "function"
+    },
+    {
+      "file": "apps/server/src/agent/a2a/index.ts",
+      "symbol": "createA2aRouter",
+      "kind": "function"
+    },
+    {
+      "file": "apps/server/src/agent/teams/index.ts",
+      "symbol": "createTeamRunner",
+      "kind": "function"
+    }
+  ],
+  "dependencies": [],
+  "health": {
+    "score": 70,
+    "coupling": "medium",
+    "complexity": "high",
+    "churn": "low",
+    "decay_flags": [
+      "circular_dep"
+    ],
+    "review_note": "30 文件 3,492 行，承担会话主循环、模型选择、子代理、团队、技能与 A2A 六类职责；66 处 import 指回 server-api 的 utils/lib，而 server-api 又导出 agent。建议将 conf/workspace/ai/teams 抽象为 AgentHost 端口由 createApp 注入。",
+    "concerns": [
+      {
+        "id": "c-agent-runtime-1",
+        "severity": "critical",
+        "finding": "Agent 运行时直接 import @/utils/conf、workspace/files、ai、teams 等应用层实现（66 处），server-api 的 utils.ts 与 app.ts 又反向导出 agent，形成模块环。",
+        "suggestion": "定义 AgentHost 端口（配置/工作区/模型/团队）并在 createApp 注入，runtime 仅依赖端口与 agent 内部类型。"
+      },
+      {
+        "id": "c-agent-runtime-2",
+        "severity": "high",
+        "finding": "runtime/index.ts（462 行）与 sessions.ts（467 行）同时持有主循环、会话注册表与事件追踪，状态与编排混在单文件。",
+        "suggestion": "拆出 session registry 与 runner，事件流改为显式接口，便于按会话隔离与单测。"
+      }
+    ]
+  },
+  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+}

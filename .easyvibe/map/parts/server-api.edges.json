@@ -1,0 +1,45 @@
+{
+  "module": "server-api",
+  "edges": [
+    {
+      "id": "e8",
+      "from": "server-api",
+      "to": "agent-runtime",
+      "type": "import",
+      "label": "agent.run / a2a / bridge",
+      "strength": "strong"
+    },
+    {
+      "id": "e9",
+      "from": "server-api",
+      "to": "agent-tools",
+      "type": "import",
+      "label": "MCP 与工具运行时",
+      "strength": "strong"
+    },
+    {
+      "id": "e10",
+      "from": "server-api",
+      "to": "ai-providers",
+      "type": "import",
+      "label": "供应商清单与模型目录",
+      "strength": "strong"
+    },
+    {
+      "id": "e11",
+      "from": "server-api",
+      "to": "media-toolkit",
+      "type": "import",
+      "label": "ffmpeg 执行",
+      "strength": "normal"
+    },
+    {
+      "id": "e12",
+      "from": "server-api",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "file/i18n",
+      "strength": "strong"
+    }
+  ]
+}

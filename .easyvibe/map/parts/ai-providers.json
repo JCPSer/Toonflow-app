@@ -1,0 +1,52 @@
+{
+  "id": "ai-providers",
+  "name": "模型供应商适配",
+  "layer": "domain",
+  "responsibility": "语言与媒体模型供应商适配：模型目录、调用、价格与计费",
+  "files": [
+    "packages/providers/**"
+  ],
+  "key_entries": [
+    {
+      "file": "packages/providers/index.ts",
+      "symbol": "mediaProviders",
+      "kind": "config"
+    },
+    {
+      "file": "packages/providers/types.d.ts",
+      "symbol": "ProviderDefinition",
+      "kind": "interface"
+    },
+    {
+      "file": "packages/providers/src/media/compshare.ts",
+      "symbol": "default",
+      "kind": "config"
+    }
+  ],
+  "dependencies": [],
+  "health": {
+    "score": 70,
+    "coupling": "low",
+    "complexity": "high",
+    "churn": "low",
+    "decay_flags": [
+      "god_module"
+    ],
+    "review_note": "8 文件 3,009 行，语言/媒体供应商统一以 ProviderDefinition 暴露；compshare.ts 单文件 1,839 行集中了模型目录、价格、生成与轮询。建议抽媒体供应商公共 SDK，compshare 只保留差异，并把 web 端以 ?raw 引用的源码移出前端包。",
+    "concerns": [
+      {
+        "id": "c-ai-providers-1",
+        "severity": "critical",
+        "finding": "compshare.ts 单文件 1,839 行同时实现模型清单、价格、生成、任务轮询与计费，任何供应商接口变更都落在同一文件。",
+        "suggestion": "按 models/price/generate/poll 拆分并在 ProviderDefinition 组合，公共提交-轮询逻辑下沉为 SDK。"
+      },
+      {
+        "id": "c-ai-providers-2",
+        "severity": "high",
+        "finding": "设置页与 hello 页共 5 处用 ?raw 直接打包 providers/media/*.ts 源码作为自定义供应商模板，前端包与供应商实现强绑定。",
+        "suggestion": "把模板源码移至独立 assets 包或由 server 接口下发，前端只保留类型与元数据。"
+      }
+    ]
+  },
+  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+}

@@ -1,0 +1,294 @@
+{
+  "generated_at": "2026-10-24T12:03:39+08:00",
+  "code_files_total": 622,
+  "modules": {
+    "desktop-shell": {
+      "files": 32,
+      "loc": 3736,
+      "largest": [
+        {
+          "loc": 657,
+          "file": "apps/desktop/native/updateHelper.cs"
+        },
+        {
+          "loc": 378,
+          "file": "apps/desktop/src/update/windowsUpdater.ts"
+        },
+        {
+          "loc": 365,
+          "file": "apps/desktop/src/index.ts"
+        },
+        {
+          "loc": 324,
+          "file": "apps/desktop/installer/checkWebView2.cs"
+        },
+        {
+          "loc": 161,
+          "file": "apps/desktop/native/protocolLauncher.cs"
+        }
+      ]
+    },
+    "mobile-shell": {
+      "files": 25,
+      "loc": 4028,
+      "largest": [
+        {
+          "loc": 1004,
+          "file": "apps/mobile/native/mobileActivity.java"
+        },
+        {
+          "loc": 400,
+          "file": "compat/ohos/native/ets/pages/index.ets"
+        },
+        {
+          "loc": 334,
+          "file": "compat/ohos/native/nodeHost.cpp"
+        },
+        {
+          "loc": 323,
+          "file": "compat/macIntel/updater.ts"
+        },
+        {
+          "loc": 308,
+          "file": "compat/ohos/native/runtime.cpp"
+        }
+      ]
+    },
+    "server-api": {
+      "files": 201,
+      "loc": 10856,
+      "largest": [
+        {
+          "loc": 496,
+          "file": "apps/server/src/utils/media/provider.ts"
+        },
+        {
+          "loc": 450,
+          "file": "apps/server/src/utils/plugins/install.ts"
+        },
+        {
+          "loc": 375,
+          "file": "apps/server/src/utils/singleAgent/index.ts"
+        },
+        {
+          "loc": 282,
+          "file": "apps/server/src/utils/desktop/index.ts"
+        },
+        {
+          "loc": 281,
+          "file": "apps/server/src/router.ts"
+        }
+      ]
+    },
+    "agent-runtime": {
+      "files": 30,
+      "loc": 3492,
+      "largest": [
+        {
+          "loc": 467,
+          "file": "apps/server/src/agent/runtime/sessions.ts"
+        },
+        {
+          "loc": 462,
+          "file": "apps/server/src/agent/runtime/index.ts"
+        },
+        {
+          "loc": 304,
+          "file": "apps/server/src/agent/runtime/requests.ts"
+        },
+        {
+          "loc": 182,
+          "file": "packages/teamScaffold/src/a2a.ts"
+        },
+        {
+          "loc": 150,
+          "file": "apps/server/src/agent/teams/remote.ts"
+        }
+      ]
+    },
+    "web-console": {
+      "files": 147,
+      "loc": 35103,
+      "largest": [
+        {
+          "loc": 1246,
+          "file": "apps/web/src/pages/workspace/panels/canvas/index.vue"
+        },
+        {
+          "loc": 1145,
+          "file": "apps/web/src/components/settings/panels/pluginMarket/index.vue"
+        },
+        {
+          "loc": 1016,
+          "file": "apps/web/src/pages/home/index.vue"
+        },
+        {
+          "loc": 979,
+          "file": "apps/web/src/pages/workspace/panels/document/components/fileTree.vue"
+        },
+        {
+          "loc": 976,
+          "file": "apps/web/src/pages/workspace/panels/canvas/components/canvasMenu.vue"
+        }
+      ]
+    },
+    "media-toolkit": {
+      "files": 8,
+      "loc": 1062,
+      "largest": [
+        {
+          "loc": 262,
+          "file": "packages/asr/src/index.ts"
+        },
+        {
+          "loc": 181,
+          "file": "packages/ffmpeg/src/browser.ts"
+        },
+        {
+          "loc": 171,
+          "file": "packages/ffmpeg/src/catalog.ts"
+        },
+        {
+          "loc": 148,
+          "file": "packages/ffmpeg/src/index.ts"
+        },
+        {
+          "loc": 135,
+          "file": "packages/ffmpeg/src/runtime.ts"
+        }
+      ]
+    },
+    "canvas-extensions": {
+      "files": 26,
+      "loc": 1963,
+      "largest": [
+        {
+          "loc": 847,
+          "file": "packages/ext/md/src/index.vue"
+        },
+        {
+          "loc": 143,
+          "file": "packages/ext/txt/src/index.vue"
+        },
+        {
+          "loc": 131,
+          "file": "packages/ext/media/src/index.vue"
+        },
+        {
+          "loc": 125,
+          "file": "packages/extScaffold/index.ts"
+        },
+        {
+          "loc": 122,
+          "file": "packages/ext/md/src/markdownExtensions.ts"
+        }
+      ]
+    },
+    "shared-foundation": {
+      "files": 15,
+      "loc": 1077,
+      "largest": [
+        {
+          "loc": 299,
+          "file": "packages/i18n/src/transform.ts"
+        },
+        {
+          "loc": 226,
+          "file": "packages/file/src/index.ts"
+        },
+        {
+          "loc": 119,
+          "file": "packages/i18n/src/index.ts"
+        },
+        {
+          "loc": 89,
+          "file": "packages/file/src/bun.ts"
+        },
+        {
+          "loc": 81,
+          "file": "packages/file/src/access.ts"
+        }
+      ]
+    },
+    "agent-tools": {
+      "files": 37,
+      "loc": 3579,
+      "largest": [
+        {
+          "loc": 717,
+          "file": "packages/tools/browser/src/host.ts"
+        },
+        {
+          "loc": 616,
+          "file": "packages/tools/browser/src/browserPanel.vue"
+        },
+        {
+          "loc": 236,
+          "file": "packages/tools/askUser/src/questionCard.vue"
+        },
+        {
+          "loc": 226,
+          "file": "packages/toolScaffold/src/runtime.ts"
+        },
+        {
+          "loc": 143,
+          "file": "packages/tools/canvas/src/nodeFocusCard.vue"
+        }
+      ]
+    },
+    "workflow-nodes": {
+      "files": 93,
+      "loc": 16146,
+      "largest": [
+        {
+          "loc": 833,
+          "file": "packages/nodes/director3dNode/src/sceneEditor.vue"
+        },
+        {
+          "loc": 786,
+          "file": "packages/nodeScaffold/src/nodeSkeleton.vue"
+        },
+        {
+          "loc": 599,
+          "file": "packages/nodes/imageNode/src/components/imagePanoramaPreview.vue"
+        },
+        {
+          "loc": 559,
+          "file": "packages/nodes/imageGenerationNode/src/index.vue"
+        },
+        {
+          "loc": 546,
+          "file": "packages/nodes/videoNode/src/components/videoActions.vue"
+        }
+      ]
+    },
+    "ai-providers": {
+      "files": 8,
+      "loc": 3009,
+      "largest": [
+        {
+          "loc": 1839,
+          "file": "packages/providers/src/media/compshare.ts"
+        },
+        {
+          "loc": 366,
+          "file": "packages/providers/src/media/apiMart.ts"
+        },
+        {
+          "loc": 357,
+          "file": "packages/providers/src/media/tfRouter.ts"
+        },
+        {
+          "loc": 264,
+          "file": "packages/providers/types.d.ts"
+        },
+        {
+          "loc": 121,
+          "file": "packages/providers/src/media/metaso.ts"
+        }
+      ]
+    }
+  },
+  "unmapped": [],
+  "pickle": null
+}

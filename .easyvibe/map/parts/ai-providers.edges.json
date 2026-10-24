@@ -1,0 +1,13 @@
+{
+  "module": "ai-providers",
+  "edges": [
+    {
+      "id": "e2",
+      "from": "ai-providers",
+      "to": "media-toolkit",
+      "type": "import",
+      "label": "ffmpeg 类型与转码",
+      "strength": "normal"
+    }
+  ]
+}

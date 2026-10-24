@@ -1,0 +1,70 @@
+{
+  "id": "web-console",
+  "name": "Vue 工作台",
+  "layer": "presentation",
+  "responsibility": "Vue 工作区界面：节点画布、文档面板、对话、设置与本地状态",
+  "files": [
+    "apps/web/**",
+    "postcss.config.ts"
+  ],
+  "key_entries": [
+    {
+      "file": "apps/web/src/main.ts",
+      "symbol": "bootstrap",
+      "kind": "function"
+    },
+    {
+      "file": "apps/web/src/router/index.ts",
+      "symbol": "router",
+      "kind": "config"
+    },
+    {
+      "file": "apps/web/src/stores/workspace.ts",
+      "symbol": "useWorkspaceStore",
+      "kind": "function"
+    },
+    {
+      "file": "apps/web/src/pages/workspace/panels/canvas/index.vue",
+      "symbol": "canvasPanel",
+      "kind": "class"
+    },
+    {
+      "file": "apps/web/src/components/agent/conversation/messageInput.vue",
+      "symbol": "messageInput",
+      "kind": "class"
+    }
+  ],
+  "dependencies": [],
+  "health": {
+    "score": 72,
+    "coupling": "high",
+    "complexity": "high",
+    "churn": "low",
+    "decay_flags": [
+      "god_module",
+      "coupling_high"
+    ],
+    "review_note": "147 文件 35,103 行，是最大的呈现模块；canvas/index.vue 1,246 行、pluginMarket 1,145 行、home 1,016 行，且 30 处 import 插件运行时包。建议把画布/设置/首页拆为子模块，把插件 UI 改为注册表加载，前后端共享类型下沉为契约包。",
+    "concerns": [
+      {
+        "id": "c-web-console-1",
+        "severity": "high",
+        "finding": "画布、首页与插件市场单个 .vue 均超 1,000 行，视图、拖拽状态与接口调用混在同一 SFC。",
+        "suggestion": "抽出 composable/store 与纯渲染子组件，按面板拆分目录，单文件控制在可评审范围。"
+      },
+      {
+        "id": "c-web-console-2",
+        "severity": "high",
+        "finding": "30 处编译期 import 节点/工具/扩展包（node-text、tool-canvas、ext-scaffold 等），插件 UI 被静态编入 web bundle，插件市场安装的扩展无法作用于界面。",
+        "suggestion": "改为插件注册表加动态 import 插件入口，构建期只保留 scaffold 类型与受信内置插件。"
+      },
+      {
+        "id": "c-web-console-3",
+        "severity": "high",
+        "finding": "39 处直接 import @toonflow/server 的运行时/类型文件（其中 26 处 type-only），前后端契约没有独立包。",
+        "suggestion": "把 agent types、documentFormats、nodeMenu 等契约抽到独立 contracts 包，web 不再引用 server 源码。"
+      }
+    ]
+  },
+  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+}

@@ -1,0 +1,29 @@
+{
+  "module": "workflow-nodes",
+  "edges": [
+    {
+      "id": "e14",
+      "from": "workflow-nodes",
+      "to": "agent-tools",
+      "type": "import",
+      "label": "tools-scaffold 运行时类型",
+      "strength": "weak"
+    },
+    {
+      "id": "e15",
+      "from": "workflow-nodes",
+      "to": "media-toolkit",
+      "type": "import",
+      "label": "浏览器 ffmpeg/asr",
+      "strength": "strong"
+    },
+    {
+      "id": "e16",
+      "from": "workflow-nodes",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "file",
+      "strength": "weak"
+    }
+  ]
+}

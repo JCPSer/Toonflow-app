@@ -1,0 +1,30 @@
+{
+  "module": "agent-runtime",
+  "edges": [
+    {
+      "id": "e5",
+      "from": "agent-runtime",
+      "to": "agent-tools",
+      "type": "import",
+      "label": "tool-canvas/asset-operator 运行时",
+      "strength": "strong"
+    },
+    {
+      "id": "e6",
+      "from": "agent-runtime",
+      "to": "server-api",
+      "type": "import",
+      "label": "@/utils 与 @/lib 应用能力",
+      "strength": "strong",
+      "direction_violation": true
+    },
+    {
+      "id": "e7",
+      "from": "agent-runtime",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "@toonflow/file 会话文件",
+      "strength": "weak"
+    }
+  ]
+}

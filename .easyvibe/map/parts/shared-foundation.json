@@ -1,0 +1,47 @@
+{
+  "id": "shared-foundation",
+  "name": "共享基础",
+  "layer": "foundation",
+  "responsibility": "文件读写、国际化、模型图标与品牌资产等零业务基础件",
+  "files": [
+    "packages/file/**",
+    "packages/i18n/**",
+    "packages/modelIcons/**",
+    "packages/assets/**"
+  ],
+  "key_entries": [
+    {
+      "file": "packages/file/src/index.ts",
+      "symbol": "writeAtomic",
+      "kind": "function"
+    },
+    {
+      "file": "packages/i18n/src/index.ts",
+      "symbol": "translate",
+      "kind": "function"
+    },
+    {
+      "file": "packages/modelIcons/src/index.ts",
+      "symbol": "getModelIcon",
+      "kind": "function"
+    }
+  ],
+  "dependencies": [],
+  "health": {
+    "score": 86,
+    "coupling": "high",
+    "complexity": "low",
+    "churn": "low",
+    "decay_flags": [],
+    "review_note": "15 文件 1,077 行，出边为 0、被 9 个模块引用，是干净的基础叶子；file 统一原子写与 Android/OHOS 独占重命名，i18n 承担编译期文案抽取。入边多是基础件的正常形态，但建议为 transform.ts（299 行）补回归用例，并把 locales 按语言拆包以缩短构建链路。",
+    "concerns": [
+      {
+        "id": "c-shared-foundation-1",
+        "severity": "high",
+        "finding": "i18n 通过 transform.ts（299 行）在构建期改写源码提取文案，消息键与 messageSources.json 靠全量构建校验，键漂移在类型层无法发现。",
+        "suggestion": "为消息键生成类型声明并在 CI 跑键存在性检查，把 transform 映射表纳入受控清单与回归测试。"
+      }
+    ]
+  },
+  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+}

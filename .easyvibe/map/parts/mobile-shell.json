@@ -1,0 +1,53 @@
+{
+  "id": "mobile-shell",
+  "name": "移动端宿主",
+  "layer": "host-shell",
+  "responsibility": "Android/OHOS 移动端 WebView 宿主、桥接与移动构建兼容层",
+  "files": [
+    "apps/mobile/**",
+    "compat/**"
+  ],
+  "key_entries": [
+    {
+      "file": "apps/mobile/src/server.ts",
+      "symbol": "main",
+      "kind": "cli"
+    },
+    {
+      "file": "apps/mobile/native/mobileActivity.java",
+      "symbol": "mobileActivity",
+      "kind": "class"
+    },
+    {
+      "file": "compat/ohos/runtime.ts",
+      "symbol": "createTranspiler",
+      "kind": "function"
+    }
+  ],
+  "dependencies": [],
+  "health": {
+    "score": 70,
+    "coupling": "low",
+    "complexity": "high",
+    "churn": "low",
+    "decay_flags": [
+      "responsibility_overlap"
+    ],
+    "review_note": "25 文件 4,028 行，Android WebView 宿主、OHOS 运行时与 macIntel 兼容层三套平台代码同属一模块；mobileActivity.java 1,004 行承载 WebView、文件导出与生命周期。建议把 macIntel 兼容层迁回桌面侧，并拆分 Activity 的桥接与导出逻辑。",
+    "concerns": [
+      {
+        "id": "c-mobile-shell-1",
+        "severity": "high",
+        "finding": "compat/macIntel 是桌面构建兼容层，却被归入移动壳，模块职责跨平台漂移，修改桌面构建会触碰移动模块。",
+        "suggestion": "把 compat/macIntel 迁到 desktop-shell 或独立 tooling 模块，compat/ohos 留在移动壳。"
+      },
+      {
+        "id": "c-mobile-shell-2",
+        "severity": "high",
+        "finding": "mobileActivity.java 1,004 行单文件同时管理 WebView、权限、文件导出与生命周期，任何宿主能力调整都集中在这一文件。",
+        "suggestion": "按 webview/bridge/export 拆类，Activity 只保留装配与生命周期转发。"
+      }
+    ]
+  },
+  "last_analyzed_at": "2026-10-24T12:06:16+08:00"
+}

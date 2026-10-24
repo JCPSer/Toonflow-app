@@ -1,0 +1,47 @@
+{
+  "layers": [
+    {
+      "id": "foundation",
+      "name": "基础能力层",
+      "order": 4,
+      "description": "文件访问、国际化、图标与音视频/语音基础能力，零业务依赖，被所有上层复用"
+    },
+    {
+      "id": "domain",
+      "name": "领域能力层",
+      "order": 3,
+      "description": "Agent 会话运行时、模型供应商适配与 Agent 工具插件，承载短剧创作的核心智能能力"
+    },
+    {
+      "id": "application",
+      "name": "应用服务层",
+      "order": 2,
+      "description": "Express 应用边界、单接口路由、媒体/插件/MCP/工作区业务编排与进程组合根"
+    },
+    {
+      "id": "presentation",
+      "name": "交互呈现层",
+      "order": 1,
+      "description": "Vue 工作区、画布节点与扩展插件：节点图编辑、文档面板、对话与设置界面"
+    },
+    {
+      "id": "host-shell",
+      "name": "宿主壳层",
+      "order": 0,
+      "description": "Electrobun 桌面端、Android/OHOS 移动端与更新分发服务，托管 Web 界面并提供原生能力"
+    }
+  ],
+  "modules": [
+    "shared-foundation",
+    "media-toolkit",
+    "ai-providers",
+    "agent-tools",
+    "agent-runtime",
+    "server-api",
+    "canvas-extensions",
+    "workflow-nodes",
+    "web-console",
+    "mobile-shell",
+    "desktop-shell"
+  ]
+}

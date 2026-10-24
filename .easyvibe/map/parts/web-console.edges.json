@@ -1,0 +1,61 @@
+{
+  "module": "web-console",
+  "edges": [
+    {
+      "id": "e17",
+      "from": "web-console",
+      "to": "agent-tools",
+      "type": "import",
+      "label": "工具面板与运行时",
+      "strength": "strong"
+    },
+    {
+      "id": "e18",
+      "from": "web-console",
+      "to": "ai-providers",
+      "type": "import",
+      "label": "供应商清单与模板",
+      "strength": "strong"
+    },
+    {
+      "id": "e19",
+      "from": "web-console",
+      "to": "canvas-extensions",
+      "type": "import",
+      "label": "ext-scaffold 运行时",
+      "strength": "normal"
+    },
+    {
+      "id": "e20",
+      "from": "web-console",
+      "to": "media-toolkit",
+      "type": "import",
+      "label": "@toonflow/asr",
+      "strength": "weak"
+    },
+    {
+      "id": "e21",
+      "from": "web-console",
+      "to": "server-api",
+      "type": "api",
+      "label": "REST /api 与共享类型",
+      "strength": "strong"
+    },
+    {
+      "id": "e22",
+      "from": "web-console",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "i18n/assets",
+      "strength": "strong"
+    },
+    {
+      "id": "e23",
+      "from": "web-console",
+      "to": "workflow-nodes",
+      "type": "import",
+      "label": "节点 UI 与运行时",
+      "strength": "strong"
+    }
+  ]
+}

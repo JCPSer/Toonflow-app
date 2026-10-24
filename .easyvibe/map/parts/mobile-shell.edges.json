@@ -1,0 +1,29 @@
+{
+  "module": "mobile-shell",
+  "edges": [
+    {
+      "id": "e24",
+      "from": "mobile-shell",
+      "to": "server-api",
+      "type": "call",
+      "label": "内嵌 createApp 与 remoteConnection",
+      "strength": "strong"
+    },
+    {
+      "id": "e25",
+      "from": "mobile-shell",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "file",
+      "strength": "strong"
+    },
+    {
+      "id": "e26",
+      "from": "mobile-shell",
+      "to": "web-console",
+      "type": "import",
+      "label": "browserCapabilities 探针",
+      "strength": "normal"
+    }
+  ]
+}
