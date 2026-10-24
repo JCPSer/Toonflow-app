@@ -1194,6 +1194,10 @@ const defaultEdgeOptions = markRaw({
 .canvas {
   width: 100%;
   height: 100%;
+  // ACT: 画布容器必须禁用原生文本选择。框选空白区域时浏览器仍会选中画布里的文字，
+  // macOS 的选中高亮是灰蓝色，WKWebView 在缩放层上重绘该高亮会留下残影（Chromium 不会）。
+  -webkit-user-select: none;
+  user-select: none;
 
   &.compositingEnabled :deep(.vue-flow__transformationpane) {
     will-change: transform;

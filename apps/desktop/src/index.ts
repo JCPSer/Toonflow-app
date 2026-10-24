@@ -96,7 +96,9 @@ async function start() {
           { role: "hideOthers" },
           { role: "showAll" },
           { type: "separator" },
-          { role: "quit" },
+          // ACT: electrobun 只为编辑类 role 自动分配快捷键，role: "quit" 拿不到 ⌘Q（按下只剩系统提示音）；
+          // 改用显式 action + accelerator，由 application-menu-clicked 回调接管。
+          { label: t`退出 Toonflow`, accelerator: "command+q", action: "quit" },
         ] },
         { label: t`编辑`, submenu: [
           { role: "undo", label: t`撤销` },
@@ -193,6 +195,11 @@ async function start() {
         x: workArea.x + Math.round((workArea.width - width) / 2),
         y: workArea.y + Math.round((workArea.height - height) / 2),
       },
+    });
+    // ACT: 菜单里的「退出」改为 action 项后必须自行接管；直接关主窗口，复用已有的连接与浏览器清理。
+    ApplicationMenu.on("application-menu-clicked", (event: unknown) => {
+      const detail = (event as { data?: { action?: unknown } }).data;
+      if (detail?.action === "quit" && !isClosing) mainWindow.close();
     });
     let isControlHeld = () => false;
     let navigationTimer: ReturnType<typeof setTimeout> | undefined;

@@ -19,7 +19,7 @@
         :aria-label="label"
         :aria-pressed="recording"
         :title="recording ? '按键录制，Esc 取消' : '点击修改快捷键'"
-        @click="draft = code; recording = true"
+        @click="startRecording"
         @keydown.stop="capture"
         @keyup.stop="finishModifiers"
         @blur="cancelRecording">
@@ -72,6 +72,13 @@ const recording = ref(false);
 const optionsVisible = ref(false);
 watch(() => [code, mode], () => { draft.value = code; });
 watch(() => mode, () => { recording.value = false; });
+
+function startRecording(event: MouseEvent) {
+  draft.value = code;
+  recording.value = true;
+  // ACT: WKWebView（Safari 内核）点击 button 不会让元素获得焦点，不显式 focus 就永远收不到 keydown。
+  (event.currentTarget as HTMLElement | null)?.focus();
+}
 
 function capture(event: KeyboardEvent) {
   if (!recording.value) return;
