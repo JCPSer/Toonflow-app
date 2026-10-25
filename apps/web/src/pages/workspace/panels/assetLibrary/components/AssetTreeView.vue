@@ -88,8 +88,9 @@ const grouped = computed(() => props.projects !== undefined);
 const GROUPS_ROOT = "root:projects";
 // grouped 模式下把分组展开状态放在本地，避免被"按项目分桶"的 expanded 打散。
 const localExpanded = ref<string[]>(grouped.value ? [GROUPS_ROOT] : []);
+// ACT: 分组模式下也要恢复已展开的目录，否则每次切库重建树都会把它折叠回去（看起来像闪了一下）。
 const defaultExpandedKeys = computed(() => grouped.value
-  ? [...new Set([GROUPS_ROOT, ...localExpanded.value])]
+  ? [...new Set([GROUPS_ROOT, ...localExpanded.value, ...props.expandedKeys])]
   : [...new Set(["root:project", "root:global", ...props.expandedKeys])]);
 
 function rootNodes(): AssetTreeNode[] {

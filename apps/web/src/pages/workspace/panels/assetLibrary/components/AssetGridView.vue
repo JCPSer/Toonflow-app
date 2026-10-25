@@ -36,11 +36,27 @@
       @dragleave="onBlankDragLeave"
       @drop="onBlankDrop">
       <div
-        v-if="entries.length"
+        v-if="entries.length || currentPath"
         class="assetGrid"
         tabindex="-1"
         @click.self="onBlankClick"
         @contextmenu.self.prevent="emit('background-menu', $event)">
+        <!-- ACT: 子目录里始终留一个「..」，双击返回上一级（达芬奇式）。 -->
+        <article
+          v-if="currentPath"
+          class="assetCard upCard"
+          role="option"
+          aria-selected="false"
+          :aria-label="translate('返回上一级')"
+          :title="translate('返回上一级')"
+          tabindex="-1"
+          @dblclick.stop="emit('navigate', parentPath)">
+          <span class="assetVisual">
+            <icon-arrow-up :size="42" stroke="1.25" aria-hidden="true" />
+          </span>
+          <span class="assetName">..</span>
+          <span class="assetMeta">{{ translate("上一级") }}</span>
+        </article>
         <article
           v-for="entry in entries"
           :key="entry.path"
@@ -105,7 +121,7 @@
       </div>
 
       <AssetEmptyState
-        v-else-if="!loading"
+        v-if="!loading && !entries.length"
         :kind="emptyKind"
         :loading="loading"
         :message="emptyMessage"
@@ -126,7 +142,7 @@
 import { computed, ref } from "vue";
 import { translate } from "@toonflow/i18n/vue";
 import {
-  IconArrowLeft, IconChevronRight, IconDots, IconFile, IconFolder, IconMusic, IconPhoto, IconPlayerPlay,
+  IconArrowLeft, IconArrowUp, IconChevronRight, IconDots, IconFile, IconFolder, IconMusic, IconPhoto, IconPlayerPlay,
   IconSearch, IconStarFilled,
 } from "@tabler/icons-vue";
 import AssetEmptyState from "./AssetEmptyState.vue";
@@ -447,6 +463,13 @@ function onScroll(event: Event) {
       &.dropTarget {
         border-color: var(--el-color-primary);
         background: var(--el-color-primary-light-9);
+      }
+
+      &.upCard {
+        opacity: 0.75;
+
+        .assetVisual { color: var(--el-text-color-secondary); }
+        .assetName { color: var(--el-text-color-secondary); font-weight: normal; }
       }
 
       .assetVisual {

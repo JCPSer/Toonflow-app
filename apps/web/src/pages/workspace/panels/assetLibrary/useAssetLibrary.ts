@@ -62,6 +62,7 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>,
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let syncTimer: ReturnType<typeof setTimeout> | undefined;
   let syncDeadline = 0;
+  let treeRefreshAt = 0;
 
   /** 合并展示用；空态优先用更具体的 list 错误。 */
   const displayError = computed(() => error.value || rootsError.value);
@@ -117,7 +118,8 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>,
     query.value = "";
     clearSelection();
     void loadList(true);
-    refreshTree();
+    // ACT: 切库不重建目录树——两棵库的根节点是同一套（项目分组 + 全局），重建只会让树闪一下。
+    // 高亮与可交互状态由 library prop 驱动，子节点按需懒加载。
   }
 
   function setView(next: AssetView) {
@@ -176,7 +178,11 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>,
     if (syncTimer) clearTimeout(syncTimer);
     syncTimer = undefined;
     syncDeadline = 0;
-    refreshTree();
+    // 树只在目录结构可能变化时段性重建（2s 节流）；文件级改动只刷列表，避免每次上传都闪一下。
+    if (Date.now() - treeRefreshAt > 2000) {
+      treeRefreshAt = Date.now();
+      refreshTree();
+    }
     void loadList(true, { silent: true });
   }
 

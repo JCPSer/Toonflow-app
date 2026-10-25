@@ -15,7 +15,8 @@ const router = Router();
 /** @deprecated 旧前端无参全树分支，仅保留根目录一层；新前端使用 /tree 与分页 /list。 */
 async function listDeprecatedRoot(root: string, directory: string): Promise<AssetEntry[]> {
   const entries = await readdir(directory, { withFileTypes: true });
-  return entries.filter(entry => (entry.isFile() || entry.isDirectory()) && ![".library", ".trash", ".thumbs"].includes(entry.name))
+  return entries.filter(entry => (entry.isFile() || entry.isDirectory()) && !entry.name.startsWith(".")
+    && ![".library", ".trash", ".thumbs"].includes(entry.name))
     .sort((a, b) => a.name.localeCompare(b.name, "zh-CN", { numeric: true }))
     .map(entry => ({
       name: entry.name,

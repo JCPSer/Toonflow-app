@@ -169,7 +169,8 @@ async function readChildren(root: string, relativeDirectory: string, signal?: Ab
   const handle = await opendir(directory);
   for await (const entry of handle) {
     signal?.throwIfAborted();
-    if (internalAssetDirectories.has(entry.name.toLocaleLowerCase()) || entry.isSymbolicLink()) continue;
+    // ACT: 隐藏文件（.DS_Store、.git 等）与内部目录一并对用户不可见，避免污染素材库。
+    if (entry.name.startsWith(".") || internalAssetDirectories.has(entry.name.toLocaleLowerCase()) || entry.isSymbolicLink()) continue;
     if (!entry.isFile() && !entry.isDirectory()) continue;
     const absolute = join(directory, entry.name);
     const info = await lstat(absolute).catch((error: NodeJS.ErrnoException) => {
@@ -632,7 +633,7 @@ async function reconcileRestoredPath(root: string, relativePath: string, absolut
   if (!info.isDirectory()) return;
   const handle = await opendir(absolutePath);
   for await (const entry of handle) {
-    if (internalAssetDirectories.has(entry.name.toLocaleLowerCase()) || entry.isSymbolicLink()) continue;
+    if (entry.name.startsWith(".") || internalAssetDirectories.has(entry.name.toLocaleLowerCase()) || entry.isSymbolicLink()) continue;
     const childRelative = `${relativePath}/${entry.name}`;
     const childAbsolute = join(absolutePath, entry.name);
     const childInfo = await lstat(childAbsolute).catch(() => null);
