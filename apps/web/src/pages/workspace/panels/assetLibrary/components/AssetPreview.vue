@@ -6,7 +6,7 @@
     @close="emit('update:modelValue', false)" />
 
   <el-dialog
-    :model-value="!!entry && (kind === 'video' || kind === 'audio')"
+    :model-value="playerVisible"
     :title="entry?.name"
     width="min(820px, calc(100vw - 24px))"
     align-center
@@ -38,6 +38,9 @@ const emit = defineEmits<{ "update:modelValue": [value: boolean] }>();
 const error = ref("");
 
 const kind = computed(() => props.entry ? assetKind(props.entry) : undefined);
+// ACT: 播放器显隐必须跟随 v-model。之前写成「有 entry 就为真」，关闭后 entry 仍在，
+// 值恒为 true，el-dialog 内部的 visible 再也收不到 false→true 的跳变，第二次点开无反应。
+const playerVisible = computed(() => props.modelValue && !!props.entry && (kind.value === "video" || kind.value === "audio"));
 const url = computed(() => {
   if (!props.entry || !props.modelValue) return "";
   const entryKind = assetKind(props.entry);
