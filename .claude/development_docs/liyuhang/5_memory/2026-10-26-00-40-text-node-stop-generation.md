@@ -45,6 +45,22 @@
 
 校验方式：`grep "停止生成" build/nodes/textNode.umd.js`，旧产物为 0。
 
+### 还有第二层：节点会被复制到数据目录，且默认不覆盖
+
+重建并同步到 App 包后仍然无效，因为服务端启动时会把内置节点复制到 `<data>/nodes`，实际读取的是**数据目录那份**：
+
+- `apps/server/src/app.ts:65` → `initializePlugins(<data>/nodes, nodesRoot, /umd\.js$/, pluginRevision)`
+- `initializePlugins` 在 `revision === undefined` 时用 `cp(..., { force: false })`，**已存在的文件不会覆盖**；只有 revision 变化才会 `copyFile + rename` 覆盖。
+
+后果与处理：
+
+| 环境 | 处理 |
+| --- | --- |
+| 打包 app | 桌面端会传 revision，但**同版本重装**标记不变；必须删掉 `<data>/nodes/initialized` 再重启，或把新文件直接覆盖进 `<data>/nodes` |
+| dev（`bun src/index.ts`） | 不传 revision，`force:false` ⇒ 永远不覆盖；改完节点必须手动 rsync `build/nodes` → `<data>/nodes` |
+
+校验方式：直接请求运行中实例的 `/api/nodes/files?name=textNode`，确认返回体里有「停止生成」和正确体积（旧 346535 / 新 348007）。
+
 ## 经验
 
 - "断开连接等于停止上游"是错误假设：运行时可能根本不通知 close（本仓库 Bun 1.3.14 实测如此）。要保证中断，必须有服务端可寻址的 stop。
