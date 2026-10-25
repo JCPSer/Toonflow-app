@@ -91,13 +91,19 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
     store.update(patch, directoryPath.value || undefined);
   }
 
-  function setLibrary(kind: AssetLibraryKind) {
-    if (kind === state.value.library) return;
-    if (kind === "project" && (!projectAvailable.value || !projectRoot.value)) return;
+  /** 切换素材库；同库时退化为导航。path 用于"直接落到目标库的某个目录"。 */
+  function setLibrary(kind: AssetLibraryKind, path = "") {
+    const target = normalizeAssetPath(path);
+    if (kind === state.value.library) {
+      if (target !== state.value.path) navigate(target);
+      return;
+    }
+    // ACT: 项目库不可用时也允许切过去——空态会说明原因并给出「切换到全局库」，比静默无反应好。
+    if (kind === "project" && !directoryPath.value) return;
     // ACT: 切库要清掉上一个库的错误与库根探测结果，否则项目目录失效的横幅会一直挂在全局库上。
     error.value = "";
     rootsError.value = "";
-    update({ library: kind, path: "" });
+    update({ library: kind, path: target });
     query.value = "";
     clearSelection();
     void loadList(true);

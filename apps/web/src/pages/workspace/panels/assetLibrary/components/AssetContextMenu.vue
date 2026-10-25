@@ -17,6 +17,7 @@
         </template>
         <template v-else>
           <el-dropdown-item command="open">{{ translate("打开") }}</el-dropdown-item>
+          <el-dropdown-item v-if="showDetail" command="detail">{{ translate("显示详情") }}</el-dropdown-item>
           <el-dropdown-item command="rename">{{ translate("重命名") }}</el-dropdown-item>
           <el-dropdown-item command="move">{{ translate("移动到…") }}</el-dropdown-item>
           <el-dropdown-item v-if="entry.type === 'directory'" command="new-subfolder">{{ translate("新建子文件夹") }}</el-dropdown-item>
@@ -37,7 +38,9 @@ import { translate } from "@toonflow/i18n/vue";
 import type { DropdownInstance } from "element-plus";
 import type { AssetEntry } from "../types";
 
-export type AssetMenuCommand = "open" | "rename" | "move" | "new-subfolder" | "upload-here" | "meta" | "favorite" | "download" | "delete";
+export type AssetMenuCommand = "open" | "detail" | "rename" | "move" | "new-subfolder" | "upload-here" | "meta" | "favorite" | "download" | "delete";
+// ACT: 只有宿主真的能展示详情时才出现「显示详情」，避免工作区里出现点了没反应的菜单项。
+withDefaults(defineProps<{ showDetail?: boolean }>(), { showDetail: false });
 const emit = defineEmits<{ command: [command: AssetMenuCommand, entry: AssetEntry] }>();
 const menuRef = ref<DropdownInstance>();
 const menuAnchor = shallowRef({ getBoundingClientRect: () => new DOMRect() });

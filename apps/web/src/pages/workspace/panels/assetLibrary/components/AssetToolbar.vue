@@ -1,20 +1,6 @@
 <template>
   <div ref="toolbarElement" class="assetToolbar" :class="{ narrow }" role="toolbar" :aria-label="translate('素材库工具栏')">
     <div class="toolbarRow">
-      <el-select
-        v-model="library"
-        class="librarySelect"
-        size="small"
-        :aria-label="translate('切换素材库')"
-        :disabled="loading">
-        <el-option
-          v-for="option in libraryOptions"
-          :key="option.value"
-          :label="option.label"
-          :value="option.value"
-          :disabled="option.disabled" />
-      </el-select>
-
       <el-button
         class="toolButton"
         text
@@ -127,6 +113,12 @@
                 <icon-refresh :size="14" aria-hidden="true" />{{ translate("刷新") }}
               </el-dropdown-item>
             </template>
+            <el-dropdown-item v-if="library !== 'global'" command="library:global">
+              {{ translate("切换到全局库") }}
+            </el-dropdown-item>
+            <el-dropdown-item v-else-if="projectAvailable" command="library:project">
+              {{ translate("切换到项目库") }}
+            </el-dropdown-item>
             <el-dropdown-item divided command="trash">
               <icon-trash :size="14" aria-hidden="true" />{{ translate("回收站") }}
             </el-dropdown-item>
@@ -171,7 +163,6 @@ import {
 } from "@tabler/icons-vue";
 import type { AssetLibraryKind, AssetSortField, AssetSortOrder, AssetView } from "../types";
 
-const library = defineModel<AssetLibraryKind>("library", { required: true });
 const view = defineModel<AssetView>("view", { required: true });
 const sort = defineModel<AssetSortField>("sort", { required: true });
 const order = defineModel<AssetSortOrder>("order", { required: true });
@@ -180,10 +171,15 @@ const props = withDefaults(defineProps<{
   loading?: boolean;
   selectionCount?: number;
   mock?: boolean;
-  libraryOptions: { label: string; value: AssetLibraryKind; disabled?: boolean }[];
   canWrite?: boolean;
   searchPlaceholder?: string;
-}>(), { loading: false, selectionCount: 0, mock: false, canWrite: true, searchPlaceholder: "搜索素材" });
+  /** 当前库与项目库可用性只用于「更多操作」里的切库项，不再提供显眼下拉。 */
+  library?: AssetLibraryKind;
+  projectAvailable?: boolean;
+}>(), {
+  loading: false, selectionCount: 0, mock: false, canWrite: true, searchPlaceholder: "搜索素材",
+  library: "global", projectAvailable: false,
+});
 const emit = defineEmits<{
   "create-folder": [];
   upload: [];
@@ -195,6 +191,7 @@ const emit = defineEmits<{
   "move-selection": [];
   "delete-selection": [];
   "clear-selection": [];
+  "switch-library": [library: AssetLibraryKind];
 }>();
 
 const toolbarElement = ref<HTMLElement>();
@@ -230,6 +227,7 @@ function handleMoreCommand(command: string) {
   if (command.startsWith("sort:")) sort.value = command.slice(5) as AssetSortField;
   else if (command.startsWith("order:")) order.value = command.slice(6) as AssetSortOrder;
   else if (command.startsWith("view:")) view.value = command.slice(5) as AssetView;
+  else if (command.startsWith("library:")) emit("switch-library", command.slice(8) as AssetLibraryKind);
   else if (command === "search") void toggleSearch();
   else if (command === "refresh") emit("refresh");
   else if (command === "trash") emit("open-trash");
@@ -273,11 +271,6 @@ function closeSearch() {
     gap: 2px;
     min-width: 0;
 
-    .librarySelect {
-      flex-shrink: 0;
-      width: 96px;
-    }
-
     .toolButton {
       flex-shrink: 0;
       width: 28px;
@@ -313,7 +306,6 @@ function closeSearch() {
   }
 
   &.narrow {
-    .librarySelect { width: 82px; }
     .mockBadge { display: none; }
   }
 

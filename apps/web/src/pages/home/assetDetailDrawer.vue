@@ -6,6 +6,11 @@
     size="min(440px, calc(100vw - 24px))"
     append-to-body
     destroy-on-close
+    :modal="false"
+    modal-penetrable
+    :lock-scroll="false"
+    :close-on-click-modal="false"
+    class="assetDetailDrawer"
     @update:model-value="emit('update:modelValue', $event)">
     <div v-if="entry" class="assetDetail">
       <div class="detailPreview">

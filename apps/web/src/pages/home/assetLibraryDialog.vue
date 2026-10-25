@@ -1,5 +1,14 @@
 <template>
-  <el-dialog v-model="visible" class="homeAssetLibraryDialog" :title="translate('素材库')" width="min(1440px, 88vw)" alignCenter appendToBody destroyOnClose @closed="onClosed">
+  <el-dialog
+    v-model="visible"
+    class="homeAssetLibraryDialog"
+    :title="translate('素材库')"
+    width="min(1440px, 88vw)"
+    alignCenter
+    appendToBody
+    destroyOnClose
+    :close-on-press-escape="!detailVisible"
+    @closed="onClosed">
     <div class="homeAssetShell">
       <div class="homeAssetBar">
         <el-select
@@ -22,8 +31,14 @@
         </el-button>
         <el-button v-if="selectedCount" size="small" text @click="contentRef?.clearSelection()">{{ translate("取消选择") }}</el-button>
         <span class="barSpacer" />
-        <el-button v-if="detailEntry" text size="small" class="detailHint" :title="detailEntry.path" @click="detailVisible = true">
-          {{ translate("详情：{name}", { name: detailEntry.name }) }}
+        <el-button
+          v-if="selectedCount === 1"
+          text
+          size="small"
+          class="detailHint"
+          :title="selectedEntries[0]?.path"
+          @click="selectedEntries[0] && openDetail(selectedEntries[0])">
+          {{ translate("详情：{name}", { name: selectedEntries[0]?.name ?? "" }) }}
         </el-button>
       </div>
       <AssetLibraryContent
@@ -31,8 +46,9 @@
         embedded
         :directory="activeDirectory || undefined"
         :projects="projects"
-        :project-name="activeProjectName"
-        @select-project="onSelectProject" />
+        can-show-detail
+        @select-project="onSelectProject"
+        @show-detail="openDetail" />
     </div>
 
     <assetDetailDrawer
@@ -84,10 +100,14 @@ const workspace = useWorkspaceStore();
 // ACT: 首页不再默认沿用"上次打开的项目"，默认全局库；在左侧「项目」分组里点开某个项目才切过去。
 const activeDirectory = ref("");
 const projects = computed(() => workspace.projectList.map(project => ({ directory: project.directory, name: project.name })));
-const activeProjectName = computed(() => projects.value.find(project => project.directory === activeDirectory.value)?.name ?? "");
-
 function onSelectProject(payload: { directory: string; path: string }) {
   activeDirectory.value = payload.directory;
+}
+
+/** 详情只在显式请求时打开（右键 / ⌘I / 工具栏按钮），单击选中不再自动弹。 */
+function openDetail(entry: AssetEntry) {
+  detailEntry.value = entry;
+  detailVisible.value = true;
 }
 
 function onClosed() {
@@ -114,15 +134,14 @@ const batchSaving = ref(false);
 const batchFavoriteSaving = ref(false);
 const allFavorited = computed(() => selectedCount.value > 0 && selectedEntries.value.every(entry => entry.favorite));
 
-// 单选时自动打开详情抽屉；多选/清空选择时关闭，避免遮挡批量操作。
+// ACT: 单击只选中；详情抽屉只在显式请求时打开。打开后跟随选中项更新，选中被清空则关闭。
 watch(selectedEntries, list => {
-  if (list.length === 1) {
-    detailEntry.value = list[0];
-    detailVisible.value = true;
+  if (!list.length) {
+    detailVisible.value = false;
+    detailEntry.value = undefined;
     return;
   }
-  detailVisible.value = false;
-  if (!list.length) detailEntry.value = undefined;
+  if (detailVisible.value) detailEntry.value = list[0];
 });
 
 // 工具栏搜索被清空时，同步清掉标签筛选的高亮。

@@ -26,7 +26,7 @@
       <template #default="{ data, node }">
         <span
           class="treeRow"
-          :class="{ rootNode: data.root, groupNode: data.group, foreignNode: data.projectRoot || isForeign(data), dropTarget: dropTargetKey === data.id, favorite: data.favorite }"
+          :class="{ rootNode: data.root, groupNode: data.group, foreignNode: data.projectRoot || isOtherProject(data), dropTarget: dropTargetKey === data.id, favorite: data.favorite }"
           :draggable="!data.root && !data.projectRoot && !data.group && !isForeign(data) && data.type === 'directory'"
           :title="data.root ? data.name : data.path"
           @dragstart.stop="onDragStart($event, data)"
@@ -67,7 +67,7 @@ const props = withDefaults(defineProps<{
 }>(), { refreshKey: 0, projects: undefined, activeDirectory: "" });
 const emit = defineEmits<{
   navigate: [path: string];
-  "select-library": [library: AssetLibraryKind];
+  "select-library": [library: AssetLibraryKind, path?: string];
   "select-project": [payload: { directory: string; name: string; path: string }];
   menu: [event: MouseEvent, entry: AssetEntry];
   move: [payload: AssetDragPayload, targetPath: string];
@@ -100,11 +100,15 @@ function rootNodes(): AssetTreeNode[] {
   return roots;
 }
 
+/** 节点身份：项目库的节点必须带项目目录，全局库一律不带，否则同名目录会撞 key。 */
+function nodeIdentity(library: AssetLibraryKind, directory: string | undefined, path: string) {
+  return grouped.value && library === "project" && directory ? `${library}:${directory}:${path}` : `${library}:${path}`;
+}
+
 function toTreeNode(entry: AssetEntry, library: AssetLibraryKind, directory?: string): AssetTreeNode {
-  const identity = grouped.value && directory ? `${library}:${directory}:${entry.path}` : `${library}:${entry.path}`;
   return {
     ...entry,
-    id: identity,
+    id: nodeIdentity(library, directory, entry.path),
     library,
     ...(directory ? { directory } : {}),
     isLeaf: entry.type === "file",
@@ -131,16 +135,23 @@ function projectNodes(): AssetTreeNode[] {
   }));
 }
 
-/** 同一目录的读取：项目节点与其子目录都用自己的 directory，避免跨项目串。 */
+/** 同一目录的读取：只有项目库才带 directory，全局库不允许携带当前项目目录。 */
 function nodeDirectory(data: AssetTreeNode) {
+  if (data.library === "global") return undefined;
   return data.directory ?? props.activeDirectory ?? props.directory;
 }
 
+/** 不能在当前上下文直接操作的节点：另一个库，或同一库下的另一个项目。 */
 function isForeign(data: AssetTreeNode) {
+  if (data.library !== props.library) return true;
   if (!grouped.value) return false;
   const directory = data.directory;
-  if (!directory) return false;
-  return directory !== props.activeDirectory;
+  return !!directory && directory !== props.activeDirectory;
+}
+
+/** 同库跨项目：点击需要先切项目；跨库节点不灰显，点击直接切库。 */
+function isOtherProject(data: AssetTreeNode) {
+  return data.library === props.library && isForeign(data);
 }
 
 const loadNode: LoadFunction = async (node, resolve) => {
@@ -182,34 +193,47 @@ const loadNode: LoadFunction = async (node, resolve) => {
 function nodeKey(data: AssetTreeNode) {
   if (data.group) return GROUPS_ROOT;
   if (data.root) return `root:${data.library}`;
-  if (grouped.value) return `${data.library}:${data.directory ?? props.activeDirectory ?? ""}:${data.path}`;
-  return `${data.library}:${data.path}`;
+  return nodeIdentity(data.library, data.directory, data.path);
 }
 
 function syncCurrentKey() {
-  if (grouped.value) {
-    currentKey.value = props.library === "global" || !props.activeDirectory
-      ? "root:global"
-      : `${props.library}:${props.activeDirectory}:${props.currentPath}`;
+  const directory = props.library === "project" ? props.activeDirectory : undefined;
+  if (!props.currentPath) {
+    // 分组模式下"项目库根"由项目节点代表，直接高亮它而不是一个不存在的 root key。
+    currentKey.value = grouped.value && props.library === "project" && props.activeDirectory
+      ? `project:${props.activeDirectory}`
+      : `root:${props.library}`;
   } else {
-    currentKey.value = props.currentPath ? `${props.library}:${props.currentPath}` : `root:${props.library}`;
+    currentKey.value = nodeIdentity(props.library, directory, props.currentPath);
   }
   void nextTick(() => treeRef.value?.setCurrentKey(currentKey.value));
 }
 
 function onNodeClick(data: AssetTreeNode) {
-  if (data.group) return;
+  // 分组节点本身不是一个路径：点击等同展开/收起，否则删掉顶部下拉后它是唯一的项目入口却点不动。
+  if (data.group) {
+    const node = treeRef.value?.getNode(GROUPS_ROOT);
+    if (!node) return;
+    if (node.expanded) node.collapse();
+    else node.expand();
+    return;
+  }
   if (data.projectRoot && data.directory) {
     emit("select-project", { directory: data.directory, name: data.name, path: "" });
     return;
   }
   if (data.root) {
-    if (data.library !== props.library) emit("select-library", data.library);
-    emit("navigate", "");
+    if (data.library !== props.library) emit("select-library", data.library, "");
+    else emit("navigate", "");
     return;
   }
   if (data.type !== "directory") return;
-  if (isForeign(data) && data.directory) {
+  // ACT: 跨库节点必须切库，否则会拿当前库的根去访问另一个库的路径（表现为"点了全局还是空"）。
+  if (data.library !== props.library) {
+    emit("select-library", data.library, data.path);
+    return;
+  }
+  if (isOtherProject(data) && data.directory) {
     emit("select-project", { directory: data.directory, name: data.name, path: data.path });
     return;
   }
@@ -218,7 +242,11 @@ function onNodeClick(data: AssetTreeNode) {
 
 function onNodeDoubleClick(data: AssetTreeNode) {
   if (data.root || data.group) return;
-  if (isForeign(data) && data.directory) {
+  if (data.library !== props.library) {
+    emit("select-library", data.library, data.path);
+    return;
+  }
+  if (isOtherProject(data) && data.directory) {
     emit("select-project", { directory: data.directory, name: data.name, path: data.path });
     return;
   }

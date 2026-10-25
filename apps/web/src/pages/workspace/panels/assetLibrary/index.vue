@@ -11,7 +11,6 @@
     @drop="onRootDrop">
     <AssetToolbar
       v-if="!trashVisible"
-      v-model:library="libraryModel"
       v-model:view="viewModel"
       v-model:sort="sortModel"
       v-model:order="orderModel"
@@ -19,8 +18,10 @@
       :loading="loading"
       :selection-count="selection.size"
       :mock="mockMode"
-      :library-options="libraryOptions"
       :can-write="canWrite"
+      :library="library"
+      :project-available="projectAvailable"
+      @switch-library="setLibrary"
       :search-placeholder="searchScopeLabel"
       @create-folder="createFolder()"
       @upload="chooseUpload()"
@@ -119,7 +120,7 @@
       @clear-finished="upload.clearFinished"
       @dismiss="upload.dismiss" />
 
-    <AssetContextMenu ref="contextMenuRef" @command="handleMenuCommand" />
+    <AssetContextMenu ref="contextMenuRef" :show-detail="canShowDetail" @command="handleMenuCommand" />
     <AssetMoveDialog
       v-model="moveVisible"
       :library="library"
@@ -183,7 +184,7 @@ import { useAssetLibrary } from "./useAssetLibrary";
 import { useAssetActions } from "./useAssetActions";
 import { useAssetUpload } from "./useAssetUpload";
 import { mockMode } from "./mock";
-import type { AssetEntry, AssetLibraryKind, AssetSortField, AssetSortOrder, AssetView } from "./types";
+import type { AssetEntry, AssetSortField, AssetSortOrder, AssetView } from "./types";
 import { hasFileDrag } from "./types";
 
 const props = withDefaults(defineProps<{
@@ -191,9 +192,14 @@ const props = withDefaults(defineProps<{
   embedded?: boolean;
   /** 首页分组模式：传入项目列表后，树里出现「项目」分组，展开才按需加载。 */
   projects?: { directory: string; name: string }[];
-  projectName?: string;
-}>(), { embedded: false, projects: undefined, projectName: "" });
-const emit = defineEmits<{ "select-project": [{ directory: string; path: string }] }>();
+  /** 宿主是否提供详情视图（首页弹窗有，工作区面板暂没有）。 */
+  canShowDetail?: boolean;
+}>(), { embedded: false, projects: undefined, canShowDetail: false });
+const emit = defineEmits<{
+  "select-project": [{ directory: string; path: string }];
+  /** 显式请求打开详情（右键菜单 / ⌘I），由宿主决定用抽屉还是别的形态。 */
+  "show-detail": [entry: AssetEntry];
+}>();
 
 const lib = useAssetLibrary(() => props.directory);
 
@@ -223,19 +229,12 @@ const fileInput = ref<HTMLInputElement>();
 const contextMenuRef = ref<InstanceType<typeof AssetContextMenu>>();
 const saveDialogRef = ref<InstanceType<typeof SaveToLibraryDialog>>();
 
-const libraryModel = computed<AssetLibraryKind>({ get: () => library.value, set: value => setLibrary(value) });
 const viewModel = computed<AssetView>({ get: () => view.value, set: setView });
 const sortModel = computed<AssetSortField>({ get: () => sort.value, set: value => { if (value !== sort.value) setSort(value); } });
 const orderModel = computed<AssetSortOrder>({ get: () => order.value, set: value => { if (value !== order.value) toggleOrder(); } });
 const queryModel = computed<string>({ get: () => query.value, set: value => { query.value = value; } });
 const hasMore = computed(() => !!nextCursor.value);
 const canWrite = computed(() => library.value === "global" || projectAvailable.value);
-const projectOptionLabel = computed(() => props.projectName || translate("本项目"));
-// ACT: 首页分组模式下选中某个项目后，下拉里的项目项用该项目名；未选项目时不可用。
-const libraryOptions = computed(() => [
-  { label: projectOptionLabel.value, value: "project" as const, disabled: !projectAvailable.value },
-  { label: translate("全局"), value: "global" as const },
-]);
 
 const upload = useAssetUpload({ selector, onComplete: refresh });
 let uploadTarget = "";
@@ -250,8 +249,16 @@ function focusRoot() {
 
 function onKeydown(event: KeyboardEvent) {
   if (!(event.target instanceof HTMLElement)) return;
-  if (event.target.closest("input, textarea, select, button, a, [contenteditable='true'], .el-input, .el-select")) return;
   const modifier = event.metaKey || event.ctrlKey;
+  // ⌘I：显式打开选中项详情。放在输入框守卫之前，焦点在搜索框时也能用。
+  if (modifier && event.key.toLowerCase() === "i") {
+    if (trashVisible.value || selectedEntries.value.length !== 1 || !props.canShowDetail) return;
+    event.preventDefault();
+    event.stopPropagation();
+    emit("show-detail", selectedEntries.value[0]!);
+    return;
+  }
+  if (event.target.closest("input, textarea, select, button, a, [contenteditable='true'], .el-input, .el-select")) return;
   if (modifier && event.key.toLowerCase() === "a") {
     if (trashVisible.value) return;
     event.preventDefault();
@@ -369,6 +376,10 @@ function showBackgroundMenu(event: MouseEvent) {
 async function handleMenuCommand(command: AssetMenuCommand, entry: AssetEntry) {
   contextMenuRef.value?.closeMenu();
   if (command === "open") return openEntry(entry);
+  if (command === "detail") {
+    emit("show-detail", entry);
+    return;
+  }
   if (command === "move") return requestMove([entry]);
   if (command === "new-subfolder") return createFolder(entry.path);
   if (command === "upload-here") return chooseUpload(entry.path);
