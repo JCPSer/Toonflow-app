@@ -34,9 +34,21 @@
 - 服务端实测（隔离实例 + mock SSE）：stop 后流立即结束、无 error 事件、mock 上游收到 client aborted、日志 `run abort → stop hit → stream ended by abort`；墓碑竞态也能立刻中止；缺 header 403、非法 id 400。
 - 界面链路（点按钮/Esc）因 dev 数据目录只有 fake-model，未能在画布内发起真实长文生成，需在有真实模型的机器上手工复验。
 
+## 补充（01:05）：节点产物需要单独构建
+
+上轮只重建了 web 与桌面主进程，`build/nodes/textNode.umd.js` 仍是旧的，界面上自然还是转圈。节点是 **独立的 UMD 产物**（`bun run build:nodes`），`nodeSkeleton`/`nodeAi` 等脚手架代码被打进每个节点包，所以改节点或脚手架后必须：
+
+1. `bun run build:nodes`
+2. 同步 `build/nodes` 到 `Contents/Resources/app/nodes`
+3. 重新 `codesign`
+4. 重启 app（webview 才会重新拉取节点文件）
+
+校验方式：`grep "停止生成" build/nodes/textNode.umd.js`，旧产物为 0。
+
 ## 经验
 
 - "断开连接等于停止上游"是错误假设：运行时可能根本不通知 close（本仓库 Bun 1.3.14 实测如此）。要保证中断，必须有服务端可寻址的 stop。
 - 受控组件里 `:loading` 不是视觉状态，它会 disable 按钮——把"停止"做成 loading 按钮等于做不了停止。
 - 判断 Esc 归属不能只看"节点是否选中"：后台画布仍然保留选中态且不卸载，必须引入"当前画布是否前台"的作用域。
 - 共享脚手架里的可见性条件（bottomVisible/slotsVisible）会互相抵消，给一个"钉住"开关比在业务组件里绕过条件更安全。
+- 这个仓库有三条独立的构建产物：web、桌面主进程、节点/工具/扩展的 UMD。改节点或 nodeScaffold 只重建前两个，界面上等于没改。验收前先按特征字符串确认产物里真的有新代码。

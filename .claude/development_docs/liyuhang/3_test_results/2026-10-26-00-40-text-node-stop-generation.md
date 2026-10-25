@@ -43,6 +43,18 @@
 
 > 上述 10–13 的代码路径已在实现与两轮评审中逐条核对（按钮 disabled 分支、bottomPinned、Esc 作用域、isComposing、finally 保存顺序）。建议在有真实模型的机器上手工验证一遍。
 
+### 4.1 返工记录（01:05）
+
+用户实测仍是转圈，定位为**只重建了 web 与桌面主进程，没重建节点 UMD**：
+
+| 项 | 处理 |
+| --- | --- |
+| `build/nodes/textNode.umd.js` 无新逻辑 | 执行 `bun run build:nodes` 重建 |
+| `Resources/app/nodes` 仍是旧包 | rsync 同步后重新 codesign |
+| app 进程仍持有旧 webview | 退出并重启 app |
+
+校验：`grep "停止生成"` 在新产物中命中 1 次、`canvasActive` 与 `generate/stop` 均存在；旧包为 0。
+
 ## 五、测试前置说明
 
 - 本轮没有新增测试文件（遵循仓库 `AGENTS.md` 约束），mock provider 与临时数据目录在测后已清理。
