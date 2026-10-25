@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, ref, toValue, watch, type MaybeRefOrGetter } from "vue";
+import { translate } from "@toonflow/i18n/vue";
 import { useAssetLibraryStore, type AssetLibraryState, type AssetSortField, type AssetSortOrder, type AssetView } from "@/stores/assetLibrary";
-import { AssetRequestError, getRoots, listAssets, toAssetError } from "./api";
+import { AssetRequestError, forgetAssetEntries, getRoots, listAssets, subscribeAssetChanges, toAssetError } from "./api";
 import type { AssetEntry, AssetLibraryKind, AssetRoots } from "./types";
 import { isSameOrDescendant, normalizeAssetPath, parentAssetPath } from "./types";
 
@@ -26,7 +27,7 @@ export function isTransientAssetFailure(cause: unknown) {
 
 export type SelectionMode = "single" | "toggle" | "range";
 
-export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>) {
+export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>, active?: MaybeRefOrGetter<boolean>) {
   const store = useAssetLibraryStore();
   const directoryPath = computed(() => toValue(directory) ?? "");
   // 以调用方传入的 directory 为准，保证同一内容区在首页弹窗（全局库）也不串用工作区状态。
@@ -49,9 +50,18 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
   const treeVersion = ref(0);
   const selection = ref<Set<string>>(new Set());
   const lastSelectedPath = ref<string>();
+  const missingEntries = ref<AssetEntry[]>([]);
+  const missingTotal = ref(0);
+  const syncing = ref(false);
   let listRequest = 0;
   let directoryToken = 0;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  let disposed = false;
+  let changeController: AbortController | undefined;
+  let changeSeen = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  let syncTimer: ReturnType<typeof setTimeout> | undefined;
+  let syncDeadline = 0;
 
   /** 合并展示用；空态优先用更具体的 list 错误。 */
   const displayError = computed(() => error.value || rootsError.value);
@@ -151,18 +161,107 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
     }
   }
 
-  async function loadList(reset = false) {
+  function changesEnabled() {
+    return active === undefined ? true : toValue(active);
+  }
+
+  /** 事件里的目录是否会影响当前视图（自身、祖先或子目录）。 */
+  function affectsCurrentDirectory(dir: string) {
+    if (!dir) return true;
+    const current = state.value.path;
+    return current === dir || current.startsWith(`${dir}/`) || dir.startsWith(`${current}/`);
+  }
+
+  function flushSilentRefresh() {
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = undefined;
+    syncDeadline = 0;
+    refreshTree();
+    void loadList(true, { silent: true });
+  }
+
+  /** 外部改动只做静默刷新：不清空列表、不闪烁；500ms 合并，连续事件最多推迟 2s。 */
+  function scheduleSilentRefresh() {
+    const now = Date.now();
+    if (!syncDeadline) syncDeadline = now + 2000;
+    if (now >= syncDeadline) {
+      flushSilentRefresh();
+      return;
+    }
+    if (syncTimer) return;
+    syncTimer = setTimeout(flushSilentRefresh, 500);
+  }
+
+  async function connectChanges() {
+    if (disposed || changeController || !changesEnabled()) return;
+    const controller = new AbortController();
+    changeController = controller;
+    try {
+      await subscribeAssetChanges(selector(), event => {
+        if (event.type === "ready") {
+          // 重连成功说明断流期间的事件已经错过，补一次静默刷新。
+          if (changeSeen) void loadList(true, { silent: true });
+          changeSeen = true;
+          return;
+        }
+        if (event.type === "change") {
+          if (event.dirs.some(affectsCurrentDirectory)) scheduleSilentRefresh();
+          return;
+        }
+        if (event.type === "gone") {
+          rootsFailed.value = true;
+          rootsError.value = translate("素材库目录已不可用");
+        }
+      }, controller.signal);
+    } catch {
+      // 断流/权限问题：交给下面的重连与手动刷新兜底。
+    } finally {
+      if (changeController === controller) changeController = undefined;
+    }
+    if (!disposed && changesEnabled()) reconnectTimer = setTimeout(() => void connectChanges(), 3000);
+  }
+
+  function stopChanges() {
+    changeController?.abort();
+    changeController = undefined;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = undefined;
+    syncDeadline = 0;
+  }
+
+  /** 清理索引里已失效的条目（文件已不在磁盘）。 */
+  async function forgetMissing() {
+    if (!missingEntries.value.length) return;
+    try {
+      await forgetAssetEntries(selector(), missingEntries.value.map(entry => entry.path));
+      missingEntries.value = [];
+      missingTotal.value = 0;
+      await loadList(true, { silent: true });
+    } catch (cause) {
+      error.value = toAssetError(cause).message;
+    }
+  }
+
+  async function loadList(reset = false, options: { silent?: boolean } = {}) {
     const request = reset ? ++listRequest : listRequest;
     const token = directoryToken;
     if (!reset && (!nextCursor.value || loadingMore.value)) return;
     if (reset) {
-      loading.value = true;
-      entries.value = [];
-      selection.value = new Set();
-      lastSelectedPath.value = undefined;
-      nextCursor.value = undefined;
-      total.value = 0;
-      truncated.value = false;
+      if (options.silent) {
+        syncing.value = true;
+      } else {
+        loading.value = true;
+        entries.value = [];
+        selection.value = new Set();
+        lastSelectedPath.value = undefined;
+        nextCursor.value = undefined;
+        total.value = 0;
+        truncated.value = false;
+        missingEntries.value = [];
+        missingTotal.value = 0;
+      }
     } else {
       loadingMore.value = true;
     }
@@ -174,7 +273,8 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
             ...selector(),
             path: state.value.path,
             cursor: reset ? undefined : nextCursor.value,
-            limit: 100,
+            // 静默刷新时按已加载条数重取，避免把用户翻过的页收回到第一页。
+            limit: options.silent ? Math.min(200, Math.max(100, entries.value.length)) : 100,
             sort: state.value.sort,
             order: state.value.order,
             query: query.value.trim() || undefined,
@@ -185,6 +285,11 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
           truncated.value = result.truncated;
           indexRebuilding.value = result.rebuilding === true;
           nextCursor.value = result.nextCursor;
+          // 搜索结果不含 missing，保留上一次的提示，避免搜索时提示条忽隐忽现。
+          if (reset && !query.value.trim()) {
+            missingEntries.value = result.missing ?? [];
+            missingTotal.value = result.missingTotal ?? 0;
+          }
           // 已选中的深层路径在追加分页时保持选中。
           if (!reset) selection.value = new Set(selection.value);
           break;
@@ -208,6 +313,7 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
       if (request === listRequest) {
         loading.value = false;
         loadingMore.value = false;
+        syncing.value = false;
       }
     }
   }
@@ -341,18 +447,29 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
   }
 
   watch(directoryPath, resetForDirectory, { immediate: false });
+  // 订阅参数带库与目录：切库/切项目或面板不可见时要重连或断开。
+  watch([() => state.value.library, directoryPath, changesEnabled], ([, , enabled], previous) => {
+    stopChanges();
+    if (!enabled) return;
+    // 从隐藏状态恢复：断开期间的事件不会补发，先静默刷新一次。
+    if (previous?.[2] === false) void loadList(true, { silent: true });
+    void connectChanges();
+  });
   watch(query, value => {
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => { void loadList(true); }, 280);
   });
   onBeforeUnmount(() => {
+    disposed = true;
     listRequest++;
     if (searchTimer) clearTimeout(searchTimer);
+    stopChanges();
   });
 
   async function init() {
     await loadRoots();
     await loadList(true);
+    void connectChanges();
   }
 
   return {
@@ -366,6 +483,10 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
     nextCursor,
     loading,
     loadingMore,
+    syncing,
+    missingEntries,
+    missingTotal,
+    forgetMissing,
     error,
     displayError,
     query,

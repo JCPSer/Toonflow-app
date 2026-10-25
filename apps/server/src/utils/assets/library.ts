@@ -6,7 +6,7 @@ import { mentionAssetType } from "@/agent/mentionSources";
 import { copyWorkspaceFile, isWithin, lockWorkspaceFiles, protectWorkspaceRoot, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 import { addLibraryTrashEntry, clearLibraryTrash, getLibraryEntries, getLibraryEntry, getLibraryTrashEntry, listLibraryTrash, moveLibraryEntries,
   patchLibraryEntry, pruneLibraryEntries, reconcileLibraryEntries, removeLibraryEntries, removeLibraryTrashEntry, flushLibraryIndex,
-  type LibraryMetaPatch, type LibraryTrashEntry } from "./libraryMeta";
+  type LibraryEntry, type LibraryEntryRecord, type LibraryMetaPatch, type LibraryTrashEntry } from "./libraryMeta";
 import { assertAssetRelativePath, internalAssetDirectories, normalizeAssetPath, type AssetLibrary, type AssetLibraryKind } from "./roots";
 import { findAssetUsageBatch, findAssetUsages, type AssetUsageResult } from "./usage";
 
@@ -37,11 +37,96 @@ export type AssetEntry = {
   note: string;
   favorite: boolean;
   childCount?: number;
+  /** 索引里还有、磁盘上已不存在（在 Finder 里被删/移动）。 */
+  missing?: boolean;
 };
 
-type RawEntry = { name: string; path: string; type: "file" | "directory"; category: string; dataType?: string; size: number; mtimeMs: number };
+type RawEntry = {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  category: string;
+  dataType?: string;
+  size: number;
+  mtimeMs: number;
+  dev: number;
+  ino: number;
+};
 
 const maxScannedEntries = 50000;
+/** 单次列表最多返回多少条"缺失"提示，避免索引异常时撑爆响应。 */
+const maxMissingEntries = 200;
+/** 目录子项数缓存：展开大目录时避免每次都把所有子目录读一遍。 */
+const childCountCache = new Map<string, { at: number; count: number }>();
+const childCountTtlMs = 2000;
+const childCountConcurrency = 4;
+const childCountCacheLimit = 2000;
+
+function toRecord(entry: RawEntry): LibraryEntryRecord {
+  return {
+    path: entry.path,
+    size: entry.size,
+    mtimeMs: entry.mtimeMs,
+    isDirectory: entry.type === "directory",
+    dev: entry.dev,
+    ino: entry.ino,
+    ...(entry.dataType ? { dataType: entry.dataType } : {}),
+  };
+}
+
+/** 索引里标记为 stale、且父目录正好是当前目录的条目。 */
+function collectMissingEntries(index: Record<string, LibraryEntry>, parentPath: string): AssetEntry[] {
+  const items: AssetEntry[] = [];
+  for (const [path, entry] of Object.entries(index)) {
+    if (!entry.stale) continue;
+    const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+    if (parent !== parentPath) continue;
+    const name = path.slice(path.lastIndexOf("/") + 1);
+    const isDirectory = entry.isDirectory === true;
+    items.push({
+      name,
+      path,
+      type: isDirectory ? "directory" : "file",
+      category: assetCategory(name, isDirectory),
+      ...(entry.dataType && !isDirectory ? { dataType: entry.dataType } : {}),
+      size: entry.size ?? 0,
+      mtimeMs: entry.mtimeMs ?? entry.addedAt,
+      tags: entry.tags ?? [],
+      note: entry.note ?? "",
+      favorite: entry.favorite === true,
+      missing: true,
+    });
+  }
+  items.sort((left, right) => left.name.localeCompare(right.name, "zh-CN", { numeric: true }));
+  return items;
+}
+
+/** 并发生数受控，命中 2s 缓存时直接复用。 */
+async function countDirectoryChildren(root: string, raws: RawEntry[], signal?: AbortSignal) {
+  const counts = new Map<string, number>();
+  const directories = raws.filter(raw => raw.type === "directory");
+  if (!directories.length) return counts;
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < directories.length) {
+      const raw = directories[cursor++]!;
+      signal?.throwIfAborted();
+      const cacheKey = `${root}\u0000${raw.path}`;
+      const cached = childCountCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < childCountTtlMs) {
+        counts.set(raw.path, cached.count);
+        continue;
+      }
+      const info = await lstat(join(root, raw.path)).catch(() => null);
+      const count = info?.isDirectory() ? (await readChildren(root, raw.path, signal)).length : 0;
+      if (childCountCache.size >= childCountCacheLimit) childCountCache.clear();
+      childCountCache.set(cacheKey, { at: Date.now(), count });
+      counts.set(raw.path, count);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(childCountConcurrency, directories.length) }, () => worker()));
+  return counts;
+}
 
 function slashPath(path: string) {
   return path.split(sep).join("/");
@@ -95,6 +180,7 @@ async function readChildren(root: string, relativeDirectory: string, signal?: Ab
     const path = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
     const type = info.isDirectory() ? "directory" : "file";
     entries.push({ name: entry.name, path, type, category: assetCategory(entry.name, info.isDirectory()), size: info.size, mtimeMs: info.mtimeMs,
+      dev: info.dev, ino: info.ino,
       ...(!info.isDirectory() ? { dataType: mentionAssetType(entry.name).dataType } : {}) });
   }
   return entries;
@@ -163,11 +249,11 @@ export async function listAssetEntries(library: AssetLibrary, options: AssetList
   const key = cursorKey(library, options, relativeDirectory);
   const offset = readCursor(options.cursor, key);
   const collected = await collectEntries(library.root, relativeDirectory, !!query, options.signal);
-  await reconcileLibraryEntries(library.root, collected.entries.map(entry => ({
-    path: entry.path, size: entry.size, mtimeMs: entry.mtimeMs, ...(entry.dataType ? { dataType: entry.dataType } : {}),
-  })));
+  await reconcileLibraryEntries(library.root, collected.entries.map(toRecord));
   if (!query && !collected.truncated) await pruneLibraryEntries(library.root, relativeDirectory, new Set(collected.entries.map(entry => entry.path)));
   const index = await getLibraryEntries(library.root);
+  // ACT: 外部删掉的文件不在扫描结果里，单独作为"缺失"返回，不混进 items/total/cursor。
+  const missing = query || collected.truncated ? undefined : collectMissingEntries(index, relativeDirectory);
   const items = collected.entries.filter(entry => {
     if (!matchesType(entry, options.type ?? "")) return false;
     const meta = index[entry.path];
@@ -181,6 +267,7 @@ export async function listAssetEntries(library: AssetLibrary, options: AssetList
   const page = items.slice(offset, offset + limit);
   const nextOffset = offset + page.length;
   return { items: page, total: items.length, truncated: collected.truncated,
+    ...(missing && missing.length ? { missing: missing.slice(0, maxMissingEntries), missingTotal: missing.length } : {}),
     ...(nextOffset < items.length ? { nextCursor: `${Buffer.from(key).toString("base64url")}:${nextOffset}` } : {}) };
 }
 
@@ -190,16 +277,9 @@ export async function treeAssetEntries(library: AssetLibrary, path?: string, sig
   if (!(await lstat(resolved.path)).isDirectory()) throw Object.assign(new Error("只能列出文件夹内容"), { status: 400 });
   const raws = await readChildren(library.root, relativeDirectory, signal);
   const truncated = raws.length >= maxScannedEntries;
-  const childCounts = new Map<string, number>();
-  for (const raw of raws) {
-    signal?.throwIfAborted();
-    if (raw.type !== "directory") continue;
-    const info = await lstat(join(library.root, raw.path)).catch(() => null);
-    childCounts.set(raw.path, info?.isDirectory() ? (await readChildren(library.root, raw.path, signal)).length : 0);
-  }
-  await reconcileLibraryEntries(library.root, raws.map(entry => ({
-    path: entry.path, size: entry.size, mtimeMs: entry.mtimeMs, ...(entry.dataType ? { dataType: entry.dataType } : {}),
-  })));
+  // ACT: 子项数并发上限 4 + 2s 缓存，避免展开大目录时打出一串顺序读。
+  const childCounts = await countDirectoryChildren(library.root, raws, signal);
+  await reconcileLibraryEntries(library.root, raws.map(toRecord));
   const index = await getLibraryEntries(library.root);
   return { items: raws.map(raw => ({ ...toEntry(raw, index[raw.path]), ...(childCounts.has(raw.path) ? { childCount: childCounts.get(raw.path)! } : {}) })), truncated };
 }

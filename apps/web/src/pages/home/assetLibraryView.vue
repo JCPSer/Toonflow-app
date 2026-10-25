@@ -37,6 +37,7 @@
       embedded
       :directory="activeDirectory || undefined"
       :projects="projects"
+      :active="active"
       can-show-detail
       @select-project="onSelectProject"
       @show-detail="openDetail" />
@@ -84,6 +85,8 @@ import AssetLibraryContent from "@/pages/workspace/panels/assetLibrary/index.vue
 import assetDetailDrawer from "./assetDetailDrawer.vue";
 import { patchMeta, patchMetas, toAssetError } from "@/pages/workspace/panels/assetLibrary/api";
 import { batchErrorMessage, type AssetEntry } from "@/pages/workspace/panels/assetLibrary/types";
+
+const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true });
 
 const workspace = useWorkspaceStore();
 // ACT: 首页默认全局库；在左侧「项目」分组里点开某个项目才切过去。

@@ -43,7 +43,7 @@
           <icon-x :size="16" aria-hidden="true" />
         </el-button>
       </header>
-      <AssetLibraryContent ref="contentRef" :directory="directory" />
+      <AssetLibraryContent ref="contentRef" :directory="directory" :active="visible" />
     </div>
   </floatingPanel>
 </template>

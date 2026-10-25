@@ -1,0 +1,53 @@
+{
+  "task_id": "task_261025_asset_external_sync",
+  "created_at": "2026-10-25",
+  "owner": "liyuhang",
+  "goal": "素材库与磁盘保持一致：外部改动自动刷新、元数据跟随 inode、缺失条目提示、性能优化",
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "服务端：库根递归监听 + 变更推送端点",
+      "owner": "子 agent",
+      "output": "apps/server/src/utils/assets/watch.ts、apps/server/src/routes/assets/events.ts、router.ts 注册",
+      "deliverable": "fs.watch 递归监听（内部目录/临时文件过滤、300ms 合并 + 2s 上限）、NDJSON 端点 /api/assets/events（ready/change/gone/ping）",
+      "depends_on": [],
+      "status": "in_progress"
+    },
+    {
+      "id": "T2",
+      "subject": "服务端：索引 inode 化、stale 替代 prune、missing 列表",
+      "owner": "liyuhang",
+      "output": "libraryMeta.ts、library.ts",
+      "deliverable": "dev/ino 字段与迁移、目录前缀迁移、prune 改标 stale（上限/过期清理）、list 返回 missing",
+      "depends_on": [],
+      "status": "pending"
+    },
+    {
+      "id": "T3",
+      "subject": "前端：订阅变更、静默刷新、缺失条目 UI",
+      "owner": "liyuhang",
+      "output": "api.ts、useAssetLibrary.ts、index.vue、AssetGridView.vue、types.ts",
+      "deliverable": "NDJSON 订阅 + 重连 + 合并刷新、active 控制、missing 卡片与提示条、索引清理动作",
+      "depends_on": ["T1", "T2"],
+      "status": "pending"
+    },
+    {
+      "id": "T4",
+      "subject": "性能：树子项数并发与缓存、扫描缓存",
+      "owner": "liyuhang",
+      "output": "library.ts",
+      "deliverable": "childCount 并发 4 + 2s 缓存；目录扫描 500ms 复用",
+      "depends_on": ["T2"],
+      "status": "pending"
+    },
+    {
+      "id": "T5",
+      "subject": "测试与归档",
+      "owner": "liyuhang",
+      "output": ".claude/development_docs/liyuhang/3_test_results/*",
+      "deliverable": "外部增删改名/移动、隐藏时不刷新、上传风暴合并、1000 文件性能、旧索引升级",
+      "depends_on": ["T1", "T2", "T3", "T4"],
+      "status": "pending"
+    }
+  ]
+}

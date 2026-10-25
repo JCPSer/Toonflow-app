@@ -35,6 +35,18 @@
       @clear-selection="clearSelection" />
 
     <el-alert
+      v-if="!trashVisible && missingTotal > 0"
+      class="libraryNotice"
+      type="warning"
+      :closable="false"
+      show-icon
+      :title="translate('{count} 项素材已不在磁盘（在 Finder 中删除或移动）', { count: missingTotal })">
+      <template #default>
+        <el-button text size="small" @click="forgetMissing">{{ translate("清理索引") }}</el-button>
+      </template>
+    </el-alert>
+
+    <el-alert
       v-if="!trashVisible && projectFallback"
       class="libraryNotice"
       type="warning"
@@ -194,14 +206,16 @@ const props = withDefaults(defineProps<{
   projects?: { directory: string; name: string }[];
   /** 宿主是否提供详情视图（首页弹窗有，工作区面板暂没有）。 */
   canShowDetail?: boolean;
-}>(), { embedded: false, projects: undefined, canShowDetail: false });
+  /** 面板是否可见：不可见时断开文件变更订阅，避免后台空转。 */
+  active?: boolean;
+}>(), { embedded: false, projects: undefined, canShowDetail: false, active: true });
 const emit = defineEmits<{
   "select-project": [{ directory: string; path: string }];
   /** 显式请求打开详情（右键菜单 / ⌘I），由宿主决定用抽屉还是别的形态。 */
   "show-detail": [entry: AssetEntry];
 }>();
 
-const lib = useAssetLibrary(() => props.directory);
+const lib = useAssetLibrary(() => props.directory, () => props.active);
 
 /** 切换项目：先把目标目录的库状态设为「项目库根目录」，再通知父级换 directory。 */
 function onSelectProject(payload: { directory: string; path: string }) {
@@ -214,6 +228,7 @@ const {
   currentPath, selection, selectedEntries, expandedKeys, treeVersion, projectFallback, projectFallbackPath,
   projectAvailable, emptyKind, searchScopeLabel, selector, init, refresh, navigate, goUp, setLibrary, setView,
   setSort, toggleOrder, submitSearch, clearSearch, selectEntry, selectAll, clearSelection, setExpanded, loadMore,
+  missingTotal, forgetMissing,
 } = lib;
 const actions = useAssetActions(lib);
 const {

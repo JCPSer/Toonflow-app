@@ -114,7 +114,7 @@
         </el-main>
       </div>
     </el-scrollbar>
-    <assetLibraryView v-if="assetsMounted" v-show="assetsMode" ref="assetViewRef" class="pageAssets" />
+    <assetLibraryView v-if="assetsMounted" v-show="assetsMode" ref="assetViewRef" class="pageAssets" :active="assetsMode" />
     <settings v-model="settingsVisible" />
     <mobileConnect v-model="mobileConnectVisible" />
     <workspacePicker ref="relocationPicker" hideTrigger />

@@ -15,6 +15,8 @@ export type AssetEntry = {
   note: string;
   favorite: boolean;
   childCount?: number;
+  /** 索引里还有、磁盘上已不存在（在 Finder 里被删或移走）。 */
+  missing?: boolean;
 };
 
 export type AssetTreeNode = AssetEntry & {
@@ -31,7 +33,16 @@ export type AssetTreeNode = AssetEntry & {
   disabled?: boolean;
 };
 
-export type AssetListResult = { items: AssetEntry[]; total: number; truncated: boolean; nextCursor?: string; rebuilding?: boolean };
+export type AssetListResult = {
+  items: AssetEntry[];
+  total: number;
+  truncated: boolean;
+  nextCursor?: string;
+  rebuilding?: boolean;
+  /** 索引里还有、磁盘上已消失的条目（外部删除/移动）。 */
+  missing?: AssetEntry[];
+  missingTotal?: number;
+};
 export type AssetTreeResult = { items: AssetEntry[]; truncated: boolean };
 export type AssetTrashItem = { id: string; path: string; name: string; deletedAt: number; size: number; isDirectory: boolean };
 export type AssetTrashResult = { items: AssetTrashItem[]; usage: number };

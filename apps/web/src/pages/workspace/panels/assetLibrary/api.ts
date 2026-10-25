@@ -146,6 +146,58 @@ export function getTree(selector: AssetSelector, path?: string): Promise<AssetTr
   );
 }
 
+export type AssetChangeEvent =
+  | { type: "ready" }
+  | { type: "change"; dirs: string[] }
+  | { type: "gone" }
+  | { type: "ping" };
+
+/**
+ * 订阅库根的文件变更（NDJSON 流）。返回的 Promise 在流结束时 resolve：
+ * 调用方负责按需重连；abort 后不会抛错。
+ */
+export async function subscribeAssetChanges(selector: AssetSelector, onEvent: (event: AssetChangeEvent) => void, signal: AbortSignal) {
+  const params = new URLSearchParams(selectorParams(selector) as Record<string, string>);
+  const response = await fetch(`/api/assets/events?${params}`, {
+    headers: { "x-toonflow-workspace": "1" },
+    signal,
+    cache: "no-store",
+  });
+  if (!response.ok || !response.body) throw new AssetRequestError("素材库变更订阅失败", response.status);
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      let separator = buffer.indexOf("\n");
+      while (separator >= 0) {
+        const line = buffer.slice(0, separator).trim();
+        buffer = buffer.slice(separator + 1);
+        if (line) {
+          try {
+            onEvent(JSON.parse(line) as AssetChangeEvent);
+          } catch {
+            // 半帧/未知事件直接跳过，不影响后续帧。
+          }
+        }
+        separator = buffer.indexOf("\n");
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/** 只删除索引里的失效条目，不动磁盘。 */
+export function forgetAssetEntries(selector: AssetSelector, paths: string[]) {
+  return callWithFallback(
+    () => unwrap<{ removed: number }>(client.post("/forget", { ...selectorParams(selector), paths })),
+    () => ({ removed: 0 }),
+  );
+}
+
 export function listAssets(options: AssetListOptions): Promise<AssetListResult> {
   const { library, directory, ...rest } = options;
   return callWithFallback(
