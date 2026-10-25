@@ -43,6 +43,19 @@
             title="添加到素材库"
             aria-label="添加到素材库"
             @click.stop="handleCommand('saveAsset')">添加到素材库</el-button>
+          <el-button
+            v-if="nodeAgentContext && !documentTarget"
+            :icon="IconAt"
+            :loading="addingToAgentContext"
+            :disabled="!hasAgentContextOutput || addingToAgentContext"
+            text
+            :title="hasAgentContextOutput ? '将该节点的输出加入右侧 Agent 对话上下文' : '暂无输出'"
+            aria-label="加入对话上下文"
+            data-node-agent-context
+            @pointerdown.stop
+            @mousedown.stop
+            @dblclick.stop
+            @click.stop="addToAgentContext" />
           <slot name="topActions" />
           <el-divider direction="vertical" />
           <slot name="topRightActions" />
@@ -176,13 +189,14 @@ import {
   IconCircleDashed,
   IconCircleDot,
   IconLoader2,
+  IconAt,
 } from "@tabler/icons-vue";
 import { ElCard, ElButton, ElDivider, ElDropdown, ElDropdownMenu, ElDropdownItem, ElMessage } from "element-plus";
 import type { DropdownInstance } from "element-plus";
 import { validateConnection } from "./connection";
 import { useNodeEvent } from "./nodeEvent";
 import type { NodeConnectionFeedback, NodeData, NodeHandle } from "./connection";
-import type { NodeOutput } from "./values";
+import { isNodeOutput, type NodeOutput } from "./values";
 import type { NodeDocumentContext } from "./nodeDocument";
 
 defineOptions({ inheritAttrs: false });
@@ -428,6 +442,27 @@ const assetOutputs = computed(() =>
     return [{ label: handle.label ?? handle.id, output }];
   })
 );
+// ACT: 快捷加入对话上下文的能力由画布注入；插件或独立使用时未注入则不渲染按钮。
+const nodeAgentContext = inject<((nodeId: string, anchor: HTMLElement) => Promise<void> | void) | undefined>("nodeAgentContext", undefined);
+const addingToAgentContext = ref(false);
+// ACT: 与提及解析保持一致：文本需非空，媒体输出由 isNodeOutput 校验 url 与 mimeType。
+const hasAgentContextOutput = computed(() =>
+  Object.values(props.outputs).some((output) =>
+    !!output && isNodeOutput(output) && (output.dataType !== "STRING" || !!output.value.trim())
+  )
+);
+
+async function addToAgentContext(event: MouseEvent) {
+  if (!nodeAgentContext || !hasAgentContextOutput.value || addingToAgentContext.value) return;
+  addingToAgentContext.value = true;
+  try {
+    await nodeAgentContext(nodeId, event.currentTarget as HTMLElement);
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "加入对话上下文失败");
+  } finally {
+    addingToAgentContext.value = false;
+  }
+}
 
 async function handleCommand(command: string) {
   if (props.readOnly) return;

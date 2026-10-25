@@ -53,7 +53,7 @@
                   <toolMessage v-else-if="part.type === 'tool' && !isBrowserTool(part.tool)" v-model:collapsed="part.collapsed" :tool="part.tool" :directory="directory" @copy="emit('copy', $event)" />
                   <messageMarkdown v-else-if="part.type === 'text' && part.content" :content="part.content" :streaming="!!item.streaming" :directory="directory" />
                 </template>
-                <attachmentList v-if="item.attachments?.length" :attachments="item.attachments" :directory="directory" />
+                <attachmentList v-if="item.attachments?.length" :attachments="item.attachments" :directory="directory" favoritable />
                 <div v-if="item.role === 'user'" class="messageText"><mentionContent :content="item.content" :mentions="item.mentions" :directory="directory" /></div>
                 <div v-if="item.error" class="messageError" role="alert">{{ item.error }}</div>
               </div>

@@ -23,7 +23,7 @@ import axios from "axios";
 import { IconAt, IconFile } from "@tabler/icons-vue";
 import type { AgentMention } from "@toonflow/server/agent/types";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
-import { mentionName, mentionParts, mentionThumbnailProps } from "./mentionText";
+import { mentionLibraryLabel, mentionName, mentionParts, mentionThumbnailProps } from "./mentionText";
 import mentionThumbnail from "./mentionThumbnail.vue";
 
 const props = defineProps<{ content?: string; mentions?: AgentMention[]; directory?: string; removable?: boolean }>();
@@ -41,7 +41,7 @@ const textValue = computed(() => {
 });
 
 function sourceLabel(mention: AgentMention) {
-  return mention.source.kind === "asset" ? `全局素材 / ${mention.source.path}`
+  return mention.source.kind === "asset" ? `${mentionLibraryLabel(mention)} / ${mention.source.path}`
     : `${mention.source.canvasName} / ${mention.source.nodeName} / ${mention.source.outputName}（${mention.source.nodeId}）`;
 }
 
@@ -66,8 +66,17 @@ watch([previewVisible, selected, () => props.directory], async ([visible, mentio
   onCleanup(() => { controller.abort(); release(); });
   loading.value = true;
   try {
-    if (mention.source.kind === "asset" && mentionThumbnailProps(mention).globalAsset) {
-      const { data } = await axios.get<Blob>("/api/assets/read", { params: { path: mention.source.path }, responseType: "blob", signal: controller.signal });
+    const thumbnailProps = mentionThumbnailProps(mention);
+    if (mention.source.kind === "asset" && thumbnailProps.globalAsset) {
+      const params: Record<string, string> = { path: mention.source.path };
+      if (thumbnailProps.library === "project") {
+        if (!directory) throw new Error("请先打开工作区");
+        params.library = "project";
+        params.directory = directory;
+      }
+      const { data } = await axios.get<Blob>("/api/assets/read", {
+        params, responseType: "blob", signal: controller.signal, headers: { "x-toonflow-workspace": "1" },
+      });
       controller.signal.throwIfAborted();
       previewUrl.value = URL.createObjectURL(data);
       const url = previewUrl.value;

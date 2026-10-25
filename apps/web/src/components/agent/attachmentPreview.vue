@@ -1,5 +1,5 @@
 <template>
-  <div class="thumbnailItem" :class="{ fileAttachment: !isMedia }">
+  <div class="thumbnailItem" :class="{ fileAttachment: !isMedia }" @contextmenu="onContextMenu">
     <template v-if="isText">
       <button class="textAttachmentButton" type="button" :title="attachment.name" :aria-label="`预览 ${attachment.name}`" @click="textPreviewVisible = true">
         <icon-file-text :size="18" />
@@ -37,19 +37,57 @@
       <p v-if="textLoading || textError" :role="textError ? 'alert' : 'status'">{{ textLoading ? '正在读取…' : textError }}</p>
       <pre v-else class="textPreview">{{ textContent }}</pre>
     </el-dialog>
+    <el-dropdown
+      ref="menuRef"
+      trigger="contextmenu"
+      virtualTriggering
+      :virtual-ref="menuAnchor"
+      placement="bottom-start"
+      :show-arrow="false"
+      :hide-on-click="true"
+      @command="handleMenuCommand">
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item command="favorite" :icon="IconFolderPlus">{{ translate("收藏到素材库") }}</el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
+    <SaveToLibraryDialog
+      ref="saveDialogRef"
+      library="project"
+      :directory="directory"
+      current-path=""
+      :source-directory="directory"
+      allow-library-switch
+      @saved="onSavedToLibrary" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import type { ImageInstance } from "element-plus";
-import { IconFileText, IconPhoto, IconVideo, IconX } from "@tabler/icons-vue";
+import { computed, nextTick, ref, shallowRef, watch } from "vue";
+import { ElMessage, type DropdownInstance, type ImageInstance } from "element-plus";
+import { translate } from "@toonflow/i18n/vue";
+import { IconFileText, IconFolderPlus, IconPhoto, IconVideo, IconX } from "@tabler/icons-vue";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
+import SaveToLibraryDialog from "@/pages/workspace/panels/assetLibrary/components/SaveToLibraryDialog.vue";
+import type { AssetLibraryKind } from "@/pages/workspace/panels/assetLibrary/types";
 import type { AgentAttachment } from "./types";
 import { readTextAttachment } from "./textAttachments";
 
-const props = defineProps<{ attachment: AgentAttachment; directory?: string; removable?: boolean; restorable?: boolean; disabled?: boolean }>();
-const emit = defineEmits<{ remove: []; restore: [] }>();
+const props = withDefaults(defineProps<{
+  attachment: AgentAttachment;
+  directory?: string;
+  removable?: boolean;
+  restorable?: boolean;
+  disabled?: boolean;
+  /** 消息里的附件才提供“收藏到素材库”，输入框草稿不显示。 */
+  favoritable?: boolean;
+}>(), { favoritable: false });
+const emit = defineEmits<{ remove: []; restore: []; saved: [path: string] }>();
+const menuRef = ref<DropdownInstance>();
+const menuAnchor = shallowRef({ getBoundingClientRect: () => new DOMRect() });
+const saveDialogRef = ref<InstanceType<typeof SaveToLibraryDialog>>();
+const canFavorite = computed(() => props.favoritable && !!props.directory && !!props.attachment.path && !props.attachment.file);
 const isText = computed(() => props.attachment.mimeType === "text/plain");
 const isMedia = computed(() => /^(image|video)\//.test(props.attachment.mimeType));
 const textPreviewVisible = ref(false);
@@ -100,6 +138,26 @@ watch([textPreviewVisible, () => props.attachment, () => props.directory], async
     if (!cancelled) textLoading.value = false;
   }
 });
+
+async function onContextMenu(event: MouseEvent) {
+  if (!canFavorite.value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  menuAnchor.value = { getBoundingClientRect: () => new DOMRect(event.clientX, event.clientY, 0, 0) };
+  await nextTick();
+  menuRef.value?.handleOpen();
+}
+
+function handleMenuCommand(command: string) {
+  if (command !== "favorite" || !canFavorite.value) return;
+  saveDialogRef.value?.openWorkspaceFile(props.attachment.path, props.attachment.name);
+}
+
+function onSavedToLibrary(path: string, library: AssetLibraryKind) {
+  const location = `${library === "project" ? translate("本项目") : translate("全局")} / ${path}`;
+  ElMessage.success(translate("已收藏到 {location}", { location }));
+  emit("saved", path);
+}
 </script>
 
 <style scoped lang="scss">

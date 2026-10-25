@@ -73,15 +73,30 @@ type CanvasFileContext = {
 export async function dropCanvasFiles(event: DragEvent, context: CanvasFileContext) {
   const transfer = event.dataTransfer;
   if (!transfer) return;
-  const path = transfer.getData(assetDragType);
+  const rawAsset = transfer.getData(assetDragType);
+  // 新素材库面板携带库与项目目录，旧组件仍传纯相对路径。
+  let assetSource: { path: string; library?: "global" | "project"; directory?: string } | undefined;
+  if (rawAsset) {
+    try {
+      const parsed = JSON.parse(rawAsset) as { path?: unknown; library?: unknown; directory?: unknown };
+      if (typeof parsed.path === "string") assetSource = { path: parsed.path, library: parsed.library === "project" ? "project" : "global", directory: typeof parsed.directory === "string" ? parsed.directory : undefined };
+    } catch {
+      assetSource = { path: rawAsset };
+    }
+  }
   let droppedFiles = Array.from(transfer.files);
   const { signal, flow } = context;
   const position = flow.screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
   try {
     signal.throwIfAborted();
-    if (path) {
-      const { data } = await axios.get<Blob>("/api/assets/read", { params: { path }, responseType: "blob", signal });
-      droppedFiles = [new File([data], path.split("/").pop()!, { type: data.type })];
+    if (assetSource) {
+      const { data } = await axios.get<Blob>("/api/assets/read", {
+        params: { path: assetSource.path, library: assetSource.library, directory: assetSource.directory },
+        headers: { "x-toonflow-workspace": "1" },
+        responseType: "blob",
+        signal,
+      });
+      droppedFiles = [new File([data], assetSource.path.split("/").pop()!, { type: data.type })];
     }
     await importCanvasFiles(droppedFiles, position, context);
   } catch (error) {

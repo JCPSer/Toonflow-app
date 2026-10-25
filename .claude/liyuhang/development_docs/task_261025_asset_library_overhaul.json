@@ -1,0 +1,98 @@
+{
+  "task_id": "task_261025_asset_library_overhaul",
+  "created_at": "2026-10-25",
+  "owner": "liyuhang",
+  "goal": "把素材库从只读目录树整改为可商用的素材管理器：双库（本项目/全局）、拖拽移动、任意目录新建、上传导入、回收站、标签备注、收藏、搜索分页、缩略图、面板停靠/浮层与宽高记忆",
+  "context": {
+    "current_state": [
+      "全局素材库 = <data>/assets，纯物理目录，无元数据",
+      "项目 assets/ 是节点产物与聊天附件，不是素材库",
+      "画布内是菜单下方浮层（assetLibrary.vue），首页管理页复用并 expanded（assetBrowser.vue）",
+      "移动/重命名共用 POST /api/assets/rename；remove 只能删空目录；无上传接口（只有原始字节 PUT save）",
+      "无回收站、无标签、无搜索、无分页；面板宽高硬编码",
+      "/api/assets/* 无任何本机/工作区鉴权"
+    ],
+    "decisions": {
+      "layout": "两个并列根：本项目 <project>/library/ + 全局 <data>/assets",
+      "panel": "画布内支持停靠左侧与浮层两种形态，宽高可拖拽并记忆",
+      "views": "树形（侧边目录树+网格）与文件夹（面包屑下钻+网格）切换，顶部固定工具栏",
+      "trash": "软删除到 <root>/.trash，手动清空，可恢复",
+      "reference_guard": "被引用素材阻止删除并提示；提供二次确认",
+      "library_name": "项目根下 library/（英文）",
+      "migration": "不迁移现有全局素材",
+      "perf": "懒加载+分页、缩略图缓存、服务端搜索"
+    },
+    "docs": {
+      "requirements": ".claude/development_docs/liyuhang/1_requirements_matrix/2026-10-25-02-39-asset-library-overhaul.md",
+      "solution": ".claude/development_docs/liyuhang/2_requirements_solutions/2026-10-25-02-39-asset-library-overhaul.md",
+      "test_results": ".claude/development_docs/liyuhang/3_test_results/2026-10-25-10-55-asset-library-overhaul.md",
+      "memory": ".claude/development_docs/liyuhang/5_memory/2026-10-25-11-45-asset-library-overhaul.md"
+    }
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "seq": 1,
+      "subject": "服务端：库根抽象 + 元数据 + API 全集 + 安全收口",
+      "owner_name": "server-exec",
+      "deliverable": "utils/assets 重构（library=project|global、directory 校验）、.library.json 元数据存储、list/mkdir/upload/move/trash/restore/purge/search/thumb 接口、统一 100MB 上限、本机鉴权",
+      "depends_on": [],
+      "status": "completed"
+    },
+    {
+      "id": "T2",
+      "seq": 2,
+      "subject": "前端：素材库面板（停靠/浮层、工具栏、双视图、拖拽、上传、批量、排序、记忆）",
+      "owner_name": "web-exec",
+      "deliverable": "assetLibrary 重构：dock 容器复用 agent 面板方案、resize、两条视图、el-tree DnD、上传队列、批量选择、排序、状态持久化",
+      "depends_on": [
+        "T1"
+      ],
+      "note": "可先按方案文档里的接口契约并行开发，T1 完成后联调",
+      "status": "completed"
+    },
+    {
+      "id": "T3",
+      "seq": 3,
+      "subject": "前端：管理页 + 收藏入口 + 回收站 UI",
+      "owner_name": "web-exec-2",
+      "deliverable": "assetBrowser 重做（大图/列表、标签备注、回收站页签）、节点/对话一键收藏弹窗、批量操作",
+      "depends_on": [
+        "T1"
+      ],
+      "status": "completed"
+    },
+    {
+      "id": "T4",
+      "seq": 4,
+      "subject": "集成测试、代码审查与文档归档",
+      "owner_name": "review-exec",
+      "deliverable": "E2E 测试结果、代码审查报告、测试结果/记忆/操作归档文档",
+      "depends_on": [
+        "T1",
+        "T2",
+        "T3"
+      ],
+      "status": "completed",
+      "result": "接口冒烟 17 项、界面点验 11 项通过；评审 2 critical + 10 important 已修复并复验（伪造 Origin 403 / 同源 200 / 媒体 Referer-only 200）；server+web 类型检查与生产构建通过"
+    },
+    {
+      "id": "T5",
+      "subject": "节点快捷加入 Agent 上下文",
+      "owner_name": "web-exec",
+      "deliverable": "nodeSkeleton 按钮 + agentComposer store + messageInput 插入 + 端口菜单",
+      "depends_on": [],
+      "status": "completed"
+    },
+    {
+      "id": "T6",
+      "subject": "项目素材库接入 @ 提及与服务端 import/collect",
+      "owner_name": "server-exec",
+      "deliverable": "mention library 参数、快照复制、/assets/import、MCP collect",
+      "depends_on": [
+        "T1"
+      ],
+      "status": "completed"
+    }
+  ]
+}

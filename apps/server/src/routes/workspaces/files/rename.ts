@@ -12,7 +12,9 @@ export default router.post("/", validateFields({ directory: z.string().min(1).ma
   const target = await u.workspaceFile.resolveWorkspacePath(source.directory, req.body.target);
   u.workspaceFile.protectWorkspaceRoot(source.directory, source.path);
   u.workspaceFile.protectWorkspaceRoot(target.directory, target.path);
+  u.workspaceFile.protectWorkspaceLibraryPath(source.directory, source.path);
   target.path = resolve(dirname(target.path), basename(resolve(source.directory, req.body.target)));
+  u.workspaceFile.protectWorkspaceLibraryPath(source.directory, target.path);
   const release = u.workspaceFile.lockWorkspaceFiles([source.path, target.path]);
   try { await u.workspaceFile.renameWorkspaceFile(source.path, target.path); }
   finally { release(); }

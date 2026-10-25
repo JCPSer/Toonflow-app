@@ -646,6 +646,10 @@ async function createEntry(folder: boolean, item = currentItem()) {
     return;
   }
   const name = value.trim();
+  if (!destination && ["library", "library-assets"].includes(name.toLocaleLowerCase())) {
+    ElMessage.error("library 与 library-assets 是素材库保留目录，请使用其他名称");
+    return;
+  }
   const path = childPath(destination, name);
   if (currentDirectory !== directory.value) return;
   creating.value = true;
@@ -710,6 +714,9 @@ async function readDirectory(currentDirectory: string, path: string, signal: Abo
   const { entries } = await files.list(path, signal);
   signal.throwIfAborted();
   if (version !== treeVersion.value || currentDirectory !== directory.value) return [];
+  // library 是项目素材库、library-assets 是其 fallback；文档树顶层不展示，避免误删。
+  const atRoot = !path || path === ".";
+  const visibleEntries = atRoot ? entries.filter(entry => !(entry.type === "directory" && ["library", "library-assets"].includes(entry.name.toLocaleLowerCase()))) : entries;
   let nodeIndex: Map<string, DocumentNode[]> | undefined;
   if (pathIdentity(path) === pathIdentity("assets") && props.params?.params.readNodes) {
     try { nodeIndex = await readNodeIndex(currentDirectory, signal); }
@@ -721,10 +728,10 @@ async function readDirectory(currentDirectory: string, path: string, signal: Abo
   const items: FileTreeItem[] = [];
   let cursor = 0;
   // 固定四个读取任务，避免大目录一次创建、排队成千上万个 JSON 请求。
-  await Promise.all(Array.from({ length: Math.min(4, entries.length) }, async () => {
-    while (cursor < entries.length) {
+  await Promise.all(Array.from({ length: Math.min(4, visibleEntries.length) }, async () => {
+    while (cursor < visibleEntries.length) {
       signal.throwIfAborted();
-      const entry = entries[cursor++]!;
+      const entry = visibleEntries[cursor++]!;
       const item: FileTreeItem = { ...entry, key: JSON.stringify([entry.type, entry.path]), isLeaf: entry.type === "file" || undefined };
       const nodes = entry.type === "directory" ? nodeIndex?.get(pathIdentity(entry.name)) : undefined;
       if (nodes?.length) {

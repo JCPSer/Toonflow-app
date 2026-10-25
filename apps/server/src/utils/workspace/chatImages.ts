@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, realpath, stat } from "@toonflow/file";
-import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
+import { lockWorkspaceFiles, protectWorkspaceLibraryPath, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 import { downloadPublicFile, remoteAddress } from "@/utils/workspace/download";
 
 const maxImageSize = 20 * 1024 * 1024;
@@ -38,6 +38,7 @@ export async function importImage(cwd: string, value: string) {
     for (const [mimeType, extension] of Object.entries(imageFormats)) {
       const path = `${outputDirectory}/${hash}.${extension}`;
       const cached = await resolveWorkspacePath(directory, path, true);
+      protectWorkspaceLibraryPath(directory, cached.path);
       const info = await stat(cached.path).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
       if (info?.isFile() && info.size > 0 && info.size <= maxImageSize) return { path, mimeType };
     }
@@ -53,10 +54,13 @@ export async function importImage(cwd: string, value: string) {
     const path = `${outputDirectory}/${hash}.${imageFormats[mimeType]}`;
     const output = await resolveWorkspacePath(directory, outputDirectory, true);
     const candidate = await resolveWorkspacePath(directory, path, true);
+    protectWorkspaceLibraryPath(directory, output.path);
+    protectWorkspaceLibraryPath(directory, candidate.path);
     const release = lockWorkspaceFiles([candidate.path]);
     try {
       await mkdir(output.path, { recursive: true });
       const target = await resolveWorkspacePath(directory, path);
+      protectWorkspaceLibraryPath(directory, target.path);
       await writeWorkspaceFile(target.path, bytes, true);
     } finally { release(); }
     return { path, mimeType };

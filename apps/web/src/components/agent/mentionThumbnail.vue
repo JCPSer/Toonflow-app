@@ -10,7 +10,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 
-const props = defineProps<{ thumbnail?: { url: string; mimeType: string }; directory?: string; globalAsset?: boolean }>();
+const props = defineProps<{ thumbnail?: { url: string; mimeType: string }; directory?: string; globalAsset?: boolean; library?: "global" | "project" }>();
 const element = ref<HTMLElement>();
 const inView = ref(false);
 const previewUrl = ref("");
@@ -23,12 +23,20 @@ onMounted(() => {
 });
 onBeforeUnmount(() => observer?.disconnect());
 
-watch([inView, () => props.thumbnail?.url, () => props.thumbnail?.mimeType, () => props.directory, () => props.globalAsset], async ([visible, path, mimeType, directory, globalAsset], _old, onCleanup) => {
+watch([inView, () => props.thumbnail?.url, () => props.thumbnail?.mimeType, () => props.directory, () => props.globalAsset,
+  () => props.library], async ([visible, path, mimeType, directory, globalAsset, library], _old, onCleanup) => {
   previewUrl.value = "";
   failed.value = false;
   if (!visible || !path) return;
   if (globalAsset) {
-    previewUrl.value = `/api/assets/read?path=${encodeURIComponent(path)}`;
+    const params = new URLSearchParams({ path });
+    if (library === "project") {
+      if (!directory) return;
+      params.set("library", "project");
+      params.set("directory", directory);
+    }
+    // 媒体端点允许同源 <img>/<video> 直接读取，无需附加自定义头。
+    previewUrl.value = `/api/assets/read?${params.toString()}`;
     return;
   }
   if (!directory) return;

@@ -67,9 +67,7 @@
         v-if="active && !settingsVisible && project?.directory && canvasReady && !flow.getNodes.value.length"
         :availableNodes="availableNodes"
         @create="createEmptyNode" />
-      <canvasMenu ref="canvasMenuRef" v-model:canvasId="canvasId" :directory="project?.directory" :initialCanvasId="initialCanvasId" :activateCanvas="activateCanvas" :flushSave="flushCanvases ?? flushCanvasSave">
-        <assetLibrary ref="assetLibraryRef" v-model="assetsVisible" :directory="project?.directory" />
-      </canvasMenu>
+      <canvasMenu ref="canvasMenuRef" v-model:canvasId="canvasId" :directory="project?.directory" :initialCanvasId="initialCanvasId" :activateCanvas="activateCanvas" :flushSave="flushCanvases ?? flushCanvasSave" />
       <canvasControls
         ref="canvasControlsRef"
         v-model:assetsVisible="assetsVisible"
@@ -102,6 +100,44 @@
       <nodeSearch ref="nodeSearchRef" :disabled="!active || settingsVisible || !canvasId || !project?.directory" />
     </vue-flow>
     <teleport to="body">
+      <div
+        v-if="agentPortMenu"
+        ref="agentPortMenuElement"
+        class="agentPortMenu"
+        role="menu"
+        aria-label="选择输出端口"
+        tabindex="-1"
+        :style="{ left: `${agentPortMenu.x}px`, top: `${agentPortMenu.y}px` }"
+        @pointerdown.stop
+        @mousedown.stop
+        @click.stop
+        @keydown.stop="handleAgentPortMenuKeydown"
+        @focusout="handleAgentPortMenuFocusOut">
+        <div class="agentPortMenuTitle">{{ agentPortMenu.nodeLabel }}</div>
+        <button
+          v-for="(output, index) in agentPortMenu.outputs"
+          :key="output.id"
+          ref="agentPortMenuItems"
+          type="button"
+          role="menuitem"
+          class="agentPortMenuItem"
+          :class="{ active: index === agentPortMenu.index }"
+          :disabled="!output.available"
+          :aria-disabled="!output.available"
+          @mouseenter="hoverAgentPortItem(index, output.available)"
+          @click="chooseAgentOutput(output)">
+          <mentionThumbnail class="agentPortThumbnail" :thumbnail="output.thumbnail" :directory="project?.directory">
+            <component :is="agentOutputIcon(output.dataType)" :size="16" />
+          </mentionThumbnail>
+          <span class="agentPortText">
+            <span class="agentPortName">{{ output.name }}</span>
+            <span class="agentPortMeta">{{ output.dataType }}<template v-if="output.preview"> · {{ output.preview }}</template></span>
+          </span>
+          <span v-if="!output.available" class="agentPortEmpty">暂无内容</span>
+        </button>
+      </div>
+    </teleport>
+    <teleport to="body">
       <el-button
         v-if="edgeDisconnect && findEdge(edgeDisconnect.id)"
         class="edgeDisconnect"
@@ -128,7 +164,7 @@ import { debounce } from "lodash-es";
 import { ElMessage } from "element-plus";
 import { isMobile, isDesktop } from "@/lib/platform";
 import { storeToRefs } from "pinia";
-import { IconUnlink } from "@tabler/icons-vue";
+import { IconUnlink, IconFileText, IconPhoto, IconVideo, IconMusic, IconFile } from "@tabler/icons-vue";
 import * as vueRuntime from "vue";
 import * as vueFlowRuntime from "@vue-flow/core";
 import * as elementPlusRuntime from "element-plus";
@@ -164,10 +200,13 @@ import remoteNode from "./components/remoteNode.vue";
 import canvasMenu from "./components/canvasMenu.vue";
 import canvasControls from "./components/canvasControls.vue";
 import canvasEmpty from "./components/canvasEmpty.vue";
-import assetLibrary from "./components/assetLibrary.vue";
+import { useAssetLibraryStore } from "@/stores/assetLibrary";
 import groupNode from "./components/groupNode.vue";
 import selectionToolbar from "./components/selectionToolbar.vue";
 import nodeSearch from "./components/nodeSearch.vue";
+import mentionThumbnail from "@/components/agent/mentionThumbnail.vue";
+import { useMentionSources, type MentionOutput } from "@/components/agent/mentionSources";
+import { useAgentComposerStore } from "@/stores/agentComposer";
 import { finishGroupDrag, getSelectionTree } from "./selectionNodes";
 import type { NodeOutput } from "@toonflow/nodes-scaffold/values";
 import type { NodeConnectionFeedback, NodeHandle } from "@toonflow/nodes-scaffold/connection";
@@ -228,8 +267,11 @@ const pressedCodes = new Set<string>();
 let gestureScale: number | undefined;
 let copyingNodes = false;
 const showEdges = ref(true);
-const assetsVisible = ref(false);
-const assetLibraryRef = ref<InstanceType<typeof assetLibrary>>();
+const assetLibraryStore = useAssetLibraryStore();
+const assetsVisible = computed({
+  get: () => assetLibraryStore.visible,
+  set: (value: boolean) => { assetLibraryStore.visible = value; },
+});
 const edgeDisconnect = ref<{ id: string; x: number; y: number }>();
 const flow = useVueFlow(props.runtimeKey);
 const nodeDocument: NodeDocumentContext = { targets: shallowReactive(new Map()), mounts: new Map(), states: shallowReactive(new Map()) };
@@ -275,7 +317,147 @@ provide("copyNodeToClipboard", async (node: Parameters<typeof copyNodeToClipboar
 });
 provide("retainNodeFiles", true);
 provide("selectionConnection", shallowRef<NodeConnectionFeedback>());
-provide("saveNodeToAssets", (label: string, outputs: { label: string; output: NodeOutput }[]) => assetLibraryRef.value?.openSave(label, outputs));
+provide("saveNodeToAssets", (label: string, outputs: { label: string; output: NodeOutput }[]) => assetLibraryStore.requestSave(label, outputs));
+const agentComposer = useAgentComposerStore();
+const mentionSources = useMentionSources(() => project.value?.directory);
+const showAgentPanel = inject<(() => void) | undefined>("showAgentPanel", undefined);
+type AgentPortMenuState = { nodeId: string; nodeLabel: string; outputs: MentionOutput[]; index: number; x: number; y: number };
+const agentPortMenu = ref<AgentPortMenuState>();
+const agentPortMenuElement = ref<HTMLElement>();
+const agentPortMenuItems = ref<HTMLElement[]>([]);
+
+function agentOutputIcon(dataType: string) {
+  if (dataType === "IMAGE" || dataType === "MASK") return IconPhoto;
+  if (dataType === "VIDEO") return IconVideo;
+  if (dataType === "AUDIO") return IconMusic;
+  if (dataType === "FILE") return IconFile;
+  return IconFileText;
+}
+
+function closeAgentPortMenu() {
+  agentPortMenu.value = undefined;
+}
+
+function hoverAgentPortItem(index: number, available: boolean) {
+  if (agentPortMenu.value && available) agentPortMenu.value.index = index;
+}
+
+function firstAvailableIndex(outputs: MentionOutput[]) {
+  return Math.max(0, outputs.findIndex(output => output.available));
+}
+
+function moveAgentPortIndex(delta: 1 | -1) {
+  const menu = agentPortMenu.value;
+  if (!menu) return;
+  const length = menu.outputs.length;
+  let index = menu.index;
+  for (let step = 0; step < length; step++) {
+    index = (index + delta + length) % length;
+    if (menu.outputs[index]?.available) { menu.index = index; break; }
+  }
+  void nextTick(() => agentPortMenuItems.value[index]?.focus());
+}
+
+function handleAgentPortMenuKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeAgentPortMenu();
+    return;
+  }
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    event.stopPropagation();
+    moveAgentPortIndex(event.key === "ArrowDown" ? 1 : -1);
+    return;
+  }
+  if (event.key === "Enter" || event.key === " ") {
+    const menu = agentPortMenu.value;
+    const output = menu?.outputs[menu.index];
+    if (!output?.available) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void chooseAgentOutput(output);
+  }
+}
+
+function handleAgentPortMenuFocusOut(event: FocusEvent) {
+  if (event.relatedTarget instanceof Node && agentPortMenuElement.value?.contains(event.relatedTarget)) return;
+  closeAgentPortMenu();
+}
+
+async function openAgentPortMenu(nodeId: string, anchor: HTMLElement, outputs: MentionOutput[]) {
+  const node = findNode(nodeId);
+  const label = typeof node?.data?.label === "string" && node.data.label.trim() ? node.data.label : nodeId;
+  const rect = anchor.getBoundingClientRect();
+  const width = 240;
+  agentPortMenu.value = {
+    nodeId,
+    nodeLabel: label,
+    outputs,
+    index: firstAvailableIndex(outputs),
+    x: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+    y: Math.min(rect.bottom + 6, window.innerHeight - 72),
+  };
+  await nextTick();
+  const element = agentPortMenuElement.value;
+  const menu = agentPortMenu.value;
+  if (!element || !menu) return;
+  // 下方空间不足时翻到按钮上方。
+  if (element.getBoundingClientRect().bottom > window.innerHeight - 8) {
+    menu.y = Math.max(8, rect.top - element.offsetHeight - 6);
+  }
+  (agentPortMenuItems.value[menu.index] ?? element).focus();
+}
+
+async function chooseAgentOutput(output: MentionOutput) {
+  const menu = agentPortMenu.value;
+  if (!menu || !output.available) return;
+  const { nodeId } = menu;
+  closeAgentPortMenu();
+  await insertNodeAgentMention(nodeId, output.id);
+}
+
+async function insertNodeAgentMention(nodeId: string, outputId: string) {
+  const activeCanvasId = canvasId.value;
+  if (!activeCanvasId || !project.value?.directory) return ElMessage.warning("请先打开画布");
+  try {
+    // ACT: 复用 mention 解析的正式链路，插入结果与手动 @ 节点输出完全一致。
+    const mention = await mentionSources.selectCanvas({ canvasId: activeCanvasId, nodeId, outputId });
+    showAgentPanel?.();
+    agentComposer.push(mention, project.value?.directory);
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "加入对话上下文失败");
+  }
+}
+
+async function addNodeToAgentContextFromToolbar(nodeId: string, anchor: HTMLElement) {
+  const activeCanvasId = canvasId.value;
+  if (!activeCanvasId || !project.value?.directory) return ElMessage.warning("请先打开画布");
+  closeAgentPortMenu();
+  if (!findNode(nodeId)) return ElMessage.warning("节点已不存在");
+  let outputs: MentionOutput[];
+  try {
+    outputs = await mentionSources.outputs({ canvasId: activeCanvasId, nodeId });
+  } catch (error) {
+    return ElMessage.error(error instanceof Error ? error.message : "读取节点输出失败");
+  }
+  const available = outputs.filter(output => output.available);
+  if (!available.length) return ElMessage.info("该节点暂无输出");
+  if (available.length === 1) return insertNodeAgentMention(nodeId, available[0]!.id);
+  if (!anchor.isConnected) return;
+  await openAgentPortMenu(nodeId, anchor, outputs);
+}
+
+provide("nodeAgentContext", addNodeToAgentContextFromToolbar);
+flow.onPaneClick(closeAgentPortMenu);
+flow.onMoveStart(closeAgentPortMenu);
+flow.onNodeDragStart(closeAgentPortMenu);
+flow.onNodeClick(({ event }) => {
+  if (event.target instanceof Element && event.target.closest("[data-node-agent-context]")) return;
+  closeAgentPortMenu();
+});
+watch([canvasId, () => project.value?.directory], closeAgentPortMenu, { flush: "post" });
 let canvasController = new AbortController();
 let workspaceController = new AbortController();
 const createCanvasContext = useCanvasTools({
@@ -681,8 +863,8 @@ watch(
 );
 
 // ACT: 切换显示面板不会卸载画布；仅清理交互，不中断本轮工具调用。
-watch(() => props.active, (active) => {
-  if (!active) assetsVisible.value = false;
+// 素材库面板的可见性归全局 store，切换画布/文档时不再强制关闭。
+watch(() => props.active, () => {
   edgeDisconnect.value = undefined;
   dragCopy = undefined;
   pointerPosition = undefined;
@@ -1239,6 +1421,97 @@ const defaultEdgeOptions = markRaw({
 
   &.multiSelectionMode :deep(.vue-flow__nodesselection-rect) {
     pointer-events: none;
+  }
+}
+.agentPortMenu {
+  position: fixed;
+  z-index: 3000;
+  width: 240px;
+  max-height: min(320px, 60vh);
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-bg-color-overlay);
+  box-shadow: var(--el-box-shadow-light);
+  outline: none;
+
+  .agentPortMenuTitle {
+    padding: 6px 8px 4px;
+    overflow: hidden;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .agentPortMenuItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: var(--el-border-radius-small);
+    background: transparent;
+    color: var(--el-text-color-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    .agentPortThumbnail {
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
+    .agentPortText {
+      display: flex;
+      flex: 1;
+      min-width: 0;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .agentPortName {
+      overflow: hidden;
+      font-size: 13px;
+      line-height: 18px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .agentPortMeta {
+      overflow: hidden;
+      color: var(--el-text-color-secondary);
+      font-size: 11px;
+      line-height: 15px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .agentPortEmpty {
+      flex-shrink: 0;
+      color: var(--el-text-color-placeholder);
+      font-size: 11px;
+    }
+
+    &:hover:not(:disabled),
+    &.active:not(:disabled) {
+      background: var(--el-fill-color-light);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--el-color-primary);
+      outline-offset: -2px;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
   }
 }
 .edgeDisconnect {

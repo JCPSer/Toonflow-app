@@ -11,7 +11,7 @@ import conf from "@/utils/conf";
 import { callControl, getConnection, listConnections } from "@/utils/mcp/control";
 import { appOperations, runAppOperation } from "@/utils/mcp/operations";
 import { listTools } from "@/utils/plugins/tools";
-import { isWithin, lockWorkspaceFiles, protectWorkspaceRoot, renameWorkspaceFile, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
+import { isWithin, lockWorkspaceFiles, protectWorkspaceLibraryPath, protectWorkspaceRoot, renameWorkspaceFile, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
 import { getRuntimePlatform } from "@/lib/platform";
 import { thinkingLevels } from "@/lib/modelReasoning";
 
@@ -41,6 +41,11 @@ async function resolveTarget(target: z.infer<typeof targetSchema> = {}, requireD
   if (target.canvasId && connection?.state.canvasId !== target.canvasId) throw new Error("目标画布已切换，请重新获取 getAppState");
   const directory = requireDirectory ? requestedDirectory ?? await resolveDirectory(connection?.state.directory ?? undefined) : undefined;
   return { connection, directory };
+}
+
+/** 这些路由的 directory 只能由 target 注入，不能由调用方自行指定。 */
+function injectsWorkspaceDirectory(path: string) {
+  return path.startsWith("/api/agent/") || path.startsWith("/api/assets/");
 }
 
 function wrapTool(name: string, description: string, schema: object, execute: (args: Record<string, unknown>, target: z.infer<typeof targetSchema>, signal: AbortSignal) => Promise<unknown>): McpTool {
@@ -154,19 +159,25 @@ export async function getMcpTools(): Promise<McpTool[]> {
     const { directory } = await resolveTarget(target);
     const source = await resolveWorkspacePath(directory!, args.path);
     signal.throwIfAborted();
-    if (args.action === "list") return (await readdir(source.path, { withFileTypes: true })).filter(item => item.isFile() || item.isDirectory()).map(item => ({ name: item.name, type: item.isDirectory() ? "directory" : "file" }));
+    if (args.action === "list") return (await readdir(source.path, { withFileTypes: true }))
+      .filter(item => (item.isFile() || item.isDirectory())
+        && !(source.path === directory && ["library", "library-assets"].includes(item.name.toLocaleLowerCase())))
+      .map(item => ({ name: item.name, type: item.isDirectory() ? "directory" : "file" }));
     if (args.action === "readBinary") {
       const info = await stat(source.path);
       if (!info.isFile() || info.size > 20 * 1024 * 1024) throw new Error("文件必须是不超过20MB的普通文件");
       return { path: args.path, base64: (await readFile(source.path, { signal })).toString("base64") };
     }
     protectWorkspaceRoot(directory!, source.path);
+    protectWorkspaceLibraryPath(directory!, source.path);
     await assertFileNotOpen(directory!, args.path);
     const destination = args.action === "rename" && args.target ? await resolveWorkspacePath(directory!, args.target) : undefined;
     if (args.action === "rename" && !destination) throw new Error("重命名需要提供 args.target");
     if (destination) {
       protectWorkspaceRoot(directory!, destination.path);
+      protectWorkspaceLibraryPath(directory!, destination.path);
       destination.path = resolve(dirname(destination.path), basename(resolve(directory!, args.target!)));
+      protectWorkspaceLibraryPath(directory!, destination.path);
     }
     const release = lockWorkspaceFiles([source.path, ...(destination ? [destination.path] : [])]);
     try {
@@ -185,7 +196,7 @@ export async function getMcpTools(): Promise<McpTool[]> {
   tools.push(wrapTool("listAppOperations", "按需查询插件、媒体供应商、素材库和 Agent 历史管理操作及其参数。先查询 schema，再调用 appOperation。", z.toJSONSchema(z.strictObject({ name: z.string().optional() })), async args => {
     return appOperations.filter(item => !args.name || item.name === args.name).map(({ name, description, parameters, path }) => {
       const schema = z.toJSONSchema(parameters);
-      if (path.startsWith("/api/agent/")) {
+      if (injectsWorkspaceDirectory(path)) {
         delete schema.properties?.directory;
         schema.required = schema.required?.filter(key => key !== "directory");
       }
@@ -196,7 +207,16 @@ export async function getMcpTools(): Promise<McpTool[]> {
     const operation = appOperations.find(item => item.name === args.name);
     if (!operation) throw new Error("应用操作不存在，请查询 listAppOperations");
     const parameters = { ...args.parameters as Record<string, unknown> };
-    if (operation.path.startsWith("/api/agent/")) parameters.directory = (await resolveTarget(target)).directory;
+    if (injectsWorkspaceDirectory(operation.path)) {
+      const directory = (await resolveTarget(target)).directory;
+      // ACT: 兼容旧客户端仍传 directory，但必须等于服务端从连接解析出的目标工作区。
+      if (parameters.directory !== undefined) {
+        if (typeof parameters.directory !== "string") throw new Error("directory 必须是工作区绝对路径");
+        const requested = await resolveDirectory(parameters.directory);
+        if (requested !== directory) throw new Error("directory 必须与目标连接的工作区一致");
+      }
+      parameters.directory = directory;
+    }
     const result = await runAppOperation(operation.name, parameters, signal);
     const refreshErrors: string[] = [];
     if (operation.refresh) {

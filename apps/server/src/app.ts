@@ -15,6 +15,23 @@ import { detectLocale, normalizeLocale } from "@toonflow/i18n";
 
 const autoInstallProviders = ["tfRouter.ts", "apiMart.ts", "metaso.ts", "compshare.ts"];
 
+/**
+ * CORS 只放行同源页面、无 Origin 的本机/命令行调用，以及携带设备令牌的移动端。
+ * 不返回 "*"，也不回显未经校验的 Origin；真正的安全边界仍由各路由的同源校验负责。
+ */
+function corsOriginAllowed(req: Request, origin: string) {
+  if (origin === "null") return false;
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    if (url.host === req.get("host")) return true;
+  } catch {
+    return false;
+  }
+  // 移动端经设备令牌网关转发；浏览器跨源预检不会携带该自定义头，因此无法借此绕过。
+  return /^[\w-]{32,256}$/.test(req.get("x-toonflow-device-token") ?? "");
+}
+
 export async function createApp({
   webRoot,
   appVersion = "",
@@ -90,7 +107,14 @@ export async function createApp({
     await buildRoute();
     app.use(logger("dev"));
   }
-  app.use(cors());
+  app.use((request, response, next) => {
+    const origin = request.get("origin");
+    if (origin !== undefined && !corsOriginAllowed(request, origin)) {
+      response.status(403).json({ code: 403, data: null, message: "跨源请求已被拒绝" });
+      return;
+    }
+    cors({ origin: origin ?? false, credentials: false, maxAge: 86400 })(request, response, next);
+  });
   app.use(languageRequest);
   app.use("/a2a", express.json({ limit: "2mb" }));
   app.use(["/api/workspaces/files/write", "/api/assets/save"], express.raw({ type: "application/octet-stream", limit: "100mb" }));

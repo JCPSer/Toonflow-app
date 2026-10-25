@@ -5,6 +5,7 @@ import { createCanvasMention, mentionAssetType, mentionNodeOutputs, mentionRecor
   type MentionCanvasNode, type MentionQuery } from "./mentionSources";
 import type { AgentMention } from "./runtime/types";
 import { decodeTextFile } from "@/lib/documentFormats";
+import { assertAssetRelativePath, openAssetLibrary } from "@/utils/assets/roots";
 export { queryAssets as queryMentionAssets } from "@/utils/assets";
 
 type StoredCanvas = { revision: string; nodes: MentionCanvasNode[]; byId: Map<string, MentionCanvasNode> };
@@ -61,7 +62,9 @@ export async function listMentionCanvases(directory: string, signal: AbortSignal
       signal.throwIfAborted();
       const relativePath = folder ? `${folder}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        if (entry.name.toLowerCase() !== "assets") folders.push(relativePath);
+        // ACT: 素材库与项目内部目录不参与画布列举，避免把库内 JSON 当成画布。
+        const name = entry.name.toLocaleLowerCase();
+        if (!["assets", "library", "library-assets", ".library", ".trash", ".thumbs", ".agent"].includes(name) && !entry.name.startsWith(".toonflowCopy")) folders.push(relativePath);
         continue;
       }
       if (!entry.isFile() || !/\.json$/i.test(entry.name)) continue;
@@ -93,12 +96,17 @@ export async function storedMentionOutput(directory: string, canvasId: string, n
   return outputId === undefined ? mentionNodeOutputs(node) : createCanvasMention(node, canvasId, outputId, path => readMentionText(directory, path));
 }
 
-export async function selectMentionAsset(relativePath: string): Promise<AgentMention> {
-  const directory = await u.assets.getAssetsDirectory();
-  const { path } = await u.workspaceFile.resolveWorkspacePath(directory, relativePath);
+export async function selectMentionAsset(relativePath: string, options: { library?: "global" | "project"; directory?: string } = {}): Promise<AgentMention> {
+  const library = options.library ?? "global";
+  if (library === "project" && !options.directory) throw Object.assign(new Error("项目素材库必须提供工作区目录"), { status: 400 });
+  const root = library === "project"
+    ? (await openAssetLibrary({ library: "project", directory: options.directory })).root
+    : await u.assets.getAssetsDirectory();
+  assertAssetRelativePath(relativePath);
+  const { path } = await u.workspaceFile.resolveWorkspacePath(root, relativePath);
   const info = await stat(path);
   const type = mentionAssetType(relativePath);
   if (!info.isFile() || !info.size || info.size > 100 * 1024 * 1024) throw Object.assign(new Error("请选择非空且不超过 100 MB 的素材文件"), { status: 400 });
-  const value = type.dataType === "STRING" ? await readMentionText(directory, relativePath) : { url: relativePath, mimeType: type.mimeType };
-  return { id: crypto.randomUUID(), label: basename(path), source: { kind: "asset", path: relativePath }, dataType: type.dataType, value };
+  const value = type.dataType === "STRING" ? await readMentionText(root, relativePath) : { url: relativePath, mimeType: type.mimeType };
+  return { id: crypto.randomUUID(), label: basename(path), source: { kind: "asset", path: relativePath, library }, dataType: type.dataType, value };
 }

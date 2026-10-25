@@ -70,6 +70,7 @@ import { mentionName, mentionParts, mentionThumbnailProps } from "../mentionText
 import attachmentList from "../attachmentList.vue";
 import { createPastedTextFile, readTextAttachment } from "../textAttachments";
 import type { AgentAttachment, AgentMessage } from "../types";
+import { useAgentComposerStore } from "@/stores/agentComposer";
 import contextUsagePopover from "./contextUsage.vue";
 import useVoiceInput from "./useVoiceInput";
 import xSender, { type AnyTagProps } from "x-sender";
@@ -98,6 +99,7 @@ const skillMenuRef = ref<InstanceType<typeof skillMenu>>();
 const skillQuery = ref<string>();
 const mentionMenuRef = ref<InstanceType<typeof mentionMenu>>();
 const mentionQuery = ref<string>();
+const agentComposer = useAgentComposerStore();
 let mentionPosition: { node: ReturnType<xSender["getCurrentNode"]>; remove: number } | undefined;
 let insertingMentions = false;
 const senderHeight = ref(44);
@@ -169,21 +171,44 @@ function handleSenderKeydown(event: KeyboardEvent) {
   skillMenuRef.value?.handleKeydown(event);
 }
 
-async function insertMentions(mentions: AgentMention[]) {
+// ACT: 同一画布输出或素材只允许出现一次；重复加入时提示而不是再插入一个标签。
+function mentionIdentity(mention: AgentMention) {
+  const source = mention.source;
+  return source.kind === "canvas"
+    ? `canvas:${source.canvasId}:${source.nodeId}:${source.outputId}`
+    : `asset:${source.library ?? "global"}:${source.path}`;
+}
+
+async function insertMentions(mentions: AgentMention[], focusEnd = false) {
   const instance = sender;
   if (!instance || locked.value || !props.active) return;
-  const currentIds = new Set(instance.getTagData().mention.map(item => item.id));
-  if (currentIds.size + mentions.length > 20) return ElMessage.warning("每条消息最多提及 20 个输出或素材");
+  const tagIds = new Set(instance.getTagData().mention.map(item => item.id));
+  const existingKeys = new Set(draftMentions.value.filter(item => tagIds.has(item.id)).map(mentionIdentity));
+  const fresh = mentions.filter(mention => {
+    const key = mentionIdentity(mention);
+    if (existingKeys.has(key)) return false;
+    existingKeys.add(key);
+    return true;
+  });
+  if (!fresh.length) {
+    if (mentions.length) ElMessage.info("已在上下文中");
+    return;
+  }
+  if (tagIds.size + fresh.length > 20) return ElMessage.warning("每条消息最多提及 20 个输出或素材");
   insertingMentions = true;
   try {
-    if (mentionPosition?.node.instance.$el.isConnected) mentionPosition.node.instance.focus(mentionPosition.node.offset);
+    // 节点快捷加入始终追加到草稿末尾，忽略手动 @ 残留的插入位置。
+    const position = focusEnd ? undefined : mentionPosition;
+    if (position?.node.instance.$el.isConnected) position.node.instance.focus(position.node.offset);
     else instance.focus("last");
-    if (mentionPosition?.remove) await instance.backspace(-mentionPosition.remove);
-    for (const mention of mentions) {
+    if (position?.remove) await instance.backspace(-position.remove);
+    for (const mention of fresh) {
       if (sender !== instance || !props.active) break;
       draftMentions.value.push(mention);
       await instance.setMention({ id: mention.id, name: mentionName(mention) });
     }
+    // 节点快捷加入没有 mentionPosition，插入后把光标停在末尾；手动 @ 保持原插入位置。
+    if (focusEnd && sender === instance) instance.focus("last");
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "添加提及失败");
   } finally {
@@ -192,6 +217,24 @@ async function insertMentions(mentions: AgentMention[]) {
     insertingMentions = false;
   }
 }
+
+let drainingAgentComposer = false;
+async function drainAgentComposer() {
+  if (drainingAgentComposer || !sender || locked.value || !props.active || !agentComposer.queue.length) return;
+  drainingAgentComposer = true;
+  try {
+    while (sender && !locked.value && props.active && agentComposer.queue.length) {
+      await insertMentions(agentComposer.take(props.directory), true);
+    }
+  } finally {
+    drainingAgentComposer = false;
+  }
+}
+
+watch(() => agentComposer.queue.length, () => { void drainAgentComposer(); }, { flush: "post" });
+watch([() => props.active, locked], ([active, isLocked]) => {
+  if (active && !isLocked) void drainAgentComposer();
+}, { flush: "post" });
 
 async function removeDraftMention(id: string) {
   if (!locked.value) await sender?.removeMention([id]);
@@ -418,6 +461,8 @@ watch(senderElement, (element, _previous, onCleanup) => {
   instance.bus.on("agentConversation", xSender.EventSet.EVENT_COMMON_TAG_CLICK, (tag: { type: string; id?: string }) => {
     if (tag.type === "Mention" && tag.id) draftMentionPreview.value?.preview(tag.id);
   });
+  // 输入框挂载后消费面板打开前已排队的提及。
+  void drainAgentComposer();
   const editor = instance.chatElement.richText;
   const nextTick = instance.nextTick.bind(instance);
   instance.nextTick = callback => nextTick(() => { if (sender === instance && editor.isConnected) return typeof callback === "function" ? callback() : callback; });
@@ -470,7 +515,7 @@ async function clearDraft() {
   await sender?.reset();
 }
 
-defineExpose({ getDraft, clearDraft, fillPrompt, editMessage, cancelEdit, restoreEditingDraft });
+defineExpose({ getDraft, clearDraft, fillPrompt, editMessage, cancelEdit, restoreEditingDraft, insertMentions });
 </script>
 
 <style lang="scss">

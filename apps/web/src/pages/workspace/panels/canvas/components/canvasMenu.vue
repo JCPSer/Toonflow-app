@@ -157,7 +157,7 @@ const moveVisible = ref(false);
 let treeRequest = 0;
 const treeEntries = computed(() => {
   const entries: CanvasEntry[] = [];
-  const visibleCanvases = canvases.value.filter(canvas => !canvas.id.split("/").slice(0, -1).some(name => ["assets", ".agent"].includes(name.toLowerCase())));
+  const visibleCanvases = canvases.value.filter(canvas => !canvas.id.split("/").slice(0, -1).some(name => ["assets", ".agent", "library", "library-assets"].includes(name.toLowerCase())));
   const directories = new Map<string, CanvasEntry & { children: CanvasEntry[] }>();
   for (const folder of folders.value) directories.set(folder.path, { ...folder, children: [] });
   for (const canvas of visibleCanvases) {
@@ -598,6 +598,8 @@ function normalizeFolderName(name: string) {
   name = normalizeCanvasName(name, "文件夹");
   if (name.toLowerCase() === "assets") throw new Error("assets 是节点素材目录，请使用其他文件夹名称");
   if (name.toLowerCase() === ".agent") throw new Error(".agent 是 Agent 数据目录，请使用其他文件夹名称");
+  if (name.toLowerCase() === "library") throw new Error("library 是项目素材库目录，请使用其他文件夹名称");
+  if (name.toLowerCase() === "library-assets") throw new Error("library-assets 是项目素材库的备用目录，请使用其他文件夹名称");
   return name;
 }
 

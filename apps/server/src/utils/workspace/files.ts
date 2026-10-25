@@ -95,3 +95,12 @@ export function lockWorkspaceFiles(paths: string[]) {
 export function protectWorkspaceRoot(directory: string, path: string) {
   if (directory === path) throw Object.assign(new Error("不能修改工作区根目录"), { status: 400 });
 }
+
+/** 项目根的 library / library-assets 归素材库管理，文件树不能删除、移动或覆盖其中的内容。 */
+export function protectWorkspaceLibraryPath(directory: string, path: string) {
+  const relativePath = relative(directory, path);
+  const top = relativePath.split(/[\\/]/)[0]?.toLocaleLowerCase();
+  if (!relativePath || top === "library" || top === "library-assets") {
+    throw Object.assign(new Error("项目素材库目录由素材库管理，不能通过文件树删除或移动"), { status: 403, code: "EPROTECTED" });
+  }
+}

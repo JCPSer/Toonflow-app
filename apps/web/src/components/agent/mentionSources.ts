@@ -50,8 +50,8 @@ export function useMentionSources(getDirectory: () => string | undefined) {
       signal?.throwIfAborted();
       return getCanvasSource?.()?.outputs(canvasId, nodeId) ?? request<MentionOutput[]>("outputs", { canvasId, nodeId }, signal);
     },
-    assets({ signal, ...options }: MentionQuery & { path?: string } = {}) {
-      return request<MentionPage<MentionAsset>>("assets", options, signal);
+    assets({ signal, library = "global", ...options }: MentionQuery & { path?: string; library?: "global" | "project" } = {}) {
+      return request<MentionPage<MentionAsset>>("assets", { ...options, library }, signal);
     },
     async selectCanvas({ canvasId, nodeId, outputId, signal }: { canvasId: string; nodeId: string; outputId: string; signal?: AbortSignal }) {
       signal?.throwIfAborted();
@@ -62,8 +62,8 @@ export function useMentionSources(getDirectory: () => string | undefined) {
       if (directory !== getDirectory()) throw new Error("工作区已切换，请重新选择");
       return selected;
     },
-    selectAsset({ path, signal }: { path: string; signal?: AbortSignal }) {
-      return request<AgentMention>("selectAsset", { path }, signal);
+    selectAsset({ path, library = "global", signal }: { path: string; library?: "global" | "project"; signal?: AbortSignal }) {
+      return request<AgentMention>("selectAsset", { path, library }, signal);
     },
   };
 }

@@ -1,5 +1,5 @@
 <template>
-  <main class="workspacePage" :inert="workspaceStore.projectLoadingVisible" :style="{ '--agentWidth': `${agentVisible ? agentWidth : 0}px` }">
+  <main class="workspacePage" :inert="workspaceStore.projectLoadingVisible" :style="{ '--agentWidth': `${agentVisible ? agentWidth : 0}px`, '--assetWidth': `${assetWidth}px` }">
     <canvasPanel
       :key="workspaceStore.project?.directory"
       v-model:selectedTool="selectedTool"
@@ -111,6 +111,7 @@
       </div>
     </div>
     <floatingAgent v-model="agentVisible" :inert="workspaceStore.projectLoadingVisible" @resize="agentWidth = $event" />
+    <floatingAssetLibrary :inert="workspaceStore.projectLoadingVisible" @resize="assetWidth = $event" />
     <settings v-model="settingsVisible" />
     <el-dialog v-model="contactVisible" :title="contactInfo.title" width="min(360px, calc(100vw - 32px))" alignCenter appendToBody>
       <div class="contactContent">
@@ -145,6 +146,7 @@ import canvasPanel from "./panels/canvas/canvasHost.vue";
 import type { DocumentNodeOptions } from "./panels/canvas/canvasFiles";
 import workspaceMenu from "./components/workspaceMenu.vue";
 import floatingAgent from "./components/floatingAgent.vue";
+import floatingAssetLibrary from "./panels/assetLibrary/floatingAssetLibrary.vue";
 
 const documentPanel = defineAsyncComponent(() => import("./panels/document/index.vue"));
 
@@ -170,6 +172,16 @@ const panelOptions = [
 ];
 const agentVisible = ref(true);
 const agentWidth = ref(0);
+function showAgentPanel() {
+  agentVisible.value = true;
+  // ACT: 面板可能刚由隐藏切到显示，等 DOM 更新后聚焦当前会话输入框；插入提及时还会再次聚焦。
+  void nextTick(() => {
+    const panel = document.getElementById("agentPanel");
+    const inputs = panel?.querySelectorAll<HTMLElement>("[contenteditable='true'], [role='textbox']") ?? [];
+    [...inputs].reverse().find(element => element.getClientRects().length)?.focus();
+  });
+}
+const assetWidth = ref(0);
 const settingsVisible = ref(false);
 const helpVisible = ref(false);
 const contactVisible = ref(false);
@@ -212,6 +224,7 @@ function setDocumentPanel(value: Element | ComponentPublicInstance | null) {
 provide("canvas", () => canvasPanelRef.value?.getCanvasContext());
 provide("mentionCanvas", () => canvasPanelRef.value?.mentionSource);
 provide("activateCanvasPanel", () => switchPanel("canvas"));
+provide("showAgentPanel", showAgentPanel);
 provide("performWorkspaceFileAction", (directory: string, action: "copy" | "rename" | "move" | "delete", path: string, target?: string, entryType: "canvas" | "directory" = "canvas") =>
   documentPanelRef.value ? documentPanelRef.value.performFileAction(directory, action, path, target, entryType) : performFileAction(directory, action, path, target));
 
@@ -385,8 +398,11 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
 
   .canvasPanel {
     position: absolute;
-    inset: 0;
-    width: calc(100% - var(--agentWidth, 0px));
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--assetWidth, 0px);
+    width: calc(100% - var(--agentWidth, 0px) - var(--assetWidth, 0px));
     container: canvasWorkspace / inline-size;
 
     &.backgroundPanel {
@@ -399,14 +415,17 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
   .workspaceMenu {
     position: absolute;
     top: 15px;
-    left: 15px;
+    left: calc(15px + var(--assetWidth, 0px));
     z-index: 5;
   }
 
   .workspaceTools {
     position: absolute;
-    inset: 0;
-    width: calc(100% - var(--agentWidth, 0px));
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--assetWidth, 0px);
+    width: calc(100% - var(--agentWidth, 0px) - var(--assetWidth, 0px));
     container: workspaceTools / inline-size;
     pointer-events: none;
 

@@ -5,7 +5,10 @@ import { mediaModelsSchema, mediaProviderFileSchema } from "@/utils/media/provid
 import { getAppRequestHeaders, getMcpRuntime } from "@/utils/mcp/runtime";
 
 const maxBytes = 20 * 1024 * 1024;
+const assetMaxBytes = 100 * 1024 * 1024;
 const directory = z.string().min(1).max(4096);
+const optionalDirectory = directory.optional();
+const assetLibrary = z.enum(["global", "project"]).optional();
 const path = z.string().min(1).max(4096);
 const pluginName = z.string().regex(/^[a-z][a-zA-Z0-9]*$/);
 const skillName = z.string().min(1).max(1024);
@@ -13,6 +16,7 @@ const skillPath = z.string().min(1).max(1024);
 const sessionFile = z.string().regex(/^[\w-]+\.jsonl$/);
 const revision = z.string().regex(/^[a-f0-9]{64}$/);
 const base64 = z.string().max(Math.ceil(maxBytes / 3) * 4).base64();
+const assetBase64 = z.string().max(Math.ceil(assetMaxBytes / 3) * 4).base64();
 const sourceFields = {
   source: z.string().min(1).max(maxBytes).optional(),
   url: z.url().max(4096).optional(),
@@ -110,22 +114,34 @@ export const appOperations: {
     parameters: z.strictObject({ fileName: mediaProviderFileSchema, revision }), refresh: { type: "provider", nameField: "fileName" },
   },
   {
-    name: "listAssets", description: "列出全局素材库的文件和文件夹树；与工作区 assets 目录不同。", method: "GET", path: "/api/assets/list", parameters: z.strictObject({}),
+    name: "listAssets", description: "列出素材库内容；不带参数时保留旧的全局库根目录一层结构（已弃用），传入 library/path/cursor/limit 等参数时分页返回。library=global（默认）为跨项目全局库，library=project 需同时提供 directory。", method: "GET", path: "/api/assets/list",
+    parameters: z.strictObject({ library: assetLibrary, directory: optionalDirectory, path: path.optional(),
+      query: z.string().max(500).optional(), cursor: z.string().max(4096).optional(), limit: z.number().int().min(1).max(200).optional() }),
   },
   {
-    name: "createAssetDirectory", description: "在全局素材库创建文件夹，path 为素材库内相对路径。", method: "POST", path: "/api/assets/mkdir", parameters: z.strictObject({ path }),
+    name: "createAssetDirectory", description: "在素材库创建文件夹，path 为库内相对路径；library/directory 含义同 listAssets。", method: "POST", path: "/api/assets/mkdir",
+    parameters: z.strictObject({ path, library: assetLibrary, directory: optionalDirectory }),
   },
   {
-    name: "renameAsset", description: "在全局素材库移动或重命名文件、文件夹，不覆盖已有目标。", method: "POST", path: "/api/assets/rename", parameters: z.strictObject({ path, target: path }),
+    name: "renameAsset", description: "在素材库移动或重命名文件、文件夹，不覆盖已有目标；library/directory 含义同 listAssets。", method: "POST", path: "/api/assets/rename",
+    parameters: z.strictObject({ path, target: path, library: assetLibrary, directory: optionalDirectory }),
   },
   {
-    name: "removeAsset", description: "从全局素材库删除文件或空文件夹，不递归删除内容。", method: "DELETE", path: "/api/assets/remove", parameters: z.strictObject({ path }),
+    name: "removeAsset", description: "把素材移入回收站（默认）或 permanent 彻底删除；被画布引用时返回引用列表，force 可强制删除。", method: "DELETE", path: "/api/assets/remove",
+    parameters: z.strictObject({ path, permanent: z.boolean().optional(), force: z.boolean().optional(), library: assetLibrary, directory: optionalDirectory }),
   },
   {
-    name: "readAsset", description: "读取不超过 20 MB 的全局素材文件，返回 base64 和 MIME 类型。", method: "GET", path: "/api/assets/read", parameters: z.strictObject({ path }),
+    name: "readAsset", description: "读取不超过 100 MB 的素材文件，返回 base64 和 MIME 类型；library/directory 含义同 listAssets。", method: "GET", path: "/api/assets/read",
+    parameters: z.strictObject({ path, library: assetLibrary, directory: optionalDirectory }),
   },
   {
-    name: "saveAsset", description: "以 base64 上传不超过 20 MB 的文件到全局素材库；不覆盖已有文件，父文件夹须存在。", method: "PUT", path: "/api/assets/save", parameters: z.strictObject({ path, base64 }),
+    name: "saveAsset", description: "以 base64 上传不超过 100 MB 的文件到素材库（客户端→库）；默认不覆盖已有文件，父文件夹须存在。工作区内的现成文件请用 collectAsset 直接复制。", method: "PUT", path: "/api/assets/save",
+    parameters: z.strictObject({ path, base64: assetBase64, library: assetLibrary, directory: optionalDirectory }),
+  },
+  {
+    name: "collectAsset", description: "把当前工作区文件直接复制进素材库（工作区→库），不改源文件，重名自动追加 (2)；与 import/readAsset 的库→工作区方向相反。", method: "POST", path: "/api/assets/import",
+    parameters: z.strictObject({ path, library: assetLibrary, directory: optionalDirectory,
+      targetDir: z.string().max(4096).optional(), name: z.string().min(1).max(255).optional() }),
   },
   {
     name: "listAgentSessions", description: "列出目标工作区的内置 Agent 历史对话。directory 由 target.directory 注入。", method: "GET", path: "/api/agent/list", parameters: z.strictObject({ directory }),
@@ -152,9 +168,14 @@ export async function runAppOperation(name: string, parameters: Record<string, u
   let body: string | ArrayBuffer | undefined;
   if (operation.name === "saveAsset") {
     url.searchParams.set("path", args.path as string);
+    for (const key of ["library", "directory"]) if (typeof args[key] === "string") url.searchParams.set(key, args[key] as string);
     body = new Uint8Array(Buffer.from(args.base64 as string, "base64")).buffer;
-    if (body.byteLength > maxBytes) throw new Error("素材文件不能超过 20 MB");
+    if (body.byteLength > assetMaxBytes) throw new Error("素材文件不能超过 100 MB");
     headers["Content-Type"] = "application/octet-stream";
+  } else if (operation.name === "collectAsset") {
+    body = JSON.stringify({ library: args.library, directory: args.directory, targetDir: args.targetDir, name: args.name,
+      source: { kind: "workspace", path: args.path } });
+    headers["Content-Type"] = "application/json";
   } else if (operation.method === "GET") {
     for (const [key, value] of Object.entries(args)) if (value !== undefined) url.searchParams.set(key, String(value));
   } else {
@@ -166,12 +187,12 @@ export async function runAppOperation(name: string, parameters: Record<string, u
   }
   const response = await fetch(url, { method: operation.method, headers, body, signal, redirect: "error" });
   if (operation.name === "readAsset" && response.ok) {
-    if (Number(response.headers.get("content-length")) > maxBytes) {
+    if (Number(response.headers.get("content-length")) > assetMaxBytes) {
       await response.body?.cancel();
-      throw new Error("素材文件不能超过 20 MB");
+      throw new Error("素材文件不能超过 100 MB");
     }
     const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.byteLength > maxBytes) throw new Error("素材文件不能超过 20 MB");
+    if (bytes.byteLength > assetMaxBytes) throw new Error("素材文件不能超过 100 MB");
     return { path: args.path, mimeType: response.headers.get("content-type"), base64: bytes.toString("base64") };
   }
   const result = await response.json() as { code?: number; data?: unknown; message?: string };

@@ -31,7 +31,7 @@ export function errorFromCause(cause: unknown): ApiResponse {
   }
   const failure = cause as { status?: number; code?: string } | null;
   const code = failure?.code;
-  const status = failure?.status || ({ ENOENT: 404, ENOTDIR: 404, EEXIST: 409, ENOTEMPTY: 409, EACCES: 403, EPERM: 403 }[code ?? ""] ?? 500);
+  const status = failure?.status || ({ ENOENT: 404, ENOTDIR: 404, EEXIST: 409, ENOTEMPTY: 409, EACCES: 403, EPERM: 403, EFBIG: 413 }[code ?? ""] ?? 500);
   const message =
     {
       ENOENT: "找不到这个文件或文件夹，可能已被移动、删除，或者位置选错了。",
@@ -41,6 +41,7 @@ export function errorFromCause(cause: unknown): ApiResponse {
       EACCES: "没有权限访问这个文件或文件夹。请检查权限，或换一个位置重试。",
       EPERM: "系统不允许这次操作。文件可能正在被其他程序使用，请关闭后重试。",
       EISDIR: "你选中的是文件夹，但这里需要的是文件。请重新选择具体文件。",
+      EFBIG: "文件太大，素材大小不能超过 100 MB。",
     }[code ?? ""] ?? translateError(cause);
   return error(message, code ? { code } : null, status);
 }

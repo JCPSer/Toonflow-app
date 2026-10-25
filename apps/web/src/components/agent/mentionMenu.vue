@@ -8,19 +8,22 @@
           <div class="mentionScopes" aria-label="提及来源">
             <button v-for="item in scopes" :key="item.id" type="button" :class="{ selected: scope === item.id }" :aria-pressed="scope === item.id" @click="changeScope(item.id)">{{ item.name }}</button>
           </div>
+          <div v-if="scope === 'assets'" class="mentionScopes mentionLibraries" role="group" aria-label="素材库范围">
+            <button v-for="item in assetLibraries" :key="item.id" type="button" :class="{ selected: assetLibrary === item.id }" :aria-pressed="assetLibrary === item.id" @click="changeAssetLibrary(item.id)">{{ item.name }}</button>
+          </div>
           <div v-if="selectedNode || selectedCanvas || assetPath" class="mentionBreadcrumb">
             <el-button text circle size="small" aria-label="返回上一级" @click="goBack"><icon-chevron-left :size="15" /></el-button>
             <span :title="breadcrumb">{{ breadcrumb }}</span>
           </div>
           <div class="mentionSearch"><el-input v-model="search" clearable :placeholder="searchPlaceholder" aria-label="搜索提及内容"><template #prefix><icon-search :size="15" /></template></el-input></div>
-          <el-scrollbar ref="listScrollbar" class="mentionScroll" :maxHeight="`${Math.max(90, popupHeight - (selectedNode || selectedCanvas || assetPath ? 218 : 188))}px`">
+          <el-scrollbar ref="listScrollbar" class="mentionScroll" :maxHeight="`${Math.max(90, popupHeight - (selectedNode || selectedCanvas || assetPath ? 218 : 188) - (scope === 'assets' ? 34 : 0))}px`">
             <div :id="listId" class="mentionList" role="listbox" aria-label="可提及内容" :aria-busy="loading || selecting" :aria-multiselectable="!!selectedNode">
               <div v-if="loading && !rows.length" class="mentionStatus" role="status">正在加载…</div>
               <div v-else-if="loadError" class="mentionStatus" role="alert"><span>{{ loadError }}</span><el-button text type="primary" size="small" @click="loadList()">重试</el-button></div>
               <div v-else-if="!rows.length" class="mentionStatus" role="status">{{ emptyText }}</div>
               <div class="mentionRows" :style="{ height: `${listVirtualizer.getTotalSize()}px` }">
                 <button v-for="{ row, index, start } in visibleRows" :id="`${listId}-${index}`" :key="`${row.kind}-${row.id}`" class="mentionItem" :style="{ transform: `translateY(${start}px)` }" :class="{ active: index === activeIndex, unavailable: !row.available, checked: row.kind === 'output' && selectedOutputs.includes(row.id) }" type="button" role="option" :aria-selected="row.kind === 'output' ? selectedOutputs.includes(row.id) : index === activeIndex" :aria-disabled="!row.available || selecting" :aria-posinset="index + 1" :aria-setsize="rows.length" :title="row.name" @mouseenter="activeIndex = index" @mousedown.prevent @click="chooseRow(row)">
-                  <mentionThumbnail :thumbnail="row.thumbnail" :directory="directory" :globalAsset="row.kind === 'file'"><component :is="row.kind === 'canvas' ? IconVector : row.kind === 'directory' ? IconFolder : row.dataType === 'image' || row.dataType === 'mask' ? IconPhoto : row.dataType === 'video' ? IconVideo : row.dataType === 'audio' ? IconMusic : row.dataType ? IconFileText : IconBox" :size="18" /></mentionThumbnail>
+                  <mentionThumbnail :thumbnail="row.thumbnail" :directory="directory" :globalAsset="row.kind === 'file'" :library="row.kind === 'file' ? assetLibrary : undefined"><component :is="row.kind === 'canvas' ? IconVector : row.kind === 'directory' ? IconFolder : row.dataType === 'image' || row.dataType === 'mask' ? IconPhoto : row.dataType === 'video' ? IconVideo : row.dataType === 'audio' ? IconMusic : row.dataType ? IconFileText : IconBox" :size="18" /></mentionThumbnail>
                   <span class="mentionContent"><span class="mentionName">{{ row.name }}</span><span v-if="row.description" class="mentionDescription">{{ row.description }}</span></span>
                   <span v-if="!row.available" class="mentionState">{{ row.kind === 'file' ? '不支持' : '暂无输出' }}</span>
                   <span v-else-if="row.kind === 'output'" class="mentionCheck" :class="{ selected: selectedOutputs.includes(row.id) }"><icon-check v-if="selectedOutputs.includes(row.id)" :size="12" /></span>
@@ -54,11 +57,14 @@ const props = defineProps<{ directory?: string; active: boolean; disabled: boole
 const emit = defineEmits<{ select: [mentions: AgentMention[]]; dismiss: []; open: [] }>();
 const sources = useMentionSources(() => props.directory);
 const listId = useId();
-const scopes = [{ id: "current", get name() { return translate("当前画布"); } }, { id: "other", get name() { return translate("其他画布"); } }, { id: "assets", get name() { return translate("全局素材"); } }] as const;
+const scopes = [{ id: "current", get name() { return translate("当前画布"); } }, { id: "other", get name() { return translate("其他画布"); } }, { id: "assets", get name() { return translate("素材"); } }] as const;
+const assetLibraries = [{ id: "global", get name() { return translate("全局素材"); } }, { id: "project", get name() { return translate("本项目素材"); } }] as const;
 type MentionScope = typeof scopes[number]["id"];
+type AssetLibrary = typeof assetLibraries[number]["id"];
 type MentionRow = { id: string; name: string; kind: "canvas" | "node" | "output" | "file" | "directory"; available: boolean; description: string; dataType?: string; thumbnail?: { url: string; mimeType: string }; outputCount: number };
 const typeLabels: Record<string, string> = { STRING: "文本", INT: "整数", FLOAT: "数字", BOOLEAN: "布尔值", IMAGE: "图片", MASK: "遮罩", VIDEO: "视频", AUDIO: "音频", FILE: "文件" };
 const scope = ref<MentionScope>("current");
+const assetLibrary = ref<AssetLibrary>("global");
 const buttonVisible = ref(false);
 const visible = computed(() => props.active && !props.disabled && (buttonVisible.value || props.query !== undefined));
 const search = ref(props.query ?? "");
@@ -104,9 +110,13 @@ const listVirtualizer = useVirtualizer<HTMLDivElement, HTMLButtonElement>(comput
 })));
 const visibleRows = computed(() => listVirtualizer.value.getVirtualItems().map(item => ({ row: rows.value[item.index]!, index: item.index, start: item.start })));
 const hasMore = computed(() => !listingCanvases.value && !selectedNode.value && !!nextCursor.value);
-const breadcrumb = computed(() => selectedNode.value ? [selectedCanvas.value?.name ?? translate("当前画布"), selectedNode.value.name].join(" / ") : selectedCanvas.value?.name ?? assetPath.value);
-const searchPlaceholder = computed(() => selectedNode.value ? "搜索该节点的输出" : listingCanvases.value ? "搜索其他画布" : scope.value === "assets" ? "搜索素材" : "搜索节点名称或 ID");
-const emptyText = computed(() => scope.value === "current" && !canvasId.value ? translate("打开画布后即可提及节点输出") : search.value ? translate("没有找到匹配的内容") : selectedNode.value ? translate("该节点暂无可用输出") : listingCanvases.value ? translate("暂无其他画布") : scope.value === "assets" ? translate("暂无素材") : translate("当前画布暂无节点"));
+const breadcrumb = computed(() => selectedNode.value ? [selectedCanvas.value?.name ?? translate("当前画布"), selectedNode.value.name].join(" / ")
+  : selectedCanvas.value?.name ?? (scope.value === "assets" ? [assetLibrary.value === "project" ? translate("本项目素材") : translate("全局素材"), assetPath.value].filter(Boolean).join(" / ") : assetPath.value));
+const searchPlaceholder = computed(() => selectedNode.value ? "搜索该节点的输出" : listingCanvases.value ? "搜索其他画布"
+  : scope.value === "assets" ? (assetLibrary.value === "project" ? translate("搜索本项目素材") : translate("搜索全局素材")) : "搜索节点名称或 ID");
+const emptyText = computed(() => scope.value === "current" && !canvasId.value ? translate("打开画布后即可提及节点输出") : search.value ? translate("没有找到匹配的内容")
+  : selectedNode.value ? translate("该节点暂无可用输出") : listingCanvases.value ? translate("暂无其他画布")
+  : scope.value === "assets" ? (assetLibrary.value === "project" ? translate("本项目素材库暂无素材") : translate("全局素材暂无素材")) : translate("当前画布暂无节点"));
 let requestController: AbortController | undefined;
 let selectionController: AbortController | undefined;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -131,6 +141,15 @@ function changeScope(value: MentionScope) {
   search.value = "";
 }
 
+function changeAssetLibrary(value: AssetLibrary) {
+  if (assetLibrary.value === value) return;
+  assetLibrary.value = value;
+  assetPath.value = "";
+  search.value = "";
+  assets.value = [];
+  nextCursor.value = undefined;
+}
+
 function goBack() {
   if (selectedNode.value) selectedNode.value = undefined;
   else if (selectedCanvas.value) selectedCanvas.value = undefined;
@@ -150,11 +169,12 @@ async function loadList(append = false) {
       if (controller.signal.aborted) return;
       canvases.value = result;
     } else if (scope.value === "assets") {
-      let result = await sources.assets({ path: assetPath.value, query: search.value, cursor: append ? nextCursor.value : undefined, signal: controller.signal });
+      let result = await sources.assets({ library: assetLibrary.value, path: assetPath.value, query: search.value,
+        cursor: append ? nextCursor.value : undefined, signal: controller.signal });
       while (!controller.signal.aborted && !result.items.length && result.nextCursor) {
         await new Promise(resolve => setTimeout(resolve, 0));
         if (controller.signal.aborted) return;
-        result = await sources.assets({ path: assetPath.value, query: search.value, cursor: result.nextCursor, signal: controller.signal });
+        result = await sources.assets({ library: assetLibrary.value, path: assetPath.value, query: search.value, cursor: result.nextCursor, signal: controller.signal });
       }
       if (controller.signal.aborted) return;
       assets.value = append ? [...assets.value, ...result.items] : result.items;
@@ -212,7 +232,7 @@ async function chooseRow(row: MentionRow) {
   selecting.value = true;
   try {
     let mention: AgentMention;
-    if (row.kind === "file") mention = await sources.selectAsset({ path: row.id, signal: controller.signal });
+    if (row.kind === "file") mention = await sources.selectAsset({ library: assetLibrary.value, path: row.id, signal: controller.signal });
     else {
       const id = canvasId.value;
       if (!id) return;
@@ -316,7 +336,7 @@ watch([visible, () => props.editor], ([open, editor], _previous, onCleanup) => {
     window.removeEventListener("scroll", updatePopupPosition, true);
   });
 }, { flush: "post" });
-watch([visible, scope, canvasId, selectedNode, assetPath, () => props.directory], () => {
+watch([visible, scope, assetLibrary, canvasId, selectedNode, assetPath, () => props.directory], () => {
   clearTimeout(searchTimer);
   requestController?.abort();
   selectionController?.abort();
@@ -416,6 +436,18 @@ defineExpose({ handleKeydown, openMenu, closeMenu });
 
         &.selected { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
         &:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: -2px; }
+      }
+
+      &.mentionLibraries {
+        padding-top: 0;
+
+        button {
+          padding: 4px 2px;
+          border: 1px solid var(--el-border-color-lighter);
+          font-size: 11px;
+
+          &.selected { border-color: var(--el-color-primary-light-7); }
+        }
       }
     }
     .mentionBreadcrumb {

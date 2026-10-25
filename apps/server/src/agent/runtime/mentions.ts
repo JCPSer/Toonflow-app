@@ -4,7 +4,8 @@ import { extname } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import type { AgentMention } from "@/agent/runtime/types";
-import { getAssetsDirectory } from "@/utils/assets";
+import { getAssetsDirectory, openAssetLibrary } from "@/utils/assets";
+import { assertAssetRelativePath } from "@/utils/assets/roots";
 import { lockWorkspaceFiles, resolveWorkspacePath } from "@/utils/workspace/files";
 import { getReadableFileExtension } from "@/lib/documentFormats";
 
@@ -40,7 +41,7 @@ export const agentMentionsSchema = z.array(z.strictObject({
       nodeId: z.string().min(1).max(256), nodeName: z.string().min(1).max(255),
       outputId: z.string().min(1).max(256), outputName: z.string().min(1).max(255),
     }),
-    z.strictObject({ kind: z.literal("asset"), path: z.string().min(1).max(4096) }),
+    z.strictObject({ kind: z.literal("asset"), path: z.string().min(1).max(4096), library: z.enum(["global", "project"]).optional() }),
   ]),
   dataType: z.string().min(1).max(64),
   value: z.unknown().refine(isBoundedValue, "引用内容须为深度不超过 32、长度不超过 100000 的 JSON 值"),
@@ -79,9 +80,15 @@ export async function snapshotMentions(cwd: string, mentions: AgentMention[], sa
       const previous = saved.find(item => item.id === mention.id && isDeepStrictEqual(item, mention));
       if (previous && !media) { result.push(mention); continue; }
       if (!media && mention.source.kind !== "asset") { result.push(mention); continue; }
-      const globalAsset = mention.source.kind === "asset" && !previous;
-      const root = globalAsset ? await getAssetsDirectory() : cwd;
-      const relativePath = globalAsset && mention.source.kind === "asset" ? mention.source.path : media!.url;
+      const newAsset = mention.source.kind === "asset" && !previous;
+      let root = cwd;
+      if (newAsset && mention.source.kind === "asset") {
+        // ACT: 旧会话没有 library 字段，按全局库处理；project 库始终绑定当前工作区，避免 source 指定任意目录。
+        const library = mention.source.library ?? "global";
+        root = library === "project" ? (await openAssetLibrary({ library: "project", directory: cwd })).root : await getAssetsDirectory();
+        assertAssetRelativePath(mention.source.path);
+      }
+      const relativePath = newAsset && mention.source.kind === "asset" ? mention.source.path : media!.url;
       let source: string;
       try {
         source = (await resolveWorkspacePath(root, relativePath)).path;

@@ -10,6 +10,7 @@ const router = Router();
 export default router.delete("/", validateFields({ directory: z.string().min(1).max(4096), path: z.string().max(4096), recursive: z.boolean().optional() }), async (req, res) => {
   const { directory, path } = await u.workspaceFile.resolveWorkspaceFile(req, req.body.directory, req.body.path);
   u.workspaceFile.protectWorkspaceRoot(directory, path);
+  u.workspaceFile.protectWorkspaceLibraryPath(directory, path);
   const release = u.workspaceFile.lockWorkspaceFiles([path]);
   try {
     if ((await lstat(path)).isDirectory() && req.body.recursive !== true) await rmdir(path);

@@ -12,7 +12,7 @@ import {
 import type { CanvasContext, QuestionContext, ToolContext, ToolFiles } from "@toonflow/tools-scaffold/runtime";
 import { asrRequestSchema } from "@toonflow/tools-scaffold/runtime";
 import conf from "@/utils/conf";
-import { isWithin, resolveWorkspacePath, writeWorkspaceFile, renameWorkspaceFile, lockWorkspaceFiles, protectWorkspaceRoot } from "@/utils/workspace/files";
+import { isWithin, resolveWorkspacePath, writeWorkspaceFile, renameWorkspaceFile, lockWorkspaceFiles, protectWorkspaceRoot, protectWorkspaceLibraryPath } from "@/utils/workspace/files";
 import { listTools, loadTool, validateToolConfig } from "@/utils/plugins/tools";
 import { createSkillContext } from "@/agent/skills";
 import { createAssetContext } from "@/agent/assets";
@@ -39,16 +39,24 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
     readFile: async (path, readOnly = false) => readFile(await resolvePath(path, readOnly)),
     access: async (path, readOnly = false) => access(await resolvePath(path, readOnly)),
     stat: async (path, readOnly = false) => stat(await resolvePath(path, readOnly)),
-    readdir: async (path, readOnly = false) => readdir(await resolvePath(path, readOnly)),
+    readdir: async (path, readOnly = false) => {
+      const target = await resolvePath(path, readOnly);
+      const entries = await readdir(target);
+      // ACT: 项目素材库由 assetOperator 管理，不在通用文件工具里暴露，避免绕过回收站直接删除。
+      return target === cwd ? entries.filter(name => !["library", "library-assets"].includes(name.toLocaleLowerCase())) : entries;
+    },
     detectImageMimeType: async (path, readOnly = false) => {
       const target = await resolvePath(path, readOnly);
       return withFileAccess([target], "read", () => detectSupportedImageMimeTypeFromFile(target));
     },
     writeFile: (path, content, exclusive = false) => withWritePaths([path], async ([target]) => {
+      protectWorkspaceLibraryPath(cwd, target);
       await writeWorkspaceFile(target, content, exclusive);
     }),
     mkdir: async (path, recursive = false) => {
       const target = await resolvePath(path);
+      // ACT: 项目 library / library-assets 归素材库管理，文件工具不能先占位再让资产库 fallback。
+      protectWorkspaceLibraryPath(cwd, target);
       // ACT: 递归创建已有目录无需修改，锁父目录会与 Agent 自己持有的会话文件锁冲突。
       if (recursive && (await stat(target).catch((error: NodeJS.ErrnoException) => {
         if (error.code === "ENOENT") return null;
@@ -61,14 +69,19 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
     rename: (path, target) => withWritePaths([path, target], async ([source, destination]) => {
       protectWorkspaceRoot(cwd, source);
       protectWorkspaceRoot(cwd, destination);
+      protectWorkspaceLibraryPath(cwd, source);
+      protectWorkspaceLibraryPath(cwd, destination);
       await renameWorkspaceFile(source, resolve(dirname(destination), basename(resolve(cwd, target))));
     }),
     remove: (path, recursive = false) => withWritePaths([path], async ([target]) => {
       protectWorkspaceRoot(cwd, target);
+      protectWorkspaceLibraryPath(cwd, target);
       if ((await lstat(target)).isDirectory() && !recursive) await rmdir(target);
       else await rm(target, { recursive });
     }),
     copyFile: (path, target, exclusive = false) => withWritePaths([path, target], async ([source, destination]) => {
+      protectWorkspaceLibraryPath(cwd, source);
+      protectWorkspaceLibraryPath(cwd, destination);
       await copyFile(source, destination, exclusive ? constants.COPYFILE_EXCL : 0);
     }),
   };
