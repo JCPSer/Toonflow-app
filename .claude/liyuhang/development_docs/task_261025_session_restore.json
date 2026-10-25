@@ -18,13 +18,109 @@
     "D8": "恢复不到上次画布时递归取子目录第一张"
   },
   "tasks": [
-    { "id": "T1", "subject": "M1 窗口几何（windowState.ts + index.ts）", "files": ["apps/desktop/src/windowState.ts", "apps/desktop/src/index.ts"], "depends_on": [], "status": "pending", "owner": "subagent-desktop" },
-    { "id": "T2", "subject": "M3 会话状态接口（GET/PATCH + 路由）", "files": ["apps/server/src/routes/sessionState/get.ts", "apps/server/src/routes/sessionState/patch.ts", "apps/server/src/router.ts"], "depends_on": [], "status": "pending", "owner": "subagent-server" },
-    { "id": "T3", "subject": "M4/M5 前端 sessionState store + 两个面板接入", "files": ["apps/web/src/stores/sessionState.ts", "apps/web/src/stores/assetLibrary.ts", "apps/web/src/pages/workspace/components/floatingPanel.vue", "apps/web/src/pages/workspace/panels/assetLibrary/floatingAssetLibrary.vue", "apps/web/src/pages/workspace/components/floatingAgent.vue", "apps/web/src/pages/workspace/index.vue"], "depends_on": ["T2"], "status": "pending", "owner": "subagent-web" },
-    { "id": "T4", "subject": "M6 上次画布（projectUi.ts + canvasHost/canvasMenu + list 隐藏）", "files": ["apps/web/src/lib/projectUi.ts", "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue", "apps/web/src/pages/workspace/panels/canvas/components/canvasMenu.vue", "apps/server/src/routes/workspaces/files/list.ts"], "depends_on": [], "status": "pending", "owner": "subagent-web" },
-    { "id": "T5", "subject": "M7 画布视图偏好（snap/showEdges/showMap）", "files": ["apps/web/src/pages/workspace/panels/canvas/index.vue", "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"], "depends_on": ["T3"], "status": "pending", "owner": "subagent-web" },
-    { "id": "T6", "subject": "M2 关闭闸门（主进程 + 前端 flush 钩子）", "files": ["apps/desktop/src/index.ts", "apps/web/src/lib/quitGuard.ts"], "depends_on": ["T3"], "status": "pending", "owner": "subagent-desktop" },
-    { "id": "T7", "subject": "测试：10 个场景（含重启/拔显示器/Cmd+Q）", "depends_on": ["T1", "T2", "T3", "T4", "T5", "T6"], "status": "pending", "owner": "Team Lead" },
-    { "id": "T8", "subject": "代码审查 + 打包同步 app", "depends_on": ["T7"], "status": "pending", "owner": "Team Lead" }
-  ]
+    {
+      "id": "T1",
+      "subject": "M1 窗口几何（windowState.ts + index.ts）",
+      "files": [
+        "apps/desktop/src/windowState.ts",
+        "apps/desktop/src/index.ts"
+      ],
+      "depends_on": [],
+      "status": "completed",
+      "owner": "subagent-desktop"
+    },
+    {
+      "id": "T2",
+      "subject": "M3 会话状态接口（GET/PATCH + 路由）",
+      "files": [
+        "apps/server/src/routes/sessionState/get.ts",
+        "apps/server/src/routes/sessionState/patch.ts",
+        "apps/server/src/router.ts"
+      ],
+      "depends_on": [],
+      "status": "completed",
+      "owner": "subagent-server"
+    },
+    {
+      "id": "T3",
+      "subject": "M4/M5 前端 sessionState store + 两个面板接入",
+      "files": [
+        "apps/web/src/stores/sessionState.ts",
+        "apps/web/src/stores/assetLibrary.ts",
+        "apps/web/src/pages/workspace/components/floatingPanel.vue",
+        "apps/web/src/pages/workspace/panels/assetLibrary/floatingAssetLibrary.vue",
+        "apps/web/src/pages/workspace/components/floatingAgent.vue",
+        "apps/web/src/pages/workspace/index.vue"
+      ],
+      "depends_on": [
+        "T2"
+      ],
+      "status": "completed",
+      "owner": "subagent-web"
+    },
+    {
+      "id": "T4",
+      "subject": "M6 上次画布（projectUi.ts + canvasHost/canvasMenu + list 隐藏）",
+      "files": [
+        "apps/web/src/lib/projectUi.ts",
+        "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue",
+        "apps/web/src/pages/workspace/panels/canvas/components/canvasMenu.vue",
+        "apps/server/src/routes/workspaces/files/list.ts"
+      ],
+      "depends_on": [],
+      "status": "completed",
+      "owner": "subagent-web"
+    },
+    {
+      "id": "T5",
+      "subject": "M7 画布视图偏好（snap/showEdges/showMap）",
+      "files": [
+        "apps/web/src/pages/workspace/panels/canvas/index.vue",
+        "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"
+      ],
+      "depends_on": [
+        "T3"
+      ],
+      "status": "completed",
+      "owner": "subagent-web"
+    },
+    {
+      "id": "T6",
+      "subject": "M2 关闭闸门（主进程 + 前端 flush 钩子）",
+      "files": [
+        "apps/desktop/src/index.ts",
+        "apps/web/src/lib/quitGuard.ts"
+      ],
+      "depends_on": [
+        "T3"
+      ],
+      "status": "completed",
+      "owner": "subagent-desktop"
+    },
+    {
+      "id": "T7",
+      "subject": "测试：10 个场景（含重启/拔显示器/Cmd+Q）",
+      "depends_on": [
+        "T1",
+        "T2",
+        "T3",
+        "T4",
+        "T5",
+        "T6"
+      ],
+      "status": "completed",
+      "owner": "Team Lead",
+      "result": "服务端隔离实例 + dev 真机 + 打包 app 窗口几何均已实测；拖拽后 ⌘Q 与更新重启两项未自动化"
+    },
+    {
+      "id": "T8",
+      "subject": "代码审查 + 打包同步 app",
+      "depends_on": [
+        "T7"
+      ],
+      "status": "completed",
+      "owner": "Team Lead"
+    }
+  ],
+  "status": "completed"
 }
