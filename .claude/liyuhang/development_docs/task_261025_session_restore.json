@@ -1,0 +1,30 @@
+{
+  "task_id": "task_261025_session_restore",
+  "created_at": "2026-10-25",
+  "owner": "liyuhang",
+  "goal": "会话恢复：窗口几何、上次画布、面板布局、画布视图偏好",
+  "docs": {
+    "requirements": ".claude/development_docs/liyuhang/1_requirements_matrix/2026-10-25-21-22-session-restore.md",
+    "solution": ".claude/development_docs/liyuhang/2_requirements_solutions/2026-10-25-21-53-session-restore.md"
+  },
+  "decisions": {
+    "D1": "上次画布写项目目录 .toonflow/ui.json",
+    "D2": "素材库与 Agent 面板布局都全机一份",
+    "D3": "记忆面板显隐",
+    "D4": "吸附/showEdges/showMap 为本机画布视图偏好",
+    "D5": "关窗闸门全覆盖 + 2s 超时",
+    "D6": "窗口几何存 data/windowState.json（主进程）",
+    "D7": "会话状态走 /api/session-state 轻量接口（深合并、无副作用）",
+    "D8": "恢复不到上次画布时递归取子目录第一张"
+  },
+  "tasks": [
+    { "id": "T1", "subject": "M1 窗口几何（windowState.ts + index.ts）", "files": ["apps/desktop/src/windowState.ts", "apps/desktop/src/index.ts"], "depends_on": [], "status": "pending", "owner": "subagent-desktop" },
+    { "id": "T2", "subject": "M3 会话状态接口（GET/PATCH + 路由）", "files": ["apps/server/src/routes/sessionState/get.ts", "apps/server/src/routes/sessionState/patch.ts", "apps/server/src/router.ts"], "depends_on": [], "status": "pending", "owner": "subagent-server" },
+    { "id": "T3", "subject": "M4/M5 前端 sessionState store + 两个面板接入", "files": ["apps/web/src/stores/sessionState.ts", "apps/web/src/stores/assetLibrary.ts", "apps/web/src/pages/workspace/components/floatingPanel.vue", "apps/web/src/pages/workspace/panels/assetLibrary/floatingAssetLibrary.vue", "apps/web/src/pages/workspace/components/floatingAgent.vue", "apps/web/src/pages/workspace/index.vue"], "depends_on": ["T2"], "status": "pending", "owner": "subagent-web" },
+    { "id": "T4", "subject": "M6 上次画布（projectUi.ts + canvasHost/canvasMenu + list 隐藏）", "files": ["apps/web/src/lib/projectUi.ts", "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue", "apps/web/src/pages/workspace/panels/canvas/components/canvasMenu.vue", "apps/server/src/routes/workspaces/files/list.ts"], "depends_on": [], "status": "pending", "owner": "subagent-web" },
+    { "id": "T5", "subject": "M7 画布视图偏好（snap/showEdges/showMap）", "files": ["apps/web/src/pages/workspace/panels/canvas/index.vue", "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue"], "depends_on": ["T3"], "status": "pending", "owner": "subagent-web" },
+    { "id": "T6", "subject": "M2 关闭闸门（主进程 + 前端 flush 钩子）", "files": ["apps/desktop/src/index.ts", "apps/web/src/lib/quitGuard.ts"], "depends_on": ["T3"], "status": "pending", "owner": "subagent-desktop" },
+    { "id": "T7", "subject": "测试：10 个场景（含重启/拔显示器/Cmd+Q）", "depends_on": ["T1", "T2", "T3", "T4", "T5", "T6"], "status": "pending", "owner": "Team Lead" },
+    { "id": "T8", "subject": "代码审查 + 打包同步 app", "depends_on": ["T7"], "status": "pending", "owner": "Team Lead" }
+  ]
+}

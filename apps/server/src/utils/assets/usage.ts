@@ -15,7 +15,7 @@ type Budget = { files: number; bytes: number; deadline: number; partial: boolean
 const maxFiles = 2000;
 const maxBytes = 64 * 1024 * 1024;
 const maxMilliseconds = 5000;
-const skippedDirectories = new Set(["assets", "library", "library-assets", "node_modules", ".git", ".agent", ".library", ".trash", ".thumbs"]);
+const skippedDirectories = new Set(["assets", "library", "library-assets", "node_modules", ".git", ".agent", ".toonflow", ".library", ".trash", ".thumbs"]);
 
 function isSkippedName(name: string) {
   return skippedDirectories.has(name.toLocaleLowerCase()) || name.startsWith(".toonflowCopy");

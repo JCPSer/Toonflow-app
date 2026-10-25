@@ -73,6 +73,8 @@
         v-model:assetsVisible="assetsVisible"
         v-model:snapEnabled="snapEnabled"
         v-model:showEdges="showEdges"
+        v-model:showMap="showMap"
+        :active="active"
         :canvasId="canvasId"
         :directory="project?.directory"
         :batchHistory="canvasHistory.batch"
@@ -201,6 +203,7 @@ import canvasMenu from "./components/canvasMenu.vue";
 import canvasControls from "./components/canvasControls.vue";
 import canvasEmpty from "./components/canvasEmpty.vue";
 import { useAssetLibraryStore } from "@/stores/assetLibrary";
+import { useSessionStateStore } from "@/stores/sessionState";
 import groupNode from "./components/groupNode.vue";
 import selectionToolbar from "./components/selectionToolbar.vue";
 import nodeSearch from "./components/nodeSearch.vue";
@@ -254,7 +257,16 @@ const remoteNodeTypes = computed(() => [
   ...new Set((flowData.value as { type?: string }[]).map((item) => item.type).filter((type): type is string => !!type?.startsWith("remote-"))),
 ]);
 let loadRequest = 0;
-const snapEnabled = ref(false);
+// ACT: 画布视图开关是本机编辑习惯（不属于某张画布内容），统一放会话状态并在所有画布实例间共享。
+const sessionState = useSessionStateStore();
+function canvasViewModel(key: "snap" | "showEdges" | "showMap") {
+  return computed<boolean>({
+    get: () => sessionState.state.canvasView[key],
+    set: value => sessionState.set(`canvasView.${key}`, value),
+  });
+}
+const snapEnabled = canvasViewModel("snap");
+const showMap = canvasViewModel("showMap");
 const zoomKeyPressed = ref(false);
 const panKeyPressed = ref(false);
 const selectionKeyPressed = ref(false);
@@ -266,7 +278,7 @@ let pointerPosition: XYPosition | undefined;
 const pressedCodes = new Set<string>();
 let gestureScale: number | undefined;
 let copyingNodes = false;
-const showEdges = ref(true);
+const showEdges = canvasViewModel("showEdges");
 const assetLibraryStore = useAssetLibraryStore();
 const assetsVisible = computed({
   get: () => assetLibraryStore.visible,

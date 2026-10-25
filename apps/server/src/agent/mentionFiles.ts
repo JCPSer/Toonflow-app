@@ -64,7 +64,7 @@ export async function listMentionCanvases(directory: string, signal: AbortSignal
       if (entry.isDirectory()) {
         // ACT: 素材库与项目内部目录不参与画布列举，避免把库内 JSON 当成画布。
         const name = entry.name.toLocaleLowerCase();
-        if (!["assets", "library", "library-assets", ".library", ".trash", ".thumbs", ".agent"].includes(name) && !entry.name.startsWith(".toonflowCopy")) folders.push(relativePath);
+        if (!["assets", "library", "library-assets", ".library", ".trash", ".thumbs", ".agent", ".toonflow"].includes(name) && !entry.name.startsWith(".toonflowCopy")) folders.push(relativePath);
         continue;
       }
       if (!entry.isFile() || !/\.json$/i.test(entry.name)) continue;

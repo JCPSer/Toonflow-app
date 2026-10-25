@@ -1,6 +1,6 @@
 <template>
   <mini-map
-    v-if="showMap"
+    v-if="showMap && (active ?? true)"
     class="canvasMiniMap"
     position="bottom-left"
     :pannable="true"
@@ -127,11 +127,13 @@ const props = defineProps<{
   canvasId: string;
   directory: string | undefined;
   batchHistory: (action: () => Promise<void>) => Promise<void>;
+  /** 非当前画布实例（canvasHost 会保留挂载）不渲染小地图，只跟随持久化的开关值。 */
+  active?: boolean;
 }>();
 const snapEnabled = defineModel<boolean>("snapEnabled", { required: true });
 const showEdges = defineModel<boolean>("showEdges", { required: true });
 const assetsVisible = defineModel<boolean>("assetsVisible", { default: false });
-const showMap = ref(false);
+const showMap = defineModel<boolean>("showMap", { required: true });
 const zoomMenuVisible = ref(false);
 const flow = useVueFlow();
 const { viewport, zoomTo, zoomIn, zoomOut, fitView, getNodes, updateNode } = flow;

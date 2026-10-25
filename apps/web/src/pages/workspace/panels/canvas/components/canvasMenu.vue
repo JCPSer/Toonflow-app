@@ -88,6 +88,7 @@ import { ElMessage, ElMessageBox, type DropdownInstance, type FilterNodeMethodFu
 import { IconVector, IconCheck, IconChevronDown, IconChevronUp, IconChevronRight, IconDots, IconFolder, IconFolderOpen, IconFolderPlus, IconPlus, IconSearch } from "@tabler/icons-vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
+import { readLastCanvas } from "@/lib/projectUi";
 import { getCanvasAssetDirectories, isCanvasFile } from "@/pages/workspace/canvasFile";
 import tfAccount from "@/components/settings/tfAccount.vue";
 import { providerBalances, tfBalanceApiKey, saveTfMediaApiKey, refreshProviderBalance } from "@/lib/providerBilling";
@@ -312,26 +313,52 @@ watch(() => props.directory, async (directory, _previous, onCleanup) => {
       await applyCanvas(props.initialCanvasId, directory);
       return;
     }
-    let entries = await listCanvases(directory, "", false, controller.signal);
-    let loaded = entries.canvases;
+    // 与根目录列表并行读取上次打开的画布指针；读取本身不写盘。
+    // 指针缺失/损坏（404、格式不符）由 readLastCanvas 返回 null；网络/5xx/权限错误必须上抛到
+    // 外层 loadError，绝不能当作“没有指针”回退到第一个画布，否则 canvasHost 会把错误画布写回指针。
+    const savedPromise = readLastCanvas(directory, controller.signal);
+    // 并行读取期间先吞掉拒绝事件，避免产生未处理拒绝；真正的错误在下面 await 时抛出。
+    savedPromise.catch(() => {});
+    const entries = await listCanvases(directory, "", false, controller.signal);
     if (cancelled) return;
-    if (!loaded.length && !entries.folders.length) {
-      try {
-        loaded = [await createCanvasFile(directory, "画布1")];
-      } catch (err) {
-        if (!axios.isAxiosError<{ data?: { code?: string } }>(err) || err.response?.status !== 409 || err.response.data.data?.code !== "EEXIST") throw err;
-        // 同时打开工作区时，读取另一请求刚创建的默认画布，不覆盖同名文件。
-        entries = await listCanvases(directory, "", false, controller.signal);
-        const refreshed = entries.canvases;
-        // 画布1.json 若被其他 JSON 占用，则使用下一个空闲名称，保留原文件。
-        loaded = refreshed.length ? refreshed : [await createCanvasFile(directory)];
-      }
-    }
+    const saved = await savedPromise;
     if (cancelled) return;
+
     folders.value = entries.folders;
     loadedDirectories.value = [""];
-    canvases.value = loaded;
-    if (canvases.value[0]) await applyCanvas(canvases.value[0].id, directory);
+    canvases.value = entries.canvases;
+
+    // 1) 指针命中根目录画布；2) 否则载入指针所在父目录后再命中。
+    let target = saved && canvases.value.some(canvas => canvas.id === saved) ? saved : undefined;
+    if (saved && !target) {
+      const parent = parentPath(saved);
+      if (parent) {
+        try { await loadDirectory(parent); }
+        catch (error) {
+          if (cancelled || controller.signal.aborted) throw error;
+          ElMessage.warning(errorMessage(error, "读取上次画布所在文件夹失败，已回退到第一个画布"));
+        }
+      }
+      if (cancelled) return;
+      if (canvases.value.some(canvas => canvas.id === saved)) target = saved;
+    }
+    // 命中子目录画布时展开祖先文件夹，保证树中可见并高亮。
+    if (target) expandCanvasAncestors(target);
+
+    // 3) 根目录第一张；4) 递归子目录第一张；5) 全新项目新建「画布1」；6) 只有子目录但无画布时保持空态。
+    if (!target) target = await firstAvailableCanvas(directory, entries, controller.signal);
+    if (cancelled) return;
+    if (target) {
+      try {
+        await applyCanvas(target, directory, controller.signal);
+      } catch (error) {
+        // 只有指针目标已被删除或格式无效才静默回退；网络错误继续抛出，避免悄悄换画布。
+        if (!saved || target !== saved || !isCanvasFallbackError(error) || cancelled) throw error;
+        target = await firstAvailableCanvas(directory, entries, controller.signal, saved);
+        if (cancelled || !target) return;
+        await applyCanvas(target, directory, controller.signal);
+      }
+    }
   } catch (err) {
     if (!cancelled) {
       loadError.value = errorMessage(err, "读取画布失败");
@@ -344,6 +371,63 @@ watch(() => props.directory, async (directory, _previous, onCleanup) => {
 
 function errorMessage(err: unknown, fallback: string) {
   return axios.isAxiosError<{ message?: string }>(err) ? err.response?.data.message || fallback : err instanceof Error ? err.message : fallback;
+}
+
+type CanvasListing = { canvases: Canvas[]; folders: CanvasEntry[] };
+
+/** 上一次画布位于子目录时，展开它的祖先文件夹，使懒加载树能显示并高亮该节点。 */
+function expandCanvasAncestors(canvasId: string) {
+  const parts = canvasId.split("/").slice(0, -1);
+  for (let index = 1; index <= parts.length; index++) {
+    const path = parts.slice(0, index).join("/");
+    if (!expandedFolders.value.includes(path)) expandedFolders.value.push(path);
+  }
+}
+
+/** 仅“文件已不存在/不是有效画布”允许静默回退；网络与权限错误交由外层提示。 */
+function isCanvasFallbackError(error: unknown) {
+  if (axios.isAxiosError(error) && error.response?.status === 404) return true;
+  return error instanceof Error && (error.message === "画布文件格式无效" || error.message === "画布不存在，请重新获取画布列表");
+}
+
+/**
+ * 按 6.2 的兜底顺序挑选要打开的画布：根目录第一张 → 递归子目录第一张 → 新建「画布1」。
+ * 根目录只有子目录且所有子目录都没有画布时返回 undefined，由界面保持空态。
+ */
+async function firstAvailableCanvas(directory: string, listing: CanvasListing, signal?: AbortSignal, exclude?: string) {
+  const rootCanvas = listing.canvases.find(canvas => canvas.id !== exclude);
+  if (rootCanvas) return rootCanvas.id;
+  if (listing.folders.length) {
+    // ACT: 使用 listCanvases 的 recursive 能力一次性列出全部子目录画布，不再走 activateCanvas/ensureCanvas。
+    const loaded = await listCanvases(directory, "", true, signal);
+    checkCanvasDirectory(directory, signal);
+    folders.value = loaded.folders;
+    loadedDirectories.value = ["", ...loaded.folders.map(folder => folder.path)];
+    mergeCanvases(loaded.canvases);
+    return loaded.canvases.find(canvas => canvas.id !== exclude)?.id;
+  }
+  // 根目录既无画布也无子目录：保持现有行为，新建「画布1」。
+  try {
+    const created = await createCanvasFile(directory, "画布1", signal);
+    checkCanvasDirectory(directory, signal);
+    mergeCanvases([created]);
+    return created.id;
+  } catch (err) {
+    if (!axios.isAxiosError<{ data?: { code?: string } }>(err) || err.response?.status !== 409 || err.response.data.data?.code !== "EEXIST") throw err;
+    // 同时打开工作区时，读取另一请求刚创建的默认画布，不覆盖同名文件。
+    const refreshed = await listCanvases(directory, "", false, signal);
+    checkCanvasDirectory(directory, signal);
+    folders.value = refreshed.folders;
+    loadedDirectories.value = [""];
+    mergeCanvases(refreshed.canvases);
+    const existing = refreshed.canvases.find(canvas => canvas.id !== exclude);
+    if (existing) return existing.id;
+    // 画布1.json 若被其他 JSON 占用，则使用下一个空闲名称，保留原文件。
+    const created = await createCanvasFile(directory, undefined, signal);
+    checkCanvasDirectory(directory, signal);
+    mergeCanvases([created]);
+    return created.id;
+  }
 }
 
 function peekCanvases() {
@@ -600,6 +684,7 @@ function normalizeFolderName(name: string) {
   if (name.toLowerCase() === ".agent") throw new Error(".agent 是 Agent 数据目录，请使用其他文件夹名称");
   if (name.toLowerCase() === "library") throw new Error("library 是项目素材库目录，请使用其他文件夹名称");
   if (name.toLowerCase() === "library-assets") throw new Error("library-assets 是项目素材库的备用目录，请使用其他文件夹名称");
+  if (name.toLowerCase() === ".toonflow") throw new Error(".toonflow 是项目配置目录，请使用其他文件夹名称");
   return name;
 }
 

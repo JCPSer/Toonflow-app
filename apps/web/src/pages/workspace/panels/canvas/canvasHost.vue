@@ -28,6 +28,7 @@ import { waitForControlValue } from "@/lib/mcpControl";
 import canvasPanel from "./index.vue";
 import overlayHost from "./overlayHost.vue";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
+import { flushAllLastCanvas, writeLastCanvas } from "@/lib/projectUi";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { createCanvasMention, mentionNodeOutputs, queryMentionNodes, type MentionCanvasSource } from "@toonflow/server/agent/mentionSources";
 import type { NodeDocumentState } from "@toonflow/nodes-scaffold/nodeDocument";
@@ -46,6 +47,24 @@ const canvasReady = computed(() => activeInstance.value?.canvasReady ?? false);
 const canvasListReady = computed(() => activeInstance.value?.canvasListReady ?? false);
 const lifetime = new AbortController();
 const workspaceStore = useWorkspaceStore();
+// M6：活动画布 ID 变化（切换/重命名/移动实例路径/删除）时记录上次画布。
+// 首次打开项目时实例尚未就绪，必须等出现过画布后再写，避免用空值覆盖待恢复的指针。
+let pointerArmed = false;
+watch(() => workspaceStore.project?.directory, () => { pointerArmed = false; });
+watch(canvasId, id => {
+  const directory = workspaceStore.project?.directory;
+  if (!directory) { pointerArmed = false; return; }
+  if (!id) {
+    // 只有曾经打开过画布，才把“当前无画布”视为删除结果并清空指针。
+    if (!pointerArmed) return;
+    pointerArmed = false;
+    writeLastCanvas(directory, null);
+    return;
+  }
+  pointerArmed = true;
+  // 500ms 防抖与串行化在 projectUi 内部完成。
+  writeLastCanvas(directory, id);
+});
 const canvases = shallowRef<{ id: string; name: string }[]>([]);
 const loadedDirectories = shallowRef<string[]>([]);
 let fileActionBusy = false;
@@ -66,6 +85,10 @@ watch(canvases, (current, previous) => {
   if (!entries.value.some(entry => entry.key === activeKey.value)) activeKey.value = entries.value[0]?.key ?? "";
 }, { flush: "sync" });
 onScopeDispose(() => lifetime.abort(new Error("工作区已关闭")));
+onScopeDispose(() => {
+  // 退出工作区时冲刷所有待写指针，避免在 500ms 防抖窗口内关闭导致丢失。
+  void flushAllLastCanvas();
+});
 
 const assetCleanup = createNodeAssetCleanup({
   directory: () => workspaceStore.project?.directory,

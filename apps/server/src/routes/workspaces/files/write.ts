@@ -14,7 +14,8 @@ export default router.put("/", validateFields({ directory: z.string().min(1).max
   }
   const { directory, path } = await u.workspaceFile.resolveWorkspaceFile(req, req.query.directory as string, req.query.path as string);
   u.workspaceFile.protectWorkspaceRoot(directory, path);
-  u.workspaceFile.protectWorkspaceLibraryPath(directory, path);
+  // ACT: 前端 projectUi 通过本接口写 .toonflow/ui.json；只放行该文件，其余 .toonflow 内容仍受保护。
+  u.workspaceFile.protectWorkspaceLibraryPath(directory, path, { allowProjectUi: true });
   const release = u.workspaceFile.lockWorkspaceFiles([path]);
   let revision: string | undefined;
   try {

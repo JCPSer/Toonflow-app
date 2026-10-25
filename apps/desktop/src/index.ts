@@ -14,6 +14,101 @@ import { parseInstallUrl } from "./protocol";
 import saveFile, { selectSaveFile } from "./saveFile";
 import createWindowsUpdater, { confirmWindowsUpdateStartup } from "./update/windowsUpdater";
 import prepareWebviewRuntime from "./webviewRuntime";
+import { clampToDisplays, loadWindowState, saveWindowState, WINDOW_MARGIN, type WindowFrame } from "./windowState";
+
+// ACT: 窗口几何状态放在模块级，关闭闸门后续可在任意时点调用 flushWindowState() 强制落盘。
+let activeWindow: BrowserWindow | undefined;
+let windowStatePath: string | undefined;
+/** 已确认的普通窗口几何（不含最大化时的屏幕几何）。 */
+let committedFrame: WindowFrame | undefined;
+let trackedMaximized = false;
+/**
+ * 启动时读取的最大化恢复意图。首次 show()/maximize() 生效前，启动期的 resize/move
+ * 几何事件不能把它清掉，否则 ready() 里的 maximize() 会被提前跳过。
+ * 观察到窗口确实最大化后视为已消费；此后用户取消最大化由 commitPendingFrame 正常清除。
+ */
+let restoreMaximized = false;
+/** resize/move 事件累积的最新几何，等待 400ms 防抖提交。 */
+let pendingFrame: WindowFrame | undefined;
+let geometryTimer: ReturnType<typeof setTimeout> | undefined;
+let persistTimer: ReturnType<typeof setTimeout> | undefined;
+
+function collectEventFrame(event: unknown, withSize: boolean): WindowFrame | undefined {
+  const data = (event as { data?: unknown } | null)?.data;
+  if (!data || typeof data !== "object") return undefined;
+  const { x, y, width, height } = data as Record<string, unknown>;
+  // ACT: SDK 的 move 事件只带 x/y，尺寸沿用最近一帧，避免为取尺寸再走一次 FFI。
+  const base = pendingFrame ?? committedFrame;
+  const nextWidth = withSize ? width : base?.width;
+  const nextHeight = withSize ? height : base?.height;
+  const values = [x, y, nextWidth, nextHeight];
+  if (!values.every(value => typeof value === "number" && Number.isFinite(value))) return undefined;
+  const frame = {
+    x: Math.round(x as number),
+    y: Math.round(y as number),
+    width: Math.round(nextWidth as number),
+    height: Math.round(nextHeight as number),
+  };
+  return frame.width > 0 && frame.height > 0 ? frame : undefined;
+}
+
+function commitPendingFrame() {
+  geometryTimer = undefined;
+  const frame = pendingFrame;
+  pendingFrame = undefined;
+  const window = activeWindow;
+  if (!frame || !window) return;
+  try {
+    // ACT: 最小化/全屏时的事件几何不是普通窗口状态，直接丢弃，避免污染 normal 或 maximized。
+    if (window.isMinimized() || window.isFullScreen()) return;
+    if (window.isMaximized()) {
+      trackedMaximized = true;
+      // ACT: maximize 已真实生效，启动时的恢复意图消费完毕。
+      restoreMaximized = false;
+      return;
+    }
+  } catch (error) {
+    console.error("读取窗口状态失败：", error);
+    return;
+  }
+  committedFrame = frame;
+  // ACT: 首次 show/maximize 生效前的启动期几何事件不代表用户取消最大化；
+  // 保留启动意图，避免它在 ready() 执行 maximize() 之前被清成 false。
+  if (!restoreMaximized) trackedMaximized = false;
+}
+
+function persistWindowState() {
+  persistTimer = undefined;
+  if (!windowStatePath || !committedFrame) return;
+  saveWindowState(windowStatePath, { version: 1, normal: committedFrame, maximized: trackedMaximized });
+}
+
+function handleGeometryEvent(event: unknown, withSize: boolean) {
+  const frame = collectEventFrame(event, withSize);
+  if (!frame) return;
+  pendingFrame = frame;
+  if (geometryTimer) clearTimeout(geometryTimer);
+  geometryTimer = setTimeout(commitPendingFrame, 400);
+  // ACT: 拖动/缩放期间不落盘，静默 2s 后才写，减少磁盘写入。
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(persistWindowState, 2000);
+}
+
+/** 关闭闸门复用：合并未提交的 pendingFrame 并同步写盘，可重复调用。 */
+export function flushWindowState() {
+  if (geometryTimer) {
+    clearTimeout(geometryTimer);
+    geometryTimer = undefined;
+  }
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = undefined;
+  }
+  // ACT: 关闭时把 <400ms 内尚未经防抖判定的几何并入 normal，保证最后一次拖动/缩放不丢失。
+  // 必须复用同一套判定：最大化/全屏/最小化时的几何不能写进 normal，否则下次"还原"会得到屏幕大小。
+  commitPendingFrame();
+  persistWindowState();
+}
 
 const execFileAsync = promisify(execFile);
 const pendingInstalls: PluginInstallRequest[] = [];
@@ -74,6 +169,17 @@ async function start() {
   let splash: Awaited<ReturnType<typeof showNativeSplash>> | undefined;
   let desktopConnection: Awaited<ReturnType<typeof import("./connection").default>> | undefined;
   let isClosing = false;
+  // 关闭闸门状态：allowClose 为本轮退出已放行；closeGate 保证单飞；pageReady 表示页面 JS 可接收 flush；
+  // forceQuit 用于启动失败等必须立刻退出的路径，跳过所有 veto。
+  let allowClose = false;
+  // ACT: 更新器退出批准是独立的一次性状态。更新失败/取消时进程不会退出，
+  // 若复用 allowClose 会永久跳过后续真实关窗的前端 flush。
+  let updateQuitApproved = false;
+  let closeGate: Promise<void> | null = null;
+  let pageReady = false;
+  let forceQuit = false;
+  // 前端 flush-done 回执的等待者；闸门单飞，同一时间最多一个。
+  let resolveFlushDone: (() => void) | undefined;
 
   try {
     // Windows 的 data 与 app 同级；macOS 的 data 与 .app 同级，避免随程序更新被替换。
@@ -160,8 +266,24 @@ async function start() {
 
     const { workArea } = Screen.getPrimaryDisplay();
     // ACT: 宽高分别限制在屏幕可用区域内，预留标题栏和边距，不固定比例。
-    const width = Math.min(1280, workArea.width - 64);
-    const height = Math.min(960, workArea.height - 64);
+    const defaultWidth = Math.min(1280, workArea.width - WINDOW_MARGIN);
+    const defaultHeight = Math.min(960, workArea.height - WINDOW_MARGIN);
+    // 无保存值或显示器信息异常时的默认居中窗口。
+    const defaultFrame: WindowFrame = {
+      width: defaultWidth,
+      height: defaultHeight,
+      x: workArea.x + Math.round((workArea.width - defaultWidth) / 2),
+      y: workArea.y + Math.round((workArea.height - defaultHeight) / 2),
+    };
+    windowStatePath = resolve(dataDirectory, "windowState.json");
+    const savedWindowState = loadWindowState(windowStatePath);
+    const initialFrame = savedWindowState
+      ? clampToDisplays(savedWindowState.normal, Screen.getAllDisplays(), defaultFrame)
+      : defaultFrame;
+    committedFrame = initialFrame;
+    trackedMaximized = savedWindowState?.maximized ?? false;
+    // ACT: 启动意图独立保存，供 ready() 首次 show() 后可靠执行 maximize()。
+    restoreMaximized = trackedMaximized;
     const mainWindow = new BrowserWindow({
       title: "Toonflow",
       url: `http://127.0.0.1:${connection.port}/?desktop=1${connection.remote ? "&remote=1" : ""}`,
@@ -189,17 +311,118 @@ async function start() {
         })();
       `,
       hidden: Boolean(splash),
-      frame: {
-        width,
-        height,
-        x: workArea.x + Math.round((workArea.width - width) / 2),
-        y: workArea.y + Math.round((workArea.height - height) / 2),
-      },
+      frame: initialFrame,
     });
-    // ACT: 菜单里的「退出」改为 action 项后必须自行接管；直接关主窗口，复用已有的连接与浏览器清理。
+    activeWindow = mainWindow;
+    // ACT: 主进程不知道当前挂载了几个画布实例，前端预算按「2s 基础 + 每实例 0.5s」计算；
+    // 这里取 4s 作为该公式的保守上界（2s + 4 个实例），既覆盖多画布保存，也不会让首页/失败页关窗长时间无响应。
+    const FLUSH_TIMEOUT_MS = 4000;
+
+    /** 等待页面回执；无论成功、失败还是超时都只结算一次。 */
+    function waitForFlushDone() {
+      return new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (resolveFlushDone === finish) resolveFlushDone = undefined;
+          resolve();
+        };
+        resolveFlushDone = finish;
+        const timer = setTimeout(finish, FLUSH_TIMEOUT_MS);
+      });
+    }
+
+    async function flushFrontendState() {
+      if (!pageReady) return;
+      // ACT: 先登记回执等待者再执行脚本，避免页面在 executeJavascript 返回前就回执导致丢消息。
+      const done = waitForFlushDone();
+      try {
+        mainWindow.webview?.executeJavascript("window.__toonflowFlush?.()");
+      } catch (error) {
+        // 页面不可用时不必等满超时，直接放行。
+        console.error("通知页面保存状态失败：", error);
+        resolveFlushDone?.();
+      }
+      await done;
+    }
+
+    /**
+     * 关闭闸门：等待前端落盘 → 写窗口几何 → 放行本轮退出。
+     * 绝不在 will-close / before-quit 的回调栈内直接 close()/requestClose()，统一用 setTimeout 跳出。
+     */
+    function runGate(kind: "close" | "quit" | "update") {
+      // ACT: 单飞。标题栏关闭、Dock 退出、更新重启可能连续触发，复用同一轮保存与放行。
+      if (closeGate) return closeGate;
+      const task = (async () => {
+        try {
+          await flushFrontendState();
+          // ACT: 闸门末端合并 pendingFrame 后落盘；最大化/全屏等判定仍复用 flushWindowState。
+          flushWindowState();
+        } finally {
+          // 即使前端保存异常也必须放行，否则窗口将无法关闭。
+          // ACT: update 只申请一次性退出批准；真实关窗/退出才置 allowClose。
+          if (kind === "update") updateQuitApproved = true;
+          else allowClose = true;
+        }
+      })();
+      closeGate = task;
+      void task.catch(error => console.error("关闭前保存失败：", error)).finally(() => {
+        // ACT: kind=update 由更新器自己重启，这里只负责保存与放行，绝不能关窗。
+        if (kind !== "close" && kind !== "quit") return;
+        setTimeout(() => kind === "quit" ? Utils.quit() : mainWindow.close(), 0);
+      });
+      return task;
+    }
+
+    mainWindow.on("will-close", (event: unknown) => {
+      if (allowClose || updateQuitApproved) return;
+      // ACT: 原生会同步读取 response；必须先同步 veto，再异步跑闸门。
+      (event as { response: { allow: boolean } }).response = { allow: false };
+      void runGate("close");
+    });
+    // ACT: Dock 退出/系统注销走 before-quit（菜单 ⌘Q 已改为 requestClose 走 will-close）。
+    Electrobun.events.on("before-quit", (event: { response?: { allow: boolean } }) => {
+      if (allowClose || updateQuitApproved || forceQuit || !activeWindow) return;
+      // ACT: 与 will-close 相同，必须同步 veto；异步结束后由闸门调用 Utils.quit()。
+      event.response = { allow: false };
+      void runGate("quit");
+    });
+    // ACT: 更新器内部只申请一次 quit 批准，被 veto 就会放弃整次更新；
+    // 因此先跑 update 闸门把 updateQuitApproved 置 true，再让真实 applyUpdate 走 requestQuitApproval。
+    function withUpdateGate(target: DesktopRuntime["updater"]): DesktopRuntime["updater"] {
+      if (typeof target.applyUpdate !== "function") return target;
+      const applyUpdate = target.applyUpdate.bind(target);
+      return {
+        ...target,
+        async applyUpdate() {
+          // ACT: 只清理本次 update 闸门自己建立的放行状态；若复用了正在进行的真实关窗闸门，
+          // 绝不回滚「已完成真实关窗」的 allowClose/closeGate。
+          const ownsGate = closeGate === null && !allowClose;
+          try {
+            await runGate("update");
+            await applyUpdate();
+          } finally {
+            // ACT: 更新器在 applyUpdate 内同步申请并消费 quit 批准：
+            // 成功时已排程退出（Windows 300ms 后 quitAfterApproval），失败/取消时进程继续运行。
+            // 两种情况都必须撤销一次性批准并清掉已结算的闸门，否则下一次真实关窗会跳过 flush。
+            if (ownsGate) {
+              updateQuitApproved = false;
+              closeGate = null;
+            }
+          }
+        },
+      };
+    }
+    // ACT: 窗口事件自带几何数据，不调 FFI；400ms 防抖后判定 maximized，静默 2s 后落盘。
+    mainWindow.on("resize", (event: unknown) => handleGeometryEvent(event, true));
+    mainWindow.on("move", (event: unknown) => handleGeometryEvent(event, false));
+    // ACT: 菜单里的「退出」改为 action 项后必须自行接管；requestClose 会走原生 will-close 闸门，
+    // 保存完成后再真正关闭，复用已有的连接与浏览器清理。
     ApplicationMenu.on("application-menu-clicked", (event: unknown) => {
       const detail = (event as { data?: { action?: unknown } }).data;
-      if (detail?.action === "quit" && !isClosing) mainWindow.close();
+      if (detail?.action === "quit" && !isClosing) mainWindow.requestClose();
     });
     let isControlHeld = () => false;
     let navigationTimer: ReturnType<typeof setTimeout> | undefined;
@@ -229,8 +452,16 @@ async function start() {
     // ACT: 两版 SDK 的全局事件不带 WebView ID，使用事件名后缀限定主窗口。
     Electrobun.events.on(`new-window-open-${mainWindow.webview.id}`, (event: { data: { detail: unknown } }) => openLink(event.data.detail));
     Electrobun.events.on(`host-message-${mainWindow.webview.id}`, (event: { data: { detail: unknown } }) => {
-      const detail = event.data.detail;
-      if (detail && typeof detail === "object" && "type" in detail && detail.type === "openExternal") openLink(detail);
+      let detail = event.data.detail;
+      // ACT: 2.0.1 已把 host-message 的 JSON 解析成对象；这里兼容字符串形式，避免版本差异导致回执丢失。
+      if (typeof detail === "string") {
+        try { detail = JSON.parse(detail); }
+        catch { /* 非 JSON 消息忽略。 */ }
+      }
+      if (!detail || typeof detail !== "object" || !("type" in detail)) return;
+      if (detail.type === "openExternal") openLink(detail);
+      // flush-done 用于结算关闭闸门的等待；重复或过期的回执在这里自然无效。
+      else if (detail.type === "flush-done") resolveFlushDone?.();
     });
     // 页面重载时监听器随旧页面销毁，安装请求等新页面 ready 后再投递。
     Electrobun.events.on(`will-navigate-${mainWindow.webview.id}`, (event: { data: { detail: unknown } }) => {
@@ -243,6 +474,8 @@ async function start() {
         openLink(detail);
         return;
       }
+      // ACT: 页面开始真实导航后旧页面脚本即将销毁，闸门不得再向它派发 flush；等新页面 ready() 再置回。
+      pageReady = false;
       deliverInstall = undefined;
     });
     let isShowing = false;
@@ -265,6 +498,8 @@ async function start() {
       },
       async ready(failed = false) {
         if (isClosing) return;
+        // ACT: 页面脚本已挂载（包括启动失败恢复页），关闭闸门可以安全调用前端 flush。
+        pageReady = true;
         if (!isShowing) {
           if (splash) {
             await splash.finish();
@@ -274,6 +509,9 @@ async function start() {
             splash = undefined;
           }
           isShowing = true;
+          // ACT: macOS 在窗口 hidden 期间 maximize 不可靠，等首次 show() 之后再恢复最大化。
+          // 用独立的 restoreMaximized 判定，启动期几何事件不会把它提前清掉。
+          if (restoreMaximized && !mainWindow.isMaximized()) mainWindow.maximize();
           // ACT: 安装器已完成注册；更新后的修复仅首次展示时执行，不阻塞主窗口。
           void restoreInstallRegistration(installDirectory);
         }
@@ -305,7 +543,8 @@ async function start() {
       },
       openDevTools() { mainWindow.webview.openDevTools(); },
       // ACT: Windows 使用两阶段退出；Intel Mac 由兼容入口适配 1.18.1 更新器。
-      updater: process.platform === "win32" ? createWindowsUpdater(PATHS.RESOURCES_FOLDER, Utils as unknown as Parameters<typeof createWindowsUpdater>[1]) : Updater,
+      // 两者都会在重启前申请一次 quit 批准，必须包一层先过关闭闸门，否则更新重启会被 veto。
+      updater: withUpdateGate(process.platform === "win32" ? createWindowsUpdater(PATHS.RESOURCES_FOLDER, Utils as unknown as Parameters<typeof createWindowsUpdater>[1]) : Updater),
     } satisfies DesktopRuntime;
     if (process.platform === "win32") {
       // ACT: Electrobun 2.0.1 未设置 Windows 窗口图标，复用构建产物中的应用 ICO。
@@ -339,6 +578,8 @@ async function start() {
       mainWindow.on("close", closeIcons);
     }
     mainWindow.on("close", () => {
+      // 关闭闸门：先把未提交的 pendingFrame 合并进 normal 并同步写盘（后续关闭流程可复用 flushWindowState）。
+      flushWindowState();
       void connection.close().catch(error => console.error("设备连接关闭失败：", error));
       void closeBrowsers().catch(error => console.error("浏览器关闭失败：", error));
       isClosing = true;
@@ -361,6 +602,8 @@ async function start() {
     await desktopConnection?.close().catch(error => console.error("设备连接关闭失败：", error));
     splash?.close();
     console.error("桌面启动失败：", error);
+    // ACT: 启动失败没有可保存的页面，直接跳过关闭闸门的 veto，避免 Utils.quit(1) 被拦下。
+    forceQuit = true;
     if (process.platform === "win32") {
       try { confirmWindowsUpdateStartup(PATHS.RESOURCES_FOLDER, true); }
       catch (resultError) { console.error("更新启动结果写入失败：", resultError); }

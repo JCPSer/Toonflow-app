@@ -96,11 +96,27 @@ export function protectWorkspaceRoot(directory: string, path: string) {
   if (directory === path) throw Object.assign(new Error("不能修改工作区根目录"), { status: 400 });
 }
 
-/** 项目根的 library / library-assets 归素材库管理，文件树不能删除、移动或覆盖其中的内容。 */
-export function protectWorkspaceLibraryPath(directory: string, path: string) {
+/** 项目根只隐藏应用管理的条目；用户的 .env、.gitignore、.github、.vscode 等点开头文件照常显示。 */
+const hiddenWorkspaceEntries = new Set([".toonflow", ".git", ".agent", ".library", ".trash", ".thumbs", "library", "library-assets"]);
+
+export function isHiddenWorkspaceEntry(name: string) {
+  return hiddenWorkspaceEntries.has(name.toLowerCase());
+}
+
+/**
+ * 项目根的 library / library-assets 归素材库管理，.toonflow 归项目 UI 状态管理，
+ * 文件树和 Agent 不能删除、移动或覆盖其中的内容。
+ * allowProjectUiDirectory 只放行 .toonflow 目录本身（mkdir 使用）；
+ * allowProjectUi 只放行 .toonflow/ui.json（projectUi 指针写入使用），
+ * 两者互不覆盖，避免 mkdir 借写文件的条件造出名为 ui.json 的目录。
+ */
+export function protectWorkspaceLibraryPath(directory: string, path: string, options?: { allowProjectUi?: boolean; allowProjectUiDirectory?: boolean }) {
   const relativePath = relative(directory, path);
-  const top = relativePath.split(/[\\/]/)[0]?.toLocaleLowerCase();
-  if (!relativePath || top === "library" || top === "library-assets") {
-    throw Object.assign(new Error("项目素材库目录由素材库管理，不能通过文件树删除或移动"), { status: 403, code: "EPROTECTED" });
+  const normalized = relativePath.replaceAll("\\", "/").toLocaleLowerCase();
+  const top = normalized.split("/")[0];
+  if (options?.allowProjectUiDirectory && normalized === ".toonflow") return;
+  if (options?.allowProjectUi && normalized === ".toonflow/ui.json") return;
+  if (!relativePath || top === "library" || top === "library-assets" || top === ".toonflow") {
+    throw Object.assign(new Error("项目素材库或配置目录由应用管理，不能通过文件树删除或移动"), { status: 403, code: "EPROTECTED" });
   }
 }

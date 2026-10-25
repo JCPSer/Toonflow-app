@@ -40,7 +40,7 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
     const hasCanvas = paths.some(path => {
       const content = files.get(path)!;
       // ACT: 只解析非素材目录内不超过 20 MB 的画布候选；包内所有文件仍原样保存，避免为识别项目解析超大 JSON。
-      if (path.split("/").some(part => ["assets", "library", "library-assets", ".library", ".trash", ".thumbs"].includes(part.toLocaleLowerCase())
+      if (path.split("/").some(part => ["assets", "library", "library-assets", ".library", ".trash", ".thumbs", ".toonflow"].includes(part.toLocaleLowerCase())
         || part.startsWith(".toonflowCopy")) || !/\.json$/i.test(path) || content.byteLength > 20 * 1024 * 1024) return false;
       try {
         const canvas = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(content));

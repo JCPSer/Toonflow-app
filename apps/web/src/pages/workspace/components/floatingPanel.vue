@@ -56,8 +56,9 @@ const props = withDefaults(defineProps<{
   resizeEdges?: ResizeEdge[];
   resetOnDoubleClick?: boolean;
   resetOnEscape?: boolean;
-  /** 非空时按该 key（通常是项目目录）持久化浮层位置，与宽高一样按项目保留。 */
-  persistKey?: string;
+  /** 浮层位置由上层会话状态驱动；null 表示未手动拖动过。 */
+  left?: number | null;
+  top?: number | null;
 }>(), {
   dockSide: "right",
   defaultWidth: 420,
@@ -70,8 +71,11 @@ const props = withDefaults(defineProps<{
   resizeEdges: () => ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as ResizeEdge[],
   resetOnDoubleClick: true,
   resetOnEscape: true,
+  left: null,
+  top: null,
 });
-const emit = defineEmits<{ resize: [width: number]; change: [] }>();
+type FloatingPanelLayout = { left: number; top: number; width: number; height: number };
+const emit = defineEmits<{ resize: [width: number]; layout: [layout: FloatingPanelLayout] }>();
 
 const panelElement = ref<HTMLElement>();
 const viewport = reactive({ width: window.innerWidth, height: window.innerHeight });
@@ -88,41 +92,9 @@ const effectiveHeight = computed(() => {
   return Math.max(0, Math.min(preferred, maxFloatingHeight.value));
 });
 
+// 拖拽期间用本地坐标保证跟手；拖拽结束通过 layout 事件交给上层写入会话状态。
 const left = ref(0);
 const top = ref(0);
-const positionKey = computed(() => props.persistKey ? `toonflow.floatingPanel.position:${props.persistKey}` : "");
-
-function readPersistedPosition() {
-  if (!positionKey.value) return undefined;
-  try {
-    const parsed = JSON.parse(localStorage.getItem(positionKey.value) ?? "null") as { left?: unknown; top?: unknown } | null;
-    if (parsed && typeof parsed.left === "number" && typeof parsed.top === "number"
-      && Number.isFinite(parsed.left) && Number.isFinite(parsed.top)) {
-      return { left: parsed.left, top: parsed.top };
-    }
-  } catch {
-    // 存储被禁用或数据损坏时回落到默认位置。
-  }
-  return undefined;
-}
-
-function restorePersistedPosition() {
-  const saved = readPersistedPosition();
-  if (!saved) return false;
-  left.value = saved.left;
-  top.value = saved.top;
-  clampFloatingPosition();
-  return true;
-}
-
-function persistPosition() {
-  if (!positionKey.value || docked.value) return;
-  try {
-    localStorage.setItem(positionKey.value, JSON.stringify({ left: left.value, top: top.value }));
-  } catch {
-    // 存储不可用时只影响下次打开的位置。
-  }
-}
 
 const panelStyle = computed(() => ({
   left: `${docked.value ? (props.dockSide === "left" ? 0 : viewport.width - effectiveWidth.value) : left.value}px`,
@@ -180,6 +152,7 @@ function resetPosition() {
   clampFloatingPosition();
 }
 
+let unmounting = false;
 const interaction = shallowRef<{
   mode: "move" | ResizeEdge;
   pointerId: number;
@@ -267,13 +240,25 @@ function moveInteraction(event: PointerEvent) {
   applyResize(current.mode, { left: current.startLeft, top: current.startTop, width: current.startWidth, height: current.startHeight }, dx, dy);
 }
 
+function emitLayout() {
+  // ACT: docked 时只上报宽高；left/top 保持上层传入的原值（可能为 null），
+  // 避免把本地预设坐标写成“用户拖动过”。现有消费者只透传写值，null 会被按原值保存。
+  const layout = docked.value
+    ? { left: props.left, top: props.top, width: width.value, height: height.value }
+    : { left: left.value, top: top.value, width: width.value, height: height.value };
+  emit("layout", layout as unknown as FloatingPanelLayout);
+}
+
 function stopInteraction(event?: PointerEvent) {
   const current = interaction.value;
   if (event && current?.pointerId !== event.pointerId) return;
   interaction.value = undefined;
   if (current?.element.hasPointerCapture(current.pointerId)) current.element.releasePointerCapture(current.pointerId);
   if (current?.element === document.activeElement) current.element.blur();
-  if (current) emit("change");
+  if (!current || unmounting) return;
+  // ACT: 只在拖拽/缩放结束时上报一次；单纯点击标题不应触发保存。
+  if (current.mode === "move" && current.startLeft === left.value && current.startTop === top.value) return;
+  emitLayout();
 }
 
 function resizeWithKeyboard(event: KeyboardEvent, edge: ResizeEdge) {
@@ -285,14 +270,14 @@ function resizeWithKeyboard(event: KeyboardEvent, edge: ResizeEdge) {
   const dx = horizontal ? (index === 0 ? -16 : 16) : 0;
   const dy = horizontal ? 0 : (index === 0 ? -16 : 16);
   applyResize(edge, { left: left.value, top: top.value, width: effectiveWidth.value, height: effectiveHeight.value }, dx, dy);
-  emit("change");
+  emitLayout();
 }
 
 function resetPanel() {
   width.value = props.defaultWidth;
   height.value = props.defaultHeight;
   resetPosition();
-  emit("change");
+  emitLayout();
 }
 
 function handlePanelDoubleClick(event: MouseEvent) {
@@ -329,15 +314,24 @@ watch([effectiveWidth, effectiveHeight], () => {
   if (docked.value) return;
   clampFloatingPosition();
 });
-watch(positionKey, () => { if (!restorePersistedPosition()) resetPosition(); });
-watch([left, top], persistPosition);
 watch([visible, docked, effectiveWidth], () => {
   emit("resize", visible.value && docked.value ? effectiveWidth.value : 0);
 }, { immediate: true });
+// ACT: 位置完全由上层传入的会话状态驱动；恢复后必须重新 clamp，防止历史坐标落在视口外。
+watch(() => [props.left, props.top] as const, ([nextLeft, nextTop]) => {
+  if (typeof nextLeft === "number" && Number.isFinite(nextLeft)
+    && typeof nextTop === "number" && Number.isFinite(nextTop)) {
+    left.value = nextLeft;
+    top.value = nextTop;
+    clampFloatingPosition();
+    return;
+  }
+  resetPosition();
+}, { immediate: true });
 
-if (!restorePersistedPosition()) resetPosition();
 window.addEventListener("resize", resizeViewport);
 onBeforeUnmount(() => {
+  unmounting = true;
   stopInteraction();
   window.removeEventListener("resize", resizeViewport);
 });

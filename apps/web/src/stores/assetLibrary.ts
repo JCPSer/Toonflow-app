@@ -2,6 +2,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import type { NodeOutput } from "@toonflow/nodes-scaffold/values";
 import { useWorkspaceStore } from "./workspace";
+import { useSessionStateStore } from "./sessionState";
 
 export type AssetLibraryKind = "global" | "project";
 export type AssetView = "tree" | "folder";
@@ -42,7 +43,15 @@ function directoryKey(directory?: string) {
 
 export const useAssetLibraryStore = defineStore("assetLibrary", () => {
   const workspace = useWorkspaceStore();
+  const sessionState = useSessionStateStore();
+  // ACT: visible 仍以本 store 为唯一运行态（画布控制条、requestSave 直接用），
+  // 只单向镜像到会话状态；hydrate 后反向灌一次，绝不双源。
   const visible = ref(false);
+  if (sessionState.hydrated) visible.value = sessionState.state.panels.asset.visible;
+  else watch(() => sessionState.hydrated, ready => {
+    if (ready) visible.value = sessionState.state.panels.asset.visible;
+  }, { once: true });
+  watch(visible, value => sessionState.set("panels.asset.visible", value));
   const pendingSave = ref<AssetSaveRequest>();
   // 按项目目录分桶，切换项目时各自保留库、路径、排序与面板尺寸。
   const stateByDirectory = ref<Record<string, AssetLibraryState>>({});

@@ -12,7 +12,7 @@ import {
 import type { CanvasContext, QuestionContext, ToolContext, ToolFiles } from "@toonflow/tools-scaffold/runtime";
 import { asrRequestSchema } from "@toonflow/tools-scaffold/runtime";
 import conf from "@/utils/conf";
-import { isWithin, resolveWorkspacePath, writeWorkspaceFile, renameWorkspaceFile, lockWorkspaceFiles, protectWorkspaceRoot, protectWorkspaceLibraryPath } from "@/utils/workspace/files";
+import { isWithin, isHiddenWorkspaceEntry, resolveWorkspacePath, writeWorkspaceFile, renameWorkspaceFile, lockWorkspaceFiles, protectWorkspaceRoot, protectWorkspaceLibraryPath } from "@/utils/workspace/files";
 import { listTools, loadTool, validateToolConfig } from "@/utils/plugins/tools";
 import { createSkillContext } from "@/agent/skills";
 import { createAssetContext } from "@/agent/assets";
@@ -26,7 +26,12 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
     requireWorkspace();
     const absolute = resolve(cwd, path);
     const root = readOnly && isWithin(skillsDirectory, absolute) ? skillsDirectory : cwd;
-    return (await resolveWorkspacePath(root, relative(root, absolute), true)).path;
+    const target = (await resolveWorkspacePath(root, relative(root, absolute), true)).path;
+    // ACT: .toonflow 是应用内部状态目录（上次画布等），Agent 的 ls/read/write 都不能访问。
+    if (isWithin(cwd, target) && relative(cwd, target).split(/[\\/]/)[0]?.toLocaleLowerCase() === ".toonflow") {
+      throw Object.assign(new Error("项目配置目录不可访问"), { code: "EPROTECTED" });
+    }
+    return target;
   };
   const withWritePaths = async (paths: string[], operation: (targets: string[]) => Promise<void>) => {
     const targets = await Promise.all(paths.map(path => resolvePath(path)));
@@ -42,8 +47,8 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
     readdir: async (path, readOnly = false) => {
       const target = await resolvePath(path, readOnly);
       const entries = await readdir(target);
-      // ACT: 项目素材库由 assetOperator 管理，不在通用文件工具里暴露，避免绕过回收站直接删除。
-      return target === cwd ? entries.filter(name => !["library", "library-assets"].includes(name.toLocaleLowerCase())) : entries;
+      // ACT: 项目根只隐藏应用管理的黑名单条目；用户自己的 .env、.gitignore 等点开头文件照常暴露给 Agent。
+      return target === cwd ? entries.filter(name => !isHiddenWorkspaceEntry(name)) : entries;
     },
     detectImageMimeType: async (path, readOnly = false) => {
       const target = await resolvePath(path, readOnly);

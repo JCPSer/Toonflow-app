@@ -118,6 +118,8 @@ export async function createApp({
   app.use(languageRequest);
   app.use("/a2a", express.json({ limit: "2mb" }));
   app.use(["/api/workspaces/files/write", "/api/assets/save"], express.raw({ type: "application/octet-stream", limit: "100mb" }));
+  // ACT: 会话状态体积上限远小于全局；必须在全局解析器之前单独挂载，否则大请求体会先被按 100mb 读入内存。
+  app.use("/api/sessionState", express.json({ limit: "64kb" }));
   app.use(express.json({ limit: "100mb" }));
   app.use(express.urlencoded({ extended: true, limit: "100mb" }));
   app.use("/api/desktop", desktopRequest);

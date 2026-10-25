@@ -110,7 +110,7 @@
         </el-tooltip>
       </div>
     </div>
-    <floatingAgent v-model="agentVisible" :inert="workspaceStore.projectLoadingVisible" @resize="agentWidth = $event" />
+    <floatingAgent :inert="workspaceStore.projectLoadingVisible" @resize="agentWidth = $event" />
     <floatingAssetLibrary :inert="workspaceStore.projectLoadingVisible" @resize="assetWidth = $event" />
     <settings v-model="settingsVisible" />
     <el-dialog v-model="contactVisible" :title="contactInfo.title" width="min(360px, calc(100vw - 32px))" alignCenter appendToBody>
@@ -131,7 +131,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onMounted, onScopeDispose, provide, ref, shallowRef, watch, type ComponentPublicInstance } from "vue";
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, shallowRef, watch, type ComponentPublicInstance } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
 import axios from "axios";
 import { IconVector, IconFileText, IconPointer, IconHandStop, IconPlus, IconSearch, IconHelp, IconBook, IconBug, IconBrandWechat, IconBriefcase } from "@tabler/icons-vue";
@@ -139,7 +139,10 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { QRCode } from "tdesign-vue-next";
 import settings from "@/components/settings/index.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useSessionStateStore } from "@/stores/sessionState";
 import { registerWorkspaceControl, waitForControlValue } from "@/lib/mcpControl";
+import { flushAllLastCanvas } from "@/lib/projectUi";
+import { setQuitFlush } from "@/lib/quitGuard";
 import anonymousData from "@/lib/anonymousData";
 import { useProviderBalances } from "@/lib/providerBilling";
 import canvasPanel from "./panels/canvas/canvasHost.vue";
@@ -170,8 +173,15 @@ const panelOptions = [
   { label: "画布", value: "canvas", icon: IconVector },
   { label: "文档", value: "document", icon: IconFileText },
 ];
-const agentVisible = ref(true);
-const agentWidth = ref(0);
+// ACT: 面板显隐/停靠宽高由会话状态驱动；宽高初值直接用 hydrate 结果，避免首帧先按 0 排版再跳。
+const sessionState = useSessionStateStore();
+const agentPanel = computed(() => sessionState.state.panels.agent);
+const assetPanel = computed(() => sessionState.state.panels.asset);
+const agentVisible = computed({
+  get: () => agentPanel.value.visible,
+  set: value => sessionState.set("panels.agent.visible", value),
+});
+const agentWidth = ref(agentVisible.value && agentPanel.value.docked ? agentPanel.value.width : 0);
 function showAgentPanel() {
   agentVisible.value = true;
   // ACT: 面板可能刚由隐藏切到显示，等 DOM 更新后聚焦当前会话输入框；插入提及时还会再次聚焦。
@@ -181,7 +191,7 @@ function showAgentPanel() {
     [...inputs].reverse().find(element => element.getClientRects().length)?.focus();
   });
 }
-const assetWidth = ref(0);
+const assetWidth = ref(assetPanel.value.visible && assetPanel.value.docked ? assetPanel.value.width : 0);
 const settingsVisible = ref(false);
 const helpVisible = ref(false);
 const contactVisible = ref(false);
@@ -282,6 +292,21 @@ async function flushSave() {
   await documentPanelRef.value?.flushSave();
   await canvasPanelRef.value?.flushSave();
 }
+
+// ACT: 关闭闸门调用时同时等待文档/画布保存、会话状态落盘与“上次画布”指针；
+// 三者互不依赖，并行等待缩短退出时间，但必须全部等完：任一失败只记录日志，不能提前回执。
+onMounted(() => {
+  setQuitFlush(async () => {
+    const results = await Promise.allSettled([flushSave(), sessionState.flush(), flushAllLastCanvas()]);
+    for (const result of results) {
+      if (result.status === "rejected") console.warn("退出保存失败：", result.reason);
+    }
+  });
+});
+// 离开工作区后回落到 quitGuard 的空实现，首页/设置页关窗立即回执。
+onBeforeUnmount(() => {
+  setQuitFlush(undefined);
+});
 
 onBeforeRouteLeave(async () => {
   if (canvasPanelRef.value?.saveBusy) {

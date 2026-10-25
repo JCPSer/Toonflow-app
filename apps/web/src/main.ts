@@ -11,11 +11,13 @@ import "element-plus/es/components/result/style/css";
 import router from "@/router";
 import { registerDesktopProtocol } from "@/lib/desktopProtocol";
 import { registerDownloads } from "@/lib/saveFile";
+import { installQuitGuard } from "@/lib/quitGuard";
 import { isMobile, isDesktop, isRemoteConnection } from "@/lib/platform";
 import "@/lib/mobile";
 import { getMissingBrowserFeatures } from "@/lib/browserCapabilities";
 import { registerAnonymousData } from "@/lib/anonymousData";
 import { loadSettings, settingsStorage } from "@/stores/settings";
+import { useSessionStateStore } from "@/stores/sessionState";
 import { checkDesktopUpdate } from "@/stores/desktopUpdate";
 import { registerLanguage } from "@/lib/i18n";
 import { locale, translate } from "@toonflow/i18n/vue";
@@ -43,12 +45,17 @@ async function notifyDesktopReady(failed = false) {
   : requiresMobileWebViewUpdate
   ? Promise.reject(new Error("当前移动端浏览器内核缺少 Toonflow 所需能力。请更新 Toonflow 和系统浏览器内核；部分系统需要通过系统更新升级。更新完成后，请完全退出并重新打开 Toonflow。"))
   : loadSettings()).then(async () => {
-  app.use(createPinia().use(createPersistedState({ storage: settingsStorage })));
+  const pinia = createPinia().use(createPersistedState({ storage: settingsStorage }));
+  app.use(pinia);
   app.use(router);
   await router.isReady();
+  // ACT: 面板布局要在首帧前恢复，避免用默认值挂载后闪跳；init 内部失败会降级为默认值，不会阻塞挂载。
+  await useSessionStateStore(pinia).init();
   app.onUnmount(registerAnonymousData());
   app.mount("#app");
   isMounted = true;
+  // ACT: 挂载后立即安装关闭闸门的默认实现；工作区随后会覆盖为真实 flush。
+  installQuitGuard();
   app.onUnmount(registerDownloads());
   if (!isDesktop) return;
   if (!isRemoteConnection) app.onUnmount(registerDesktopProtocol());
@@ -95,6 +102,8 @@ async function notifyDesktopReady(failed = false) {
       recoveryError.value ? h("p", { role: "alert" }, recoveryError.value) : null],
     }),
   }).mount("#app");
+  // ACT: 启动失败/恢复页同样要有关闭回执，否则关窗会卡满主进程的保存超时；installQuitGuard 幂等。
+  installQuitGuard();
   await nextTick();
   // ACT: 错误页也要结束启动动画，但不能消费尚未注册监听的安装请求。
   await notifyDesktopReady(true).catch((error) => console.error("显示启动错误页失败：", error));
