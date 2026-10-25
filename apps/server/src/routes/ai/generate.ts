@@ -56,19 +56,34 @@ const inputSchema = z.object({
   context: contextSchema,
   directory: z.string().min(1).max(4096).optional(),
   references: z.array(u.ai.aiReferenceSchema).max(32).optional(),
+  // ACT: 必须声明 runId，否则 Zod 会静默 strip，stop 路由永远找不到这个 run。
+  runId: z.uuid().optional(),
 });
 
 export default Router().post("/", validateFields(inputSchema.shape), async (req, res) => {
   const input = inputSchema.parse(req.body, validationOptions());
-  const configured = u.ai.getConfiguredModel(input.providerId, input.modelId);
+  const runId = input.runId;
   const controller = new AbortController();
   let heartbeat: ReturnType<typeof setInterval> | undefined;
-  const close = () => { clearInterval(heartbeat); controller.abort(); };
+  const close = () => {
+    clearInterval(heartbeat);
+    // 正常结束后 res.end() 也会触发 close，只在真正断线时记一条。
+    if (!res.writableEnded) console.log(`[ai.generate] socket close runId=${runId ?? "-"}`);
+    controller.abort();
+  };
   res.once("close", close);
   req.once("aborted", close);
   // ACT: 兼容不同运行时的关闭事件；Bun 1.3.14 的静默 SSE 仍可能不通知，不能保证立即停止上游。
   req.socket.once("close", close);
   try {
+    // 同步注册，早于本请求的任何 await，stop 路由才能命中；命中墓碑时 register 内部会立即 abort。
+    if (runId) {
+      u.aiRuns.registerRun(runId, controller);
+      controller.signal.addEventListener("abort", () => {
+        if (!res.writableEnded) console.log(`[ai.generate] run abort runId=${runId}`);
+      }, { once: true });
+    }
+    const configured = u.ai.getConfiguredModel(input.providerId, input.modelId);
     const directory = input.references?.some(item => item.dataType !== "STRING")
       ? await u.workspace.resolveWorkspace(req, input.directory ?? "") : undefined;
     const references = await u.ai.readAiReferences(directory, input.references ?? [], controller.signal, configured.provider);
@@ -78,7 +93,8 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
     heartbeat = setInterval(() => {
       if (!res.destroyed && !res.writableEnded && !res.writableNeedDrain) res.write(": keepalive\n\n");
     }, 20000);
-    const send = (event: object) => { if (!res.destroyed) res.write(`data: ${JSON.stringify(event)}\n\n`); };
+    heartbeat.unref();
+    const send = (event: object) => { if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`); };
     try {
       for await (const event of stream) {
         if (event.type === "text_delta" || event.type === "thinking_delta") {
@@ -89,14 +105,23 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
       if (message.stopReason === "error" || message.stopReason === "aborted") throw new Error(message.errorMessage || "模型请求失败");
       send({ type: "done", message });
     } catch (error) {
-      send({ type: "error", message: error instanceof Error ? translateError(error) : translateMessage("模型请求失败") });
+      // 用户停止时不再发 error 事件，直接结束响应即可。
+      if (controller.signal.aborted) console.log(`[ai.generate] stream ended by abort runId=${runId ?? "-"}`);
+      else send({ type: "error", message: error instanceof Error ? translateError(error) : translateMessage("模型请求失败") });
     } finally {
-      res.end();
+      if (!res.writableEnded) res.end();
     }
+  } catch (error) {
+    // 未发 SSE 头时这里是干净的 200 空响应；已发头也能直接结束。其它错误照常抛出。
+    if (!controller.signal.aborted) throw error;
+    console.log(`[ai.generate] stream ended by abort runId=${runId ?? "-"}`);
+    if (!res.writableEnded) res.end();
   } finally {
     clearInterval(heartbeat);
     res.off("close", close);
     req.off("aborted", close);
     req.socket.off("close", close);
+    // 正常、异常、停止都要回收，避免活跃 run 泄漏。
+    if (runId) u.aiRuns.detachRun(runId, controller);
   }
 });

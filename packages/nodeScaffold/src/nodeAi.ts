@@ -46,6 +46,8 @@ export type NodeAiRequest = {
   tools?: NodeAiTool[];
   onEvent?: (event: NodeAiEvent) => void;
   signal?: AbortSignal;
+  /** ACT: 前端生成的单次生成标识，用于 /api/ai/generate/stop 精确中止服务端 run。 */
+  runId?: string;
 };
 export type NodeAiResult = {
   text: string;
@@ -227,14 +229,29 @@ async function readModels<T>(url: string, signal: AbortSignal): Promise<T[]> {
   }
 }
 
+// ACT: 停止请求走独立短连接；调用方已先本地 abort，这里只尽力通知服务端，任何失败都静默。
+export async function notifyGenerateStop(runId: string): Promise<void> {
+  try {
+    await fetch("/api/ai/generate/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-toonflow-workspace": "1" },
+      body: JSON.stringify({ runId }),
+      signal: AbortSignal.timeout(5000),
+      keepalive: true,
+    });
+  } catch {
+    // 超时、断网或服务端未更新都不影响本地已停止的状态。
+  }
+}
+
 async function requestModel(input: NodeAiRequest, context: Context, model: Model<NodeAiModel["protocol"]>, signal: AbortSignal) {
-  const { providerId, modelId, references, directory, onEvent } = input;
+  const { providerId, modelId, references, directory, onEvent, runId } = input;
   const stream = createAssistantMessageEventStream();
   try {
     signal.throwIfAborted();
     const response = await fetch("/api/ai/generate", {
       method: "POST", headers: { "Content-Type": "application/json", "x-toonflow-workspace": "1" },
-      body: JSON.stringify({ providerId, modelId, context, directory, references }), signal,
+      body: JSON.stringify({ providerId, modelId, context, directory, references, runId }), signal,
     });
     if (!response.ok) await readResult(response);
     if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) throw new Error("AI 未返回 SSE 数据流");

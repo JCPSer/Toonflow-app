@@ -84,7 +84,7 @@
       </slot>
     </div>
     <div
-      v-if="!readOnly && $slots.bottom && (documentTarget || (bottomVisible && slotsVisible))"
+      v-if="!readOnly && $slots.bottom && (documentTarget || bottomPinned || (bottomVisible && slotsVisible))"
       class="floatingSlot bottomSlot nodrag nopan nowheel"
       :style="{ width: typeof bottomWidth === 'number' ? `${bottomWidth}px` : bottomWidth }"
       @pointerdown.stop
@@ -217,6 +217,8 @@ const props = withDefaults(
       downloadUrl?: string;
       downloadName?: string;
       fullscreenVisible?: boolean;
+      /** ACT: 生成中钉住底栏，避免取消选中/多选/拖拽时底栏被卸载导致无法停止。 */
+      bottomPinned?: boolean;
     }
   >(),
   {
@@ -226,6 +228,7 @@ const props = withDefaults(
     previewReady: true,
     readOnly: false,
     fullscreenVisible: true,
+    bottomPinned: false,
     topWidth: "20vw",
     bottomWidth: "20vw",
   }

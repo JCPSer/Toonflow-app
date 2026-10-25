@@ -487,6 +487,9 @@ function getCanvasContext() {
 }
 const canvasReady = computed(() => !!canvasId.value && !nodeListLoading.value && nodeLoads.size === 0);
 provide("canvas", getCanvasContext);
+// ACT: 后台画布只是 hidden + inert，不卸载；节点里的 Esc 兜底必须知道"我在不在前台画布"，
+// 否则在画布 B 按 Esc 会把画布 A 里仍在生成的节点停掉。
+provide("canvasActive", computed(() => props.active === true));
 defineExpose({ canvasId, canvasReady, getCanvasContext, addNodeAtPointer, readDocumentNode, saveDocumentNode, mountDocumentNode, observeDocumentNode, prepareCanvasDelete, flushSave: flushCanvasSave, cancelSave: cancelCanvasSave,
   openNodeSearch: () => nodeSearchRef.value?.open(),
   getCanvases: (signal?: AbortSignal) => {

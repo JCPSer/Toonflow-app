@@ -12,6 +12,7 @@ import * as exec from "@/utils/exec";
 import * as pluginInstall from "@/utils/plugins/install";
 import conf, { cleanNodeMenuSettings, removeLegacySettings } from "@/utils/conf";
 import * as ai from "@/utils/ai";
+import * as aiRuns from "@/utils/ai/runs";
 import * as plugins from "@/utils/plugins/tools";
 import * as nodePlugins from "@/utils/plugins/nodes";
 import * as extPlugins from "@/utils/plugins/ext";
@@ -50,6 +51,7 @@ export default {
   cleanNodeMenuSettings,
   removeLegacySettings,
   ai,
+  aiRuns,
   plugins,
   nodePlugins,
   extPlugins,

@@ -1,7 +1,8 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
-    v-model:bottomVisible="node.selected"
+    :bottomVisible="node.selected || generating"
+    :bottomPinned="generating"
     :topVisible="node.selected"
     topWidth="max-content"
     :downloadUrl="downloadUrl"
@@ -19,7 +20,7 @@
       <el-button class="editButton nodrag nopan" :icon="IconEdit" :disabled="generating || !textReady" text @dblclick.stop @click.stop="editing = true">编辑</el-button>
     </div>
     <template #bottom>
-      <el-card class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }">
+      <el-card class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }" @keydown.esc="handlePromptEsc">
         <div class="promptHeader" v-if="refList.length">
           <referenceItem
             v-model="refList"
@@ -35,7 +36,13 @@
             </el-option-group>
           </el-select>
           <div class="promptActions">
-            <el-button class="sendButton" :icon="IconArrowUp" :loading="generating" :disabled="!prompt.trim() || !selectedModel || generating || !textReady" title="生成" aria-label="生成" @click="generateText" />
+            <el-button
+              class="sendButton"
+              :icon="generating ? IconPlayerStop : IconArrowUp"
+              :disabled="generating ? false : (!prompt.trim() || !selectedModel || !textReady)"
+              :title="generating ? '停止生成' : '生成'"
+              :aria-label="generating ? '停止生成' : '生成'"
+              @click="generating ? stopGeneration() : generateText()" />
           </div>
         </div>
       </el-card>
@@ -49,10 +56,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onMounted, ref, watch } from "vue";
+import { computed, inject, onMounted, onScopeDispose, ref, watch, type ComputedRef } from "vue";
+import { useVueFlow } from "@vue-flow/core";
 import { ElAlert, ElButton, ElCard, ElSelect, ElDialog, ElOption, ElOptionGroup, ElMessage, ElMessageBox } from "element-plus";
-import { IconEdit, IconFileText, IconSparkles, IconArrowUp } from "@tabler/icons-vue";
-import { nodeSkeleton, nodeTools, useNode, z, type NodeAiModel, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
+import { IconEdit, IconFileText, IconSparkles, IconArrowUp, IconPlayerStop } from "@tabler/icons-vue";
+import { nodeSkeleton, nodeTools, notifyGenerateStop, useNode, z, type NodeAiModel, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
 import { groupNodeModels } from "@toonflow/node-shared/groupNodeModels";
 import { useNodeReferences } from "@toonflow/node-shared/useNodeReferences";
 import markdownEditor from "./markdownEditor.vue";
@@ -93,6 +101,11 @@ const model = computed({ get: () => data.value.model ?? "", set: (value: string)
 const models = ref<NodeAiModel[]>([]);
 const modelsLoading = ref(false);
 const generating = ref(false);
+const stopping = ref(false);
+const stopRequested = ref(false);
+// ACT: controller 与 runId 只服务当前这一次生成，放进 ref 会无谓触发渲染。
+let generationController: AbortController | undefined;
+let activeRunId: string | undefined;
 const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === model.value));
 const modelGroups = computed(() => groupNodeModels(models.value, model.value));
 const textReady = ref(false);
@@ -222,9 +235,18 @@ async function loadModels() {
   }
 }
 
+const { getSelectedNodes } = useVueFlow();
+// ACT: 画布外（文档面板等）没有这个注入，默认视为前台，保证节点在其它上下文也能用 Esc 停止。
+const canvasActive = inject<ComputedRef<boolean>>("canvasActive", computed(() => true));
+
 async function generateText() {
   const choice = selectedModel.value;
-  if (!textReady.value || generating.value || !choice || !prompt.value.trim()) return;
+  if (!textReady.value || generating.value || stopping.value || !choice || !prompt.value.trim()) return;
+  const controller = new AbortController();
+  const runId = crypto.randomUUID();
+  generationController = controller;
+  activeRunId = runId;
+  stopRequested.value = false;
   generating.value = true;
   let text = "";
   try {
@@ -237,20 +259,63 @@ async function generateText() {
     const result = await ai.generate({
       ...input,
       directory,
+      runId,
+      signal: controller.signal,
       onEvent(event) {
         if (event.type === "text") outputs.value.text.value = text += event.delta;
       },
     });
-    outputs.value.text.value = result.text;
+    // 中止后保留停止瞬间累计的文本，不用完整结果覆盖。
+    if (!controller.signal.aborted) outputs.value.text.value = result.text;
   } catch (error) {
-    if (error instanceof Error && error.name !== "AbortError") ElMessage.error(error.message);
+    // 用户主动停止（含服务端先行中止）不弹错。
+    if (!stopRequested.value && !controller.signal.aborted && error instanceof Error && error.name !== "AbortError") ElMessage.error(error.message);
   } finally {
+    // 节点卸载/切画布等隐式中断不是用户点的停止，需补发通知避免上游请求继续跑。
+    if (controller.signal.aborted && !stopRequested.value) void notifyGenerateStop(runId);
     // 卸载会取消请求并停止 watcher，生成收尾必须自行保存已收到的正文。
     try { await saveText(outputs.value.text.value); }
     catch (error) { ElMessage.error(error instanceof Error ? error.message : "文本保存失败"); }
     generating.value = false;
+    stopping.value = false;
+    stopRequested.value = false;
+    generationController = undefined;
+    activeRunId = undefined;
   }
 }
+
+function stopGeneration() {
+  if (!generating.value || stopping.value) return;
+  stopping.value = true;
+  stopRequested.value = true;
+  generationController?.abort();
+  if (activeRunId) void notifyGenerateStop(activeRunId);
+}
+
+function handlePromptEsc(event: KeyboardEvent) {
+  // ACT: 输入法组词时 Esc 是取消候选，不能当作停止生成。
+  if (event.isComposing || !generating.value || event.defaultPrevented) return;
+  event.preventDefault();
+  event.stopPropagation();
+  stopGeneration();
+}
+
+function handleWindowKeydown(event: KeyboardEvent) {
+  if (event.isComposing || event.key !== "Escape" || !generating.value || !node.selected || event.defaultPrevented) return;
+  // ACT: 只在本画布处于前台时响应——后台画布的节点仍保留选中态，不隔离会误停。
+  if (!canvasActive.value) return;
+  // 只在当前仅选中本节点时兜底；多选不响应，避免一次停掉多个节点。
+  const selected = getSelectedNodes.value;
+  if (selected.length !== 1 || selected[0]?.id !== node.id) return;
+  event.preventDefault();
+  stopGeneration();
+}
+onMounted(() => window.addEventListener("keydown", handleWindowKeydown));
+onScopeDispose(() => {
+  window.removeEventListener("keydown", handleWindowKeydown);
+  // 卸载时主动 abort 本地 controller，让 finally 能识别隐式中断并补发 stop。
+  generationController?.abort();
+});
 const promptModel = computed({ get: () => data.value.promptModel ?? [], set: (value: PromptModel) => { data.value.promptModel = value; } });
 
 nodeTools.register({
