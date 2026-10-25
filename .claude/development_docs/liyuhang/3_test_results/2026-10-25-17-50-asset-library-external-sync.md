@@ -22,6 +22,16 @@
 | 4 | 外部把整个目录 `dir1` 改名成 `dir2` | 子项 key 整体迁移为 `dir2/x.txt`，标签保留 | 通过 |
 | 5 | 落盘的 `index.json` | 失效条目带 `stale: true` 与 `staleAt`；存在条目带 `dev/ino` | 通过 |
 
+## 二·补、代码审查后复测（跨进程）
+
+| # | 用例 | 实际 | 结论 |
+| --- | --- | --- | --- |
+| 5a | 进程 A 打标签 → 进程 B 读索引再改名 | 标签跟随（说明 `dev/ino` 已落盘并被回读） | 通过（修复前 normalizeIndex 会丢掉 ino） |
+| 5b | 文件从根移到子目录（不是删除） | `dir/a.txt` 带上原标签，旧 key 消失，未留下重复项 | 通过 |
+| 5c | 删除整个目录 | `dir`、`dir/a.txt`、`dir/keep.txt` 全部标 stale | 通过（修复前后代永不回收） |
+| 5d | `POST /assets/forget` 传一个磁盘仍在的文件 | `removed: 0`，索引与标签保留 | 通过 |
+| 5e | 同接口传不存在的路径 | `removed: 1` | 通过 |
+
 ## 三、界面（Chrome DevTools + 真实文件操作）
 
 | # | 用例 | 实际 | 结论 |

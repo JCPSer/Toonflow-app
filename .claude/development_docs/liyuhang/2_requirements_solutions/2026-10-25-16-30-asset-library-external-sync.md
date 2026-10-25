@@ -107,5 +107,6 @@ for r of records:
 
 | 评审人 | 意见 | 结论 |
 | --- | --- | --- |
-| 子 agent | 待填 | |
-| 用户 | 三项选择已确认 | 已采纳 |
+| 子 agent（方案） | ① `fs.watch` 不能当唯一机制（FSEvents 合并/丢事件、网络卷不支持）② inode 只能兜同卷改名 ③ prune 与 missing 冲突 ④ 目录改名要整棵前缀迁移 ⑤ `.library` 在监听根内会自激 ⑥ 500ms 纯尾部防抖会饿死 ⑦ 心跳空行会打挂逐行 JSON ⑧ missing 别混进 items | 全部采纳：加"恢复/重连补一次刷新"；迁移加类型/大小校验与硬链接保护；prune 改 stale；过滤按路径分段；加 2s 上限；ping 帧；missing 独立数组 |
+| 子 agent（代码） | ① `normalizeIndex` 丢 dev/ino/isDirectory/staleAt（重启后全失效）② 移动被当删除（buildInodeMap 跳过 stale）③ forget 不校验磁盘 ④ 目录删除后后代永不回收 ⑤ ino<=0 会全库同键 ⑥ 卸载后重连泄漏 | 全部修复：字段回读 + stale 参与 inode 匹配 + forget 先 lstat + prune 展开后代 + ino/dev>0 且类型/大小一致才迁移 + disposed 标志 |
+| 用户 | 监听+防抖 / 跟随 inode / 标缺失 | 已采纳 |

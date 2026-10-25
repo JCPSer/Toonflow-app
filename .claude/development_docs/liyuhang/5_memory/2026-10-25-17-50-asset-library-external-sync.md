@@ -20,6 +20,8 @@
 - **清理接口**（`routes/assets/forget.ts`）：只删索引，不动磁盘。
 - **前端**：`subscribeAssetChanges`（fetch 流 + 3s 重连）；`useAssetLibrary` 增加 `active` 参数，隐藏时断开，恢复/重连时补一次静默刷新；事件按"当前目录/祖先/子目录"判定后 500ms 合并、2s 上限；`loadList(silent)` 不清空列表避免闪烁；顶部"缺失"提示条 + 一键清理索引。
 
+- **审查后修复**：`normalizeIndex` 回读 `dev/ino/isDirectory/staleAt`（否则重启后迁移能力全失）；inode 匹配不再跳过 stale 条目（移动≠删除）；迁移前校验类型与文件大小、`ino/dev > 0`；`forget` 先 `lstat`，磁盘仍在的条目拒绝清理；`prune` 在目录消失时展开后代前缀；前端加 `disposed` 标志防卸载后重连泄漏，`syncDeadline` 真正生效，静默刷新按已加载条数重取，搜索时保留缺失提示。
+
 ## Result
 
 - 外部新建文件 ≤1.5s 自动出现；外部删除 ≤1.8s 消失并出现"已不在磁盘"提示，可一键清索引。
