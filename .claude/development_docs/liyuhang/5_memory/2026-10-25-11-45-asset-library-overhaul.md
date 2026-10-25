@@ -43,3 +43,15 @@
 - 安全收口时「同源」不能用 CORS 头表达——CORS 是浏览器自愿遵守的约定，服务端必须自己判断 Origin/Host，且自定义头不能当授权凭证。
 - 媒体端点（`<img>`/`<video>`）带不了自定义头，鉴权必须单独设计分支（同源 + Referer 回退 + 目录标记），不能用同一套 header 规则一刀切。
 - 面板从「切走就关」改成「常驻」时，布局 reflow 依赖的 CSS 变量必须由面板 `resize` 事件持续上报，否则会出现面板浮在画布上、画布不左移的假象。
+
+## 打包踩坑（2026-10-25 12:00）
+
+上一轮重打包把 `build/server/index.js` 复制成 `Contents/Resources/app/bun/index.js`，属于误操作：该文件是 desktop 主进程（`apps/desktop/src/index.ts`）的 bundle，服务端代码只是被它 import 进去；换成纯 server bundle 后 `appDirectory` 会解析到 `Resources`，`build/web|nodes|tools` 全部落空（实测独立启动 `/` 404、`/api/nodes/get` 返回空数组）。
+
+正确做法（electrobun CLI 会卡在工具链下载时的替代方案）：
+
+1. `bun run build`（web/server/tools/ext），必要时 `bun run build:nodes`；
+2. 以 Bun.build 手工打 desktop 主进程，补 `@/* → apps/server/src/*` 与 `electrobun/main → .hutch/devkit/api/sdks/main/index.ts` 两个 alias（`apps/desktop/tsconfig.json` 里已有，但 bun 打包跨包文件时不生效）；
+3. 校验产物含 `loadURL`/`electrobun_core`/`ApplicationMenu`（server bundle 为 0）；
+4. 覆盖 `app/bun/index.js`，同步 `app/views/mainview`、`app/nodes`、`app/tools`、`app/ext`；
+5. `codesign --force --deep --sign -`，启动后以 `/api/nodes/get` 是否返回非空、`/api/assets/roots` 无 header 是否 403 验收。
