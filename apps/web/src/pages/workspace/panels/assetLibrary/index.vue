@@ -434,7 +434,7 @@ function openSave(label: string, outputs: { label: string; output: NodeOutput }[
 
 defineExpose({
   openSave, refresh, navigate, focusRoot,
-  // 管理页（首页弹窗）需要的只读句柄：选中项、当前库/目录、搜索联动与元数据操作。
+  // 首页素材库页面需要的只读句柄：选中项、当前库/目录、搜索联动与元数据操作。
   selectedEntries, entries, query, library, currentPath, selector,
   setSearchQuery, toggleFavorite, openMeta, clearSelection,
 });

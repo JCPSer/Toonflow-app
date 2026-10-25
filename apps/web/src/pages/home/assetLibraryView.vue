@@ -1,55 +1,45 @@
 <template>
-  <el-dialog
-    v-model="visible"
-    class="homeAssetLibraryDialog"
-    :title="translate('素材库')"
-    width="min(1440px, 88vw)"
-    alignCenter
-    appendToBody
-    destroyOnClose
-    :close-on-press-escape="!detailVisible"
-    @closed="onClosed">
-    <div class="homeAssetShell">
-      <div class="homeAssetBar">
-        <el-select
-          v-model="tagFilter"
-          class="tagFilter"
-          size="small"
-          clearable
-          filterable
-          allow-create
-          default-first-option
-          :placeholder="translate('按标签筛选')"
-          :aria-label="translate('按标签筛选')"
-          @change="applyTagFilter">
-          <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
-        </el-select>
-        <span v-if="selectedCount" class="selectionHint">{{ translate("已选 {count} 项", { count: selectedCount }) }}</span>
-        <el-button v-if="selectedCount" size="small" :icon="IconTag" @click="openBatchTags">{{ translate("添加标签") }}</el-button>
-        <el-button v-if="selectedCount" size="small" :icon="IconStar" :loading="batchFavoriteSaving" @click="toggleBatchFavorite">
-          {{ allFavorited ? translate("取消收藏") : translate("收藏") }}
-        </el-button>
-        <el-button v-if="selectedCount" size="small" text @click="contentRef?.clearSelection()">{{ translate("取消选择") }}</el-button>
-        <span class="barSpacer" />
-        <el-button
-          v-if="selectedCount === 1"
-          text
-          size="small"
-          class="detailHint"
-          :title="selectedEntries[0]?.path"
-          @click="selectedEntries[0] && openDetail(selectedEntries[0])">
-          {{ translate("详情：{name}", { name: selectedEntries[0]?.name ?? "" }) }}
-        </el-button>
-      </div>
-      <AssetLibraryContent
-        ref="contentRef"
-        embedded
-        :directory="activeDirectory || undefined"
-        :projects="projects"
-        can-show-detail
-        @select-project="onSelectProject"
-        @show-detail="openDetail" />
+  <section class="homeAssetView" aria-label="素材库">
+    <div class="homeAssetBar">
+      <el-select
+        v-model="tagFilter"
+        class="tagFilter"
+        size="small"
+        clearable
+        filterable
+        allow-create
+        default-first-option
+        :placeholder="translate('按标签筛选')"
+        :aria-label="translate('按标签筛选')"
+        @change="applyTagFilter">
+        <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
+      </el-select>
+      <span v-if="selectedCount" class="selectionHint">{{ translate("已选 {count} 项", { count: selectedCount }) }}</span>
+      <el-button v-if="selectedCount" size="small" :icon="IconTag" @click="openBatchTags">{{ translate("添加标签") }}</el-button>
+      <el-button v-if="selectedCount" size="small" :icon="IconStar" :loading="batchFavoriteSaving" @click="toggleBatchFavorite">
+        {{ allFavorited ? translate("取消收藏") : translate("收藏") }}
+      </el-button>
+      <el-button v-if="selectedCount" size="small" text @click="contentRef?.clearSelection()">{{ translate("取消选择") }}</el-button>
+      <span class="barSpacer" />
+      <el-button
+        v-if="selectedCount === 1"
+        text
+        size="small"
+        class="detailHint"
+        :title="selectedEntries[0]?.path"
+        @click="selectedEntries[0] && openDetail(selectedEntries[0])">
+        {{ translate("详情：{name}", { name: selectedEntries[0]?.name ?? "" }) }}
+      </el-button>
     </div>
+
+    <AssetLibraryContent
+      ref="contentRef"
+      embedded
+      :directory="activeDirectory || undefined"
+      :projects="projects"
+      can-show-detail
+      @select-project="onSelectProject"
+      @show-detail="openDetail" />
 
     <assetDetailDrawer
       v-model="detailVisible"
@@ -81,7 +71,7 @@
         <el-button type="primary" :loading="batchSaving" :disabled="!batchTags.length" @click="applyBatchTags">{{ translate("添加") }}</el-button>
       </template>
     </el-dialog>
-  </el-dialog>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -95,11 +85,11 @@ import assetDetailDrawer from "./assetDetailDrawer.vue";
 import { patchMeta, patchMetas, toAssetError } from "@/pages/workspace/panels/assetLibrary/api";
 import { batchErrorMessage, type AssetEntry } from "@/pages/workspace/panels/assetLibrary/types";
 
-const visible = defineModel<boolean>({ default: false });
 const workspace = useWorkspaceStore();
-// ACT: 首页不再默认沿用"上次打开的项目"，默认全局库；在左侧「项目」分组里点开某个项目才切过去。
+// ACT: 首页默认全局库；在左侧「项目」分组里点开某个项目才切过去。
 const activeDirectory = ref("");
 const projects = computed(() => workspace.projectList.map(project => ({ directory: project.directory, name: project.name })));
+
 function onSelectProject(payload: { directory: string; path: string }) {
   activeDirectory.value = payload.directory;
 }
@@ -108,14 +98,6 @@ function onSelectProject(payload: { directory: string; path: string }) {
 function openDetail(entry: AssetEntry) {
   detailEntry.value = entry;
   detailVisible.value = true;
-}
-
-function onClosed() {
-  detailVisible.value = false;
-  detailEntry.value = undefined;
-  tagFilter.value = "";
-  batchTagVisible.value = false;
-  activeDirectory.value = "";
 }
 
 const contentRef = ref<InstanceType<typeof AssetLibraryContent>>();
@@ -217,60 +199,53 @@ function onEditMeta(entry: AssetEntry) {
   contentRef.value?.openMeta(entry);
 }
 
+/** 离开素材库时收起 append-to-body 的浮层，否则它们会浮在首页上。 */
+function closeOverlays() {
+  detailVisible.value = false;
+  detailEntry.value = undefined;
+  batchTagVisible.value = false;
+  batchTags.value = [];
+}
+
+defineExpose({ closeOverlays });
 </script>
 
-<style lang="scss">
-.homeAssetLibraryDialog.el-dialog {
-  display: flex;
-  flex-direction: column;
-  height: 84dvh;
-  max-height: calc(100dvh - 32px);
-  overflow: hidden;
-  .el-dialog__header { flex-shrink: 0; }
-
-  .el-dialog__body { display: flex; flex: 1; min-width: 0; min-height: 0; padding: 0; overflow: hidden; }
-
-  @media (max-width: 700px) {
-    width: calc(100vw - 24px);
-    height: calc(100dvh - 32px);
-  }
-}
-</style>
-
 <style scoped lang="scss">
-.homeAssetShell {
+.homeAssetView {
+  /* ACT: 首页的雾状背景是 absolute，这里必须是定位元素才能盖在它上面，否则背景会画到顶栏之上。 */
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
-  width: 100%;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+}
 
-  .homeAssetBar {
-    display: flex;
-    flex-shrink: 0;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--el-border-color-lighter);
+.homeAssetBar {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px clamp(12px, 2vw, 24px);
+  border-bottom: 1px solid var(--el-border-color-lighter);
 
-    .tagFilter { flex-shrink: 0; width: 180px; max-width: 100%; }
+  .tagFilter { flex-shrink: 0; width: 180px; max-width: 100%; }
 
-    .selectionHint,
-    .detailHint {
-      overflow: hidden;
-      color: var(--el-text-color-secondary);
-      font-size: 12px;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .detailHint { max-width: 40%; }
-    .barSpacer { flex: 1; }
-
-    .el-button { margin: 0; }
+  .selectionHint,
+  .detailHint {
+    overflow: hidden;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
+
+  .detailHint { max-width: 40%; }
+  .barSpacer { flex: 1; }
+
+  .el-button { margin: 0; }
 }
 
 .batchTagHint {

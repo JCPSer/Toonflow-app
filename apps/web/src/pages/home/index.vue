@@ -13,12 +13,12 @@
         </button>
       </div>
       <nav class="sidebarNav" aria-label="首页导航">
-        <button v-for="section in homeSections" :key="section.id" class="sidebarItem" :class="{ active: activeSection === section.id }" type="button" :aria-current="activeSection === section.id ? 'location' : undefined" :aria-label="translate(section.label)" :title="translate(section.label)" @click="scrollToSection(section.id)">
+        <button v-for="section in homeSections" :key="section.id" class="sidebarItem" :class="{ active: !assetsMode && activeSection === section.id }" type="button" :aria-current="!assetsMode && activeSection === section.id ? 'location' : undefined" :aria-label="translate(section.label)" :title="translate(section.label)" @click="scrollToSection(section.id)">
           <component :is="section.icon" :size="18" aria-hidden="true" />
           <span class="sidebarText">{{ translate(section.label) }}</span>
         </button>
         <hr class="sidebarDivider" />
-        <button class="sidebarItem" :class="{ active: assetsVisible }" type="button" aria-label="素材库" title="素材库" aria-haspopup="dialog" :aria-expanded="assetsVisible" @click="assetsVisible = true">
+        <button class="sidebarItem" :class="{ active: assetsMode }" type="button" aria-label="素材库" title="素材库" :aria-current="assetsMode ? 'location' : undefined" @click="openAssets">
           <icon-library-photo :size="18" aria-hidden="true" />
           <span class="sidebarText">素材库</span>
         </button>
@@ -44,7 +44,7 @@
         </a>
       </div>
     </aside>
-    <el-scrollbar ref="pageScroll" class="pageScroll" @scroll="updateActiveSection">
+    <el-scrollbar v-show="!assetsMode" ref="pageScroll" class="pageScroll" @scroll="updateActiveSection">
       <div class="pageBody">
         <el-main class="pageContent">
           <section class="creationPanel" data-home-section="home" aria-label="创建项目">
@@ -114,7 +114,7 @@
         </el-main>
       </div>
     </el-scrollbar>
-    <assetLibraryDialog v-model="assetsVisible" />
+    <assetLibraryView v-if="assetsMounted" v-show="assetsMode" ref="assetViewRef" class="pageAssets" />
     <settings v-model="settingsVisible" />
     <mobileConnect v-model="mobileConnectVisible" />
     <workspacePicker ref="relocationPicker" hideTrigger />
@@ -146,14 +146,17 @@ import { deviceHubEnabled, mobileConnection, mobileConnectionLabel } from "@/lib
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { waitForControlValue } from "@/lib/mcpControl";
 import settings from "@/components/settings/index.vue";
-import assetLibraryDialog from "./assetLibraryDialog.vue";
+import assetLibraryView from "./assetLibraryView.vue";
 import bg from "./bg.vue";
 import explore from "./explore.vue";
 import projectCover from "./projectCover.vue";
 import workspacePicker from "./workspacePicker.vue";
 
 const settingsVisible = ref(false);
-const assetsVisible = ref(false);
+const assetsMode = ref(false);
+// 惰性挂载：第一次进入才创建素材库，之后用 v-show 保留树的展开状态与上传队列。
+const assetsMounted = ref(false);
+const assetViewRef = ref<InstanceType<typeof assetLibraryView>>();
 const mobileConnectVisible = ref(false);
 const sidebarCollapsed = ref(false);
 const pageScroll = ref<ScrollbarInstance>();
@@ -195,7 +198,17 @@ const placeholderPhrases = [
 ];
 const promptPlaceholder = ref(translate(placeholderPhrases[0]!));
 
+/** 素材库页面里按 Esc 退出；已被内核（清选中/退回收站）或浮层（抽屉/批量弹窗）处理的 Esc 不抢。 */
+function onWindowKeydown(event: KeyboardEvent) {
+  if (event.key !== "Escape" || !assetsMode.value || event.defaultPrevented) return;
+  const overlayOpen = [...document.querySelectorAll<HTMLElement>(".el-overlay")]
+    .some(element => getComputedStyle(element).display !== "none");
+  if (overlayOpen) return;
+  leaveAssets();
+}
+
 onMounted(() => {
+  window.addEventListener("keydown", onWindowKeydown);
   window.addEventListener("dragend", clearAttachmentDrag, true);
   window.addEventListener("drop", clearAttachmentDrag, true);
   window.addEventListener("blur", clearAttachmentDrag);
@@ -238,6 +251,7 @@ onMounted(() => {
 onUnmounted(() => {
   pageLifetime.abort();
   if (router.currentRoute.value.path !== "/workspace") workspaceStore.projectLoading = false;
+  window.removeEventListener("keydown", onWindowKeydown);
   window.removeEventListener("dragend", clearAttachmentDrag, true);
   window.removeEventListener("drop", clearAttachmentDrag, true);
   window.removeEventListener("blur", clearAttachmentDrag);
@@ -256,7 +270,28 @@ const selectedModel = ref("");
 const reasoningEffort = ref("");
 const sortedProjects = computed(() => [...projectList.value].sort((left, right) => right.lastOpenedAt - left.lastOpenedAt));
 
+/** 进入素材库：主内容区切换为素材库页面（惰性挂载，v-show 保留树状态与上传队列）。 */
+function openAssets() {
+  assetsMounted.value = true;
+  assetsMode.value = true;
+}
+
+/** 离开素材库：主区回到创建/项目/探索，并关掉 append-to-body 的详情抽屉与批量弹窗。 */
+function leaveAssets() {
+  if (!assetsMode.value) return;
+  assetsMode.value = false;
+  assetViewRef.value?.closeOverlays();
+  // 回到原位置后按当前滚动重算侧栏高亮，否则会停在离开前的 section。
+  void nextTick(updateActiveSection);
+}
+
 function scrollToSection(section: string) {
+  if (assetsMode.value) {
+    leaveAssets();
+    // v-show 切回后需要等一帧，目标节点的位置才可测量。
+    void nextTick(() => scrollToSection(section));
+    return;
+  }
   const wrap = pageScroll.value?.wrapRef;
   const target = wrap?.querySelector<HTMLElement>(`[data-home-section="${section}"]`);
   if (!wrap || !target) return;
@@ -268,6 +303,8 @@ function scrollToSection(section: string) {
 }
 
 function updateActiveSection() {
+  // 素材库是独立页面，滚动监听不能把侧栏高亮抢回某个 section。
+  if (assetsMode.value) return;
   const wrap = pageScroll.value?.wrapRef;
   if (!wrap) return;
   backgroundScrollTop.value = wrap.scrollTop;
