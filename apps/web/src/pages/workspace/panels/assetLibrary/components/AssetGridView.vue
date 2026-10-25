@@ -50,7 +50,7 @@
           :aria-label="translate('返回上一级')"
           :title="translate('返回上一级')"
           tabindex="-1"
-          @dblclick.stop="emit('navigate', parentPath)">
+          @click.stop="emit('navigate', parentPath)">
           <span class="assetVisual">
             <icon-arrow-up :size="42" stroke="1.25" aria-hidden="true" />
           </span>
