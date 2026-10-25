@@ -10,8 +10,19 @@ registerApiLanguage(client);
 type Envelope<T> = { code: number; data: T | null; message?: string };
 
 const probeIntervalMs = 3000;
-// ACT: 演示数据只在开发构建里兜底；正式包必须暴露真实错误，避免用户以为已经上传成功。
-const mockEnabled = import.meta.env.DEV;
+// ACT: 演示数据只在开发构建里、且显式开启时兜底；否则失败的请求必须暴露真实错误，
+// 避免把"上传失败"伪装成成功，也避免用演示素材做出错误的功能判断。
+const mockFlagKey = "toonflow.assetLibrary.mock";
+function readMockFlag() {
+  if (!import.meta.env.DEV) return false;
+  if (new URLSearchParams(location.search).get("assetMock") === "1") return true;
+  try {
+    return localStorage.getItem(mockFlagKey) === "1";
+  } catch {
+    return false;
+  }
+}
+const mockEnabled = readMockFlag();
 let live: boolean | undefined;
 let lastProbe = 0;
 
@@ -116,7 +127,9 @@ export function toAssetError(error: unknown): AssetErrorInfo {
 }
 
 function selectorParams(selector: AssetSelector) {
-  return { library: selector.library, ...(selector.directory ? { directory: selector.directory } : {}) };
+  // ACT: 全局库与项目目录无关，带上失效目录会把项目故障传染给全局库。
+  const directory = selector.library === "global" ? undefined : selector.directory;
+  return { library: selector.library, ...(directory ? { directory } : {}) };
 }
 
 export function getRoots(directory?: string) {

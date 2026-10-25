@@ -22,6 +22,12 @@ export type AssetTreeNode = AssetEntry & {
   library: AssetLibraryKind;
   isLeaf: boolean;
   root?: boolean;
+  /** 首页分组模式：该节点所属的项目目录（根节点与项目节点没有）。 */
+  directory?: string;
+  /** 首页分组模式下「项目」这个分组节点本身。 */
+  group?: boolean;
+  /** 首页分组模式下的项目节点（点击即切换当前项目）。 */
+  projectRoot?: boolean;
   disabled?: boolean;
 };
 

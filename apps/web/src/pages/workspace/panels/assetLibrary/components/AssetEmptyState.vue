@@ -1,6 +1,15 @@
 <template>
   <div class="assetEmptyState">
-    <template v-if="kind === 'search'">
+    <template v-if="kind === 'error'">
+      <icon-alert-triangle :size="42" stroke="1.25" aria-hidden="true" />
+      <strong>{{ translate("素材库加载失败") }}</strong>
+      <span>{{ message || translate("请稍后重试；若持续失败，请检查素材库目录是否存在、磁盘是否可用。") }}</span>
+      <div class="emptyActions">
+        <el-button size="small" @click="emit('refresh')">{{ translate("重试") }}</el-button>
+        <el-button v-if="canSwitchGlobal" size="small" type="primary" @click="emit('switch-global')">{{ translate("切换到全局库") }}</el-button>
+      </div>
+    </template>
+    <template v-else-if="kind === 'search'">
       <icon-search :size="42" stroke="1.25" aria-hidden="true" />
       <strong>{{ translate("没有找到匹配的素材") }}</strong>
       <span>{{ translate("试试更换关键词，或清空搜索继续浏览当前文件夹。") }}</span>
@@ -39,12 +48,14 @@
 
 <script setup lang="ts">
 import { translate } from "@toonflow/i18n/vue";
-import { IconFolder, IconFolderOff, IconFolderPlus, IconLoader2, IconSearch, IconUpload } from "@tabler/icons-vue";
+import { IconAlertTriangle, IconFolder, IconFolderOff, IconFolderPlus, IconLoader2, IconSearch, IconUpload } from "@tabler/icons-vue";
 
 withDefaults(defineProps<{
-  kind?: "loading" | "directory" | "search" | "rebuilding" | "project-unavailable";
+  kind?: "loading" | "directory" | "search" | "rebuilding" | "project-unavailable" | "error";
   loading?: boolean;
-}>(), { kind: "directory", loading: false });
+  message?: string;
+  canSwitchGlobal?: boolean;
+}>(), { kind: "directory", loading: false, message: "", canSwitchGlobal: false });
 const emit = defineEmits<{
   upload: [];
   "create-folder": [];

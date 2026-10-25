@@ -96,7 +96,8 @@
           </span>
           <span class="assetName" :title="entry.path">{{ entry.name }}</span>
           <span class="assetMeta">
-            <span v-if="entry.type === 'directory'">{{ translate('{count} 项', { count: entry.childCount ?? 0 }) }}</span>
+            <span v-if="entry.type === 'directory' && typeof entry.childCount === 'number'">{{ translate('{count} 项', { count: entry.childCount }) }}</span>
+            <span v-else-if="entry.type === 'directory'">{{ translate('文件夹') }}</span>
             <span v-else>{{ formatAssetSize(entry.size) }}</span>
             <span v-if="query && entry.path.includes('/')" class="assetLocation" :title="parentLocation(entry.path)">{{ parentLocation(entry.path) }}</span>
           </span>
@@ -107,6 +108,8 @@
         v-else-if="!loading"
         :kind="emptyKind"
         :loading="loading"
+        :message="emptyMessage"
+        :can-switch-global="library === 'project'"
         @upload="emit('upload')"
         @create-folder="emit('create-folder')"
         @refresh="emit('refresh')"
@@ -145,8 +148,9 @@ const props = withDefaults(defineProps<{
   loading?: boolean;
   loadingMore?: boolean;
   hasMore?: boolean;
-  emptyKind?: "loading" | "directory" | "search" | "rebuilding" | "project-unavailable";
-}>(), { query: "", loading: false, loadingMore: false, hasMore: false, emptyKind: "directory" });
+  emptyKind?: "loading" | "directory" | "search" | "rebuilding" | "project-unavailable" | "error";
+  emptyMessage?: string;
+}>(), { query: "", loading: false, loadingMore: false, hasMore: false, emptyKind: "directory", emptyMessage: "" });
 const emit = defineEmits<{
   select: [entry: AssetEntry, mode: "single" | "toggle" | "range"];
   open: [entry: AssetEntry];

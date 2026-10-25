@@ -1,8 +1,28 @@
 import { computed, onBeforeUnmount, ref, toValue, watch, type MaybeRefOrGetter } from "vue";
 import { useAssetLibraryStore, type AssetLibraryState, type AssetSortField, type AssetSortOrder, type AssetView } from "@/stores/assetLibrary";
-import { getRoots, listAssets, toAssetError } from "./api";
+import { AssetRequestError, getRoots, listAssets, toAssetError } from "./api";
 import type { AssetEntry, AssetLibraryKind, AssetRoots } from "./types";
 import { isSameOrDescendant, normalizeAssetPath, parentAssetPath } from "./types";
+
+const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/**
+ * 只把「刚创建/刚挂载」这类瞬时失败当作可重试：
+ * 网络不通、目录还不存在（ENOENT）、5xx。权限与参数错误必须立刻如实报出。
+ */
+/** 记录里保存的目录已经被移动或删除（外部改名、换项目、重建库）。 */
+export function isMissingAssetPath(cause: unknown) {
+  return cause instanceof AssetRequestError && cause.status === 404 && cause.code === "ENOENT";
+}
+
+export function isTransientAssetFailure(cause: unknown) {
+  if (cause instanceof AssetRequestError) {
+    if (cause.status === undefined || cause.status === 0) return true;
+    if (cause.code === "ENOENT") return cause.status === 404;
+    return cause.status >= 500;
+  }
+  return !(cause instanceof Error) || /network|ECONN|timeout/i.test(cause.message);
+}
 
 export type SelectionMode = "single" | "toggle" | "range";
 
@@ -20,6 +40,8 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
   const loading = ref(false);
   const loadingMore = ref(false);
   const error = ref("");
+  // ACT: 库根探测的失败与列表失败分开保存，列表加载不能把 root 的真实原因冲掉。
+  const rootsError = ref("");
   const indexRebuilding = ref(false);
   const roots = ref<AssetRoots>();
   const rootsFailed = ref(false);
@@ -28,7 +50,11 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
   const selection = ref<Set<string>>(new Set());
   const lastSelectedPath = ref<string>();
   let listRequest = 0;
+  let directoryToken = 0;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** 合并展示用；空态优先用更具体的 list 错误。 */
+  const displayError = computed(() => error.value || rootsError.value);
 
   const library = computed(() => state.value.library);
   const view = computed(() => state.value.view);
@@ -43,8 +69,9 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
   const projectFallbackPath = computed(() => projectRoot.value?.path ?? "library-assets");
   const projectAvailable = computed(() => !!directoryPath.value && !rootsFailed.value && (roots.value === undefined || !!projectRoot.value));
   const isSearching = computed(() => !!query.value.trim());
-  const emptyKind = computed<"loading" | "directory" | "search" | "rebuilding" | "project-unavailable">(() => {
+  const emptyKind = computed<"loading" | "directory" | "search" | "rebuilding" | "project-unavailable" | "error">(() => {
     if (loading.value) return "loading";
+    if (displayError.value && entries.value.length === 0) return "error";
     if (indexRebuilding.value) return "rebuilding";
     if (isSearching.value) return "search";
     if (state.value.library === "project" && !projectAvailable.value) return "project-unavailable";
@@ -53,7 +80,11 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
   const searchScopeLabel = computed(() => currentPath.value ? `在 ${currentPath.value} 中搜索` : "搜索全部素材");
 
   function selector() {
-    return { library: state.value.library, directory: directoryPath.value || undefined };
+    // ACT: 全局库不传项目目录，项目目录失效时全局库仍可用。
+    return {
+      library: state.value.library,
+      directory: state.value.library === "global" ? undefined : directoryPath.value || undefined,
+    };
   }
 
   function update(patch: Partial<AssetLibraryState>) {
@@ -63,6 +94,9 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
   function setLibrary(kind: AssetLibraryKind) {
     if (kind === state.value.library) return;
     if (kind === "project" && (!projectAvailable.value || !projectRoot.value)) return;
+    // ACT: 切库要清掉上一个库的错误与库根探测结果，否则项目目录失效的横幅会一直挂在全局库上。
+    error.value = "";
+    rootsError.value = "";
     update({ library: kind, path: "" });
     query.value = "";
     clearSelection();
@@ -85,20 +119,35 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
   }
 
   async function loadRoots() {
+    const token = ++directoryToken;
     rootsFailed.value = false;
-    try {
-      roots.value = await getRoots(directoryPath.value || undefined);
-      rootsFailed.value = false;
-      if (!roots.value.project && state.value.library === "project") update({ library: "global", path: "" });
-    } catch (cause) {
-      // 项目库路径解析失败（例如 library 与 library-assets 都被占用）时保留项目库入口以展示可恢复的空状态。
-      rootsFailed.value = true;
-      error.value = toAssetError(cause).message;
+    rootsError.value = "";
+    // ACT: 首次打开项目时库根可能刚被创建（并发首开/外部卷刚挂载），失败一次会自动重试再报错。
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const next = await getRoots(directoryPath.value || undefined);
+        if (token !== directoryToken) return;
+        roots.value = next;
+        rootsFailed.value = false;
+        if (!next.project && state.value.library === "project") update({ library: "global", path: "" });
+        return;
+      } catch (cause) {
+        if (token !== directoryToken) return;
+        if (attempt === 0 && isTransientAssetFailure(cause)) {
+          await delay(300);
+          continue;
+        }
+        // 项目库路径解析失败（例如 library 与 library-assets 都被占用）时保留项目库入口以展示可恢复的空状态。
+        rootsFailed.value = true;
+        rootsError.value = toAssetError(cause).message;
+        return;
+      }
     }
   }
 
   async function loadList(reset = false) {
     const request = reset ? ++listRequest : listRequest;
+    const token = directoryToken;
     if (!reset && (!nextCursor.value || loadingMore.value)) return;
     if (reset) {
       loading.value = true;
@@ -113,25 +162,42 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
     }
     error.value = "";
     try {
-      const result = await listAssets({
-        ...selector(),
-        path: state.value.path,
-        cursor: reset ? undefined : nextCursor.value,
-        limit: 100,
-        sort: state.value.sort,
-        order: state.value.order,
-        query: query.value.trim() || undefined,
-      });
-      if (request !== listRequest) return;
-      entries.value = reset ? result.items : [...entries.value, ...result.items];
-      total.value = result.total;
-      truncated.value = result.truncated;
-      indexRebuilding.value = result.rebuilding === true;
-      nextCursor.value = result.nextCursor;
-      // 已选中的深层路径在追加分页时保持选中。
-      if (!reset) selection.value = new Set(selection.value);
-    } catch (cause) {
-      if (request === listRequest) error.value = toAssetError(cause).message;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const result = await listAssets({
+            ...selector(),
+            path: state.value.path,
+            cursor: reset ? undefined : nextCursor.value,
+            limit: 100,
+            sort: state.value.sort,
+            order: state.value.order,
+            query: query.value.trim() || undefined,
+          });
+          if (request !== listRequest) return;
+          entries.value = reset ? result.items : [...entries.value, ...result.items];
+          total.value = result.total;
+          truncated.value = result.truncated;
+          indexRebuilding.value = result.rebuilding === true;
+          nextCursor.value = result.nextCursor;
+          // 已选中的深层路径在追加分页时保持选中。
+          if (!reset) selection.value = new Set(selection.value);
+          break;
+        } catch (cause) {
+          // ACT: 上次停留的文件夹被外部删除/改名时，自动退回根目录，而不是把错误横幅一直挂着。
+          if (attempt === 0 && reset && request === listRequest && token === directoryToken && state.value.path && isMissingAssetPath(cause)) {
+            update({ path: "" });
+            continue;
+          }
+          // 只对首次加载的瞬时失败重试一次；分页与用户主动操作不做静默重试。
+          if (attempt === 0 && reset && request === listRequest && token === directoryToken && isTransientAssetFailure(cause)) {
+            await delay(300);
+            if (request !== listRequest || token !== directoryToken) return;
+            continue;
+          }
+          if (request === listRequest) error.value = toAssetError(cause).message;
+          break;
+        }
+      }
     } finally {
       if (request === listRequest) {
         loading.value = false;
@@ -145,6 +211,7 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
   }
 
   async function refresh() {
+    if (rootsFailed.value) await loadRoots();
     refreshTree();
     await loadList(true);
   }
@@ -294,6 +361,7 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>)
     loading,
     loadingMore,
     error,
+    displayError,
     query,
     library,
     view,

@@ -42,7 +42,7 @@
       :title="translate('项目已有同名 library 文件夹，素材库改用 {path}', { path: projectFallbackPath })" />
 
     <el-alert
-      v-if="!trashVisible && libraryError"
+      v-if="!trashVisible && libraryError && entries.length > 0"
       class="libraryNotice"
       type="error"
       :closable="false"
@@ -58,11 +58,14 @@
         v-if="!trashVisible && view === 'tree'"
         :library="library"
         :directory="directory"
+        :projects="projects"
+        :active-directory="directory"
         :current-path="currentPath"
         :expanded-keys="expandedKeys"
         :refresh-key="treeVersion"
         @navigate="navigate"
         @select-library="setLibrary"
+        @select-project="onSelectProject"
         @menu="showEntryMenu"
         @move="moveDraggedEntry"
         @expanded="setExpanded"
@@ -81,6 +84,7 @@
         :loading-more="loadingMore"
         :has-more="hasMore"
         :empty-kind="emptyKind"
+        :empty-message="libraryError"
         @select="selectEntry"
         @open="openEntry"
         @menu="showEntryMenu"
@@ -182,11 +186,25 @@ import { mockMode } from "./mock";
 import type { AssetEntry, AssetLibraryKind, AssetSortField, AssetSortOrder, AssetView } from "./types";
 import { hasFileDrag } from "./types";
 
-const props = withDefaults(defineProps<{ directory?: string; embedded?: boolean }>(), { embedded: false });
+const props = withDefaults(defineProps<{
+  directory?: string;
+  embedded?: boolean;
+  /** 首页分组模式：传入项目列表后，树里出现「项目」分组，展开才按需加载。 */
+  projects?: { directory: string; name: string }[];
+  projectName?: string;
+}>(), { embedded: false, projects: undefined, projectName: "" });
+const emit = defineEmits<{ "select-project": [{ directory: string; path: string }] }>();
 
 const lib = useAssetLibrary(() => props.directory);
+
+/** 切换项目：先把目标目录的库状态设为「项目库根目录」，再通知父级换 directory。 */
+function onSelectProject(payload: { directory: string; path: string }) {
+  if (!payload.directory) return;
+  lib.store.update({ library: "project", path: payload.path }, payload.directory);
+  emit("select-project", { directory: payload.directory, path: payload.path });
+}
 const {
-  entries, loading, loadingMore, nextCursor, error: libraryError, query, library, view, sort, order,
+  entries, loading, loadingMore, nextCursor, displayError: libraryError, query, library, view, sort, order,
   currentPath, selection, selectedEntries, expandedKeys, treeVersion, projectFallback, projectFallbackPath,
   projectAvailable, emptyKind, searchScopeLabel, selector, init, refresh, navigate, goUp, setLibrary, setView,
   setSort, toggleOrder, submitSearch, clearSearch, selectEntry, selectAll, clearSelection, setExpanded, loadMore,
@@ -212,8 +230,10 @@ const orderModel = computed<AssetSortOrder>({ get: () => order.value, set: value
 const queryModel = computed<string>({ get: () => query.value, set: value => { query.value = value; } });
 const hasMore = computed(() => !!nextCursor.value);
 const canWrite = computed(() => library.value === "global" || projectAvailable.value);
+const projectOptionLabel = computed(() => props.projectName || translate("本项目"));
+// ACT: 首页分组模式下选中某个项目后，下拉里的项目项用该项目名；未选项目时不可用。
 const libraryOptions = computed(() => [
-  { label: translate("本项目"), value: "project" as const, disabled: !projectAvailable.value },
+  { label: projectOptionLabel.value, value: "project" as const, disabled: !projectAvailable.value },
   { label: translate("全局"), value: "global" as const },
 ]);
 

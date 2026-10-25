@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import { lstat, mkdir, realpath, writeAtomic } from "@toonflow/file";
+import { lstat, mkdir, readdir, realpath, writeAtomic } from "@toonflow/file";
 import { dirname, join } from "node:path";
 import conf from "@/utils/conf";
 import { resolveWorkspace } from "@/utils/workspace";
@@ -49,14 +49,78 @@ async function claimLibrary(root: string) {
   await writeAtomic(libraryMarker(root), JSON.stringify({ version: 1, entries: {}, trash: {} }));
 }
 
+// ACT: 库根判定必须按项目串行。并发首开时，"目录已建、标记未落"会被误判成用户占用，
+// 于是又去创建 library-assets，之后读写分散到两个根，表现为"刚上传的素材不见了"。
+const claimLocks = new Map<string, Promise<unknown>>();
+
+async function withLibraryLock<T>(directory: string, task: () => Promise<T>): Promise<T> {
+  const previous = claimLocks.get(directory) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(task);
+  claimLocks.set(directory, next);
+  try {
+    return await next;
+  } finally {
+    if (claimLocks.get(directory) === next) claimLocks.delete(directory);
+  }
+}
+
+/** 只允许系统噪声文件；其余条目都算用户内容。 */
+const ignorableDirectoryEntries = new Set([".DS_Store", "Thumbs.db", "desktop.ini"]);
+
+/**
+ * 判定是否为"素材库创建过程中留下的残留"：目录里除了系统噪声，只有我们自己的 `.library`，
+ * 且 `.library` 里最多只有写入中的临时文件。用户手工建的空目录不算残留。
+ */
+async function isClaimInterrupted(path: string) {
+  const names = await readdir(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return null;
+    throw error;
+  });
+  if (!names) return false;
+  let hasMarkerDir = false;
+  for (const name of names) {
+    if (ignorableDirectoryEntries.has(name)) continue;
+    if (name === ".library") { hasMarkerDir = true; continue; }
+    return false;
+  }
+  if (!hasMarkerDir) return false;
+  const markerNames = await readdir(join(path, ".library")).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return null;
+    throw error;
+  });
+  if (!markerNames) return true;
+  return markerNames.every(name => ignorableDirectoryEntries.has(name) || name.endsWith(".tmp"));
+}
+
 /**
  * 项目库优先使用 library；该目录已被用户占用时退回 library-assets。
- * create=false 只探测实际路径，不创建目录，供 /roots 返回给前端提示。
+ * create=false 只探测实际路径，不创建目录，供 /roots 与媒体只读路径使用。
  */
 export async function getProjectLibraryLayout(directory: string, options: { create?: boolean } = {}): Promise<ProjectLibraryLayout> {
+  // ACT: 读路径（缩略图/原图）不排队，否则首屏几十张图会被串行化；已认领的库根是稳定结果。
+  if (options.create === false) {
+    const claimed = await claimedLayout(directory);
+    if (claimed) return claimed;
+  }
+  return withLibraryLock(directory, () => resolveProjectLibraryLayout(directory, options));
+}
+
+async function claimedLayout(directory: string): Promise<ProjectLibraryLayout | undefined> {
+  const primary = join(directory, "library");
+  if (await isClaimedLibrary(primary)) return { root: await realpath(primary), relativePath: "library", fallback: false, exists: true };
+  const fallback = join(directory, "library-assets");
+  if (await isClaimedLibrary(fallback)) return { root: await realpath(fallback), relativePath: "library-assets", fallback: true, exists: true };
+  return undefined;
+}
+
+async function resolveProjectLibraryLayout(directory: string, options: { create?: boolean }): Promise<ProjectLibraryLayout> {
   const create = options.create !== false;
   const primary = join(directory, "library");
   if (await isClaimedLibrary(primary)) return { root: await realpath(primary), relativePath: "library", fallback: false, exists: true };
+  // ACT: fallback 一旦被认领就固定住。否则用户把 library 清空后，这里会把它认领回来，
+  // 已经上传到 library-assets 的素材会从界面里消失。
+  const fallback = join(directory, "library-assets");
+  if (await isClaimedLibrary(fallback)) return { root: await realpath(fallback), relativePath: "library-assets", fallback: true, exists: true };
   const primaryInfo = await lstat(primary).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -66,8 +130,12 @@ export async function getProjectLibraryLayout(directory: string, options: { crea
     await claimLibrary(primary);
     return { root: await realpath(primary), relativePath: "library", fallback: false, exists: true };
   }
-  const fallback = join(directory, "library-assets");
-  if (await isClaimedLibrary(fallback)) return { root: await realpath(fallback), relativePath: "library-assets", fallback: true, exists: true };
+  // ACT: 历史竞态会留下"只建了 .library、没落标记"的 library；补标记而不是退到 library-assets。
+  if (!primaryInfo.isSymbolicLink() && primaryInfo.isDirectory() && await isClaimInterrupted(primary)) {
+    if (!create) return { root: primary, relativePath: "library", fallback: false, exists: false };
+    await claimLibrary(primary);
+    return { root: await realpath(primary), relativePath: "library", fallback: false, exists: true };
+  }
   const fallbackInfo = await lstat(fallback).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -105,7 +173,12 @@ export async function openAssetLibrary(selector: AssetLibrarySelector, req?: Req
   const directory = selector.directory ?? selector.cwd;
   let workspace: string | undefined;
   if (directory) {
-    workspace = req ? await resolveWorkspace(req, directory, { sameOriginMedia: options.sameOriginMedia }) : await realpath(directory);
+    // ACT: 全局库与项目目录无关。项目目录失效（外接卷未挂载、项目被移动）时不能连带把全局库打挂。
+    if (kind === "global") {
+      workspace = await (req ? resolveWorkspace(req, directory, { sameOriginMedia: options.sameOriginMedia }) : realpath(directory)).catch(() => undefined);
+    } else {
+      workspace = req ? await resolveWorkspace(req, directory, { sameOriginMedia: options.sameOriginMedia }) : await realpath(directory);
+    }
   }
   if (kind === "project") {
     if (!workspace) throw Object.assign(new Error("项目素材库必须提供工作区目录 directory"), { status: 400 });

@@ -26,8 +26,8 @@
       <template #default="{ data, node }">
         <span
           class="treeRow"
-          :class="{ rootNode: data.root, dropTarget: dropTargetKey === data.id, favorite: data.favorite }"
-          :draggable="!data.root && data.type === 'directory'"
+          :class="{ rootNode: data.root, groupNode: data.group, foreignNode: data.projectRoot || isForeign(data), dropTarget: dropTargetKey === data.id, favorite: data.favorite }"
+          :draggable="!data.root && !data.projectRoot && !data.group && !isForeign(data) && data.type === 'directory'"
           :title="data.root ? data.name : data.path"
           @dragstart.stop="onDragStart($event, data)"
           @dragend.stop="onDragEnd"
@@ -46,24 +46,29 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { translate } from "@toonflow/i18n/vue";
 import type { LoadFunction, TreeInstance, TreeNodeData } from "element-plus";
 import { IconFolder, IconFolderOpen, IconStarFilled } from "@tabler/icons-vue";
 import { getTree, toAssetError } from "../api";
+import { isTransientAssetFailure } from "../useAssetLibrary";
 import { activeAssetDrag, canDropInto, clearAssetDrag, hasInternalDrag, readInternalDrag, setInternalDrag } from "../types";
 import type { AssetDragPayload, AssetEntry, AssetLibraryKind, AssetTreeNode } from "../types";
 
 const props = withDefaults(defineProps<{
   library: AssetLibraryKind;
   directory?: string;
+  /** 首页分组模式：传入项目列表后，树根改为「项目（分组）+ 全局」，展开项目才按需加载。 */
+  projects?: { directory: string; name: string }[];
+  activeDirectory?: string;
   currentPath: string;
   expandedKeys: string[];
   refreshKey?: number;
-}>(), { refreshKey: 0 });
+}>(), { refreshKey: 0, projects: undefined, activeDirectory: "" });
 const emit = defineEmits<{
   navigate: [path: string];
   "select-library": [library: AssetLibraryKind];
+  "select-project": [payload: { directory: string; name: string; path: string }];
   menu: [event: MouseEvent, entry: AssetEntry];
   move: [payload: AssetDragPayload, targetPath: string];
   expanded: [keys: string[]];
@@ -79,23 +84,63 @@ const treeProps = {
 const currentKey = ref("");
 let expanded = new Set<string>(props.expandedKeys);
 
-const defaultExpandedKeys = ref<string[]>([...new Set(["root:project", "root:global", ...props.expandedKeys])]);
+const grouped = computed(() => props.projects !== undefined);
+const GROUPS_ROOT = "root:projects";
+// grouped 模式下把分组展开状态放在本地，避免被"按项目分桶"的 expanded 打散。
+const localExpanded = ref<string[]>(grouped.value ? [GROUPS_ROOT] : []);
+const defaultExpandedKeys = computed(() => grouped.value
+  ? [...new Set([GROUPS_ROOT, ...localExpanded.value])]
+  : [...new Set(["root:project", "root:global", ...props.expandedKeys])]);
 
 function rootNodes(): AssetTreeNode[] {
   const roots: AssetTreeNode[] = [];
-  if (props.directory) roots.push({ id: "root:project", library: "project", path: "", name: translate("本项目"), type: "directory", category: "directory", size: 0, mtimeMs: 0, tags: [], note: "", favorite: false, isLeaf: false, root: true });
+  if (!grouped.value && props.directory) roots.push({ id: "root:project", library: "project", path: "", name: translate("本项目"), type: "directory", category: "directory", size: 0, mtimeMs: 0, tags: [], note: "", favorite: false, isLeaf: false, root: true });
+  if (grouped.value) roots.push({ id: GROUPS_ROOT, library: "project", path: "", name: translate("项目"), type: "directory", category: "directory", size: 0, mtimeMs: 0, tags: [], note: "", favorite: false, isLeaf: false, root: true, group: true });
   roots.push({ id: "root:global", library: "global", path: "", name: translate("全局"), type: "directory", category: "directory", size: 0, mtimeMs: 0, tags: [], note: "", favorite: false, isLeaf: false, root: true });
   return roots;
 }
 
-function toTreeNode(entry: AssetEntry, library: AssetLibraryKind): AssetTreeNode {
+function toTreeNode(entry: AssetEntry, library: AssetLibraryKind, directory?: string): AssetTreeNode {
+  const identity = grouped.value && directory ? `${library}:${directory}:${entry.path}` : `${library}:${entry.path}`;
   return {
     ...entry,
-    id: `${library}:${entry.path}`,
+    id: identity,
     library,
+    ...(directory ? { directory } : {}),
     isLeaf: entry.type === "file",
     ...(entry.type === "directory" ? { childCount: entry.childCount ?? 0 } : {}),
   };
+}
+
+function projectNodes(): AssetTreeNode[] {
+  return (props.projects ?? []).map(project => ({
+    id: `project:${project.directory}`,
+    library: "project",
+    directory: project.directory,
+    path: "",
+    name: project.name,
+    type: "directory",
+    category: "directory",
+    size: 0,
+    mtimeMs: 0,
+    tags: [],
+    note: "",
+    favorite: false,
+    isLeaf: false,
+    projectRoot: true,
+  }));
+}
+
+/** 同一目录的读取：项目节点与其子目录都用自己的 directory，避免跨项目串。 */
+function nodeDirectory(data: AssetTreeNode) {
+  return data.directory ?? props.activeDirectory ?? props.directory;
+}
+
+function isForeign(data: AssetTreeNode) {
+  if (!grouped.value) return false;
+  const directory = data.directory;
+  if (!directory) return false;
+  return directory !== props.activeDirectory;
 }
 
 const loadNode: LoadFunction = async (node, resolve) => {
@@ -105,50 +150,97 @@ const loadNode: LoadFunction = async (node, resolve) => {
     return;
   }
   const data = node.data as AssetTreeNode;
+  if (data.group) {
+    resolve(projectNodes() as unknown as TreeNodeData[]);
+    return;
+  }
   if (!data || data.type !== "directory") {
     resolve([]);
     return;
   }
-  try {
-    const result = await getTree({ library: data.library, directory: props.directory }, data.root ? "" : data.path);
-    // 目录树只渲染目录，文件统一放在右侧网格，避免大树生成上千个节点。
-    resolve(result.items.filter(entry => entry.type === "directory").map(entry => toTreeNode(entry, data.library)) as unknown as TreeNodeData[]);
-  } catch (cause) {
-    emit("error", toAssetError(cause).message);
-    resolve([]);
+  const directory = nodeDirectory(data);
+  const relativePath = data.projectRoot || data.root ? "" : data.path;
+  // ACT: 首次打开项目时库根可能刚被创建，失败一次自动重试再报错。
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const result = await getTree({ library: data.library, directory }, relativePath);
+      // 目录树只渲染目录，文件统一放在右侧网格，避免大树生成上千个节点。
+      resolve(result.items.filter(entry => entry.type === "directory").map(entry => toTreeNode(entry, data.library, directory)) as unknown as TreeNodeData[]);
+      return;
+    } catch (cause) {
+      if (attempt === 0 && isTransientAssetFailure(cause)) {
+        await new Promise(done => setTimeout(done, 300));
+        continue;
+      }
+      emit("error", toAssetError(cause).message);
+      resolve([]);
+      return;
+    }
   }
 };
 
 function nodeKey(data: AssetTreeNode) {
-  return data.root ? `root:${data.library}` : `${data.library}:${data.path}`;
+  if (data.group) return GROUPS_ROOT;
+  if (data.root) return `root:${data.library}`;
+  if (grouped.value) return `${data.library}:${data.directory ?? props.activeDirectory ?? ""}:${data.path}`;
+  return `${data.library}:${data.path}`;
 }
 
 function syncCurrentKey() {
-  currentKey.value = props.currentPath ? `${props.library}:${props.currentPath}` : `root:${props.library}`;
+  if (grouped.value) {
+    currentKey.value = props.library === "global" || !props.activeDirectory
+      ? "root:global"
+      : `${props.library}:${props.activeDirectory}:${props.currentPath}`;
+  } else {
+    currentKey.value = props.currentPath ? `${props.library}:${props.currentPath}` : `root:${props.library}`;
+  }
   void nextTick(() => treeRef.value?.setCurrentKey(currentKey.value));
 }
 
 function onNodeClick(data: AssetTreeNode) {
+  if (data.group) return;
+  if (data.projectRoot && data.directory) {
+    emit("select-project", { directory: data.directory, name: data.name, path: "" });
+    return;
+  }
   if (data.root) {
     if (data.library !== props.library) emit("select-library", data.library);
     emit("navigate", "");
     return;
   }
-  if (data.type === "directory") emit("navigate", data.path);
+  if (data.type !== "directory") return;
+  if (isForeign(data) && data.directory) {
+    emit("select-project", { directory: data.directory, name: data.name, path: data.path });
+    return;
+  }
+  emit("navigate", data.path);
 }
 
 function onNodeDoubleClick(data: AssetTreeNode) {
-  if (data.root) return;
+  if (data.root || data.group) return;
+  if (isForeign(data) && data.directory) {
+    emit("select-project", { directory: data.directory, name: data.name, path: data.path });
+    return;
+  }
   emit("navigate", data.path);
 }
 
 function onNodeExpand(data: AssetTreeNode) {
-  expanded.add(nodeKey(data));
+  const key = nodeKey(data);
+  if (grouped.value) {
+    localExpanded.value = [...new Set([...localExpanded.value, key])];
+    return;
+  }
+  expanded.add(key);
   emit("expanded", [...expanded]);
 }
 
 function onNodeCollapse(data: AssetTreeNode) {
   const key = nodeKey(data);
+  if (grouped.value) {
+    localExpanded.value = localExpanded.value.filter(item => item !== key && !item.startsWith(`${key}/`));
+    return;
+  }
   expanded = new Set([...expanded].filter(item => item !== key && !item.startsWith(`${key}/`)));
   emit("expanded", [...expanded]);
 }
@@ -157,6 +249,8 @@ function onNodeContextMenu(event: Event, data: AssetTreeNode) {
   event.preventDefault();
   event.stopPropagation();
   const mouseEvent = event as MouseEvent;
+  // ACT: 跨项目节点不能用当前项目的 selector 执行删除/重命名，直接屏蔽上下文菜单。
+  if (data.group || data.projectRoot || isForeign(data)) return;
   if (data.root) {
     if (data.library !== props.library) emit("select-library", data.library);
     emit("menu", mouseEvent, { name: data.name, path: "", type: "directory", category: "directory", size: 0, mtimeMs: 0, tags: [], note: "", favorite: false });
@@ -170,6 +264,7 @@ function onBlankDragOver(event: DragEvent) {
   if (!hasInternalDrag(event)) return;
   if (event.target instanceof Element && event.target.closest(".treeRow")) return;
   const payload = activeAssetDrag.value;
+  if (grouped.value && (props.library !== "project" || !props.activeDirectory)) return;
   if (!payload || !canDropInto(payload, { library: props.library, path: "" }, "root")) {
     dropTargetKey.value = undefined;
     return;
@@ -216,6 +311,7 @@ function onDragEnd() {
 }
 
 function acceptsDrop(data: AssetTreeNode) {
+  if (data.group || data.projectRoot || isForeign(data)) return false;
   return data.type === "directory";
 }
 
@@ -267,8 +363,8 @@ function onNodeDrop(event: DragEvent, data: AssetTreeNode) {
 watch(() => props.currentPath, syncCurrentKey, { immediate: false });
 watch(() => props.library, () => { syncCurrentKey(); }, { immediate: false });
 watch(() => props.expandedKeys, keys => {
+  if (grouped.value) return;
   expanded = new Set(keys);
-  defaultExpandedKeys.value = [...new Set(["root:project", "root:global", ...keys])];
 }, { deep: true });
 watch(() => props.refreshKey, () => { syncCurrentKey(); }, { flush: "post" });
 syncCurrentKey();

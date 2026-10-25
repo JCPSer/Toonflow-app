@@ -26,14 +26,20 @@
           {{ translate("详情：{name}", { name: detailEntry.name }) }}
         </el-button>
       </div>
-      <AssetLibraryContent ref="contentRef" embedded :directory="directory" />
+      <AssetLibraryContent
+        ref="contentRef"
+        embedded
+        :directory="activeDirectory || undefined"
+        :projects="projects"
+        :project-name="activeProjectName"
+        @select-project="onSelectProject" />
     </div>
 
     <assetDetailDrawer
       v-model="detailVisible"
       :entry="detailEntry"
       :library="activeLibrary"
-      :directory="directory"
+      :directory="activeDirectory || undefined"
       @edit="onEditMeta" />
 
     <el-dialog
@@ -75,7 +81,22 @@ import { batchErrorMessage, type AssetEntry } from "@/pages/workspace/panels/ass
 
 const visible = defineModel<boolean>({ default: false });
 const workspace = useWorkspaceStore();
-const directory = computed(() => workspace.project?.directory);
+// ACT: 首页不再默认沿用"上次打开的项目"，默认全局库；在左侧「项目」分组里点开某个项目才切过去。
+const activeDirectory = ref("");
+const projects = computed(() => workspace.projectList.map(project => ({ directory: project.directory, name: project.name })));
+const activeProjectName = computed(() => projects.value.find(project => project.directory === activeDirectory.value)?.name ?? "");
+
+function onSelectProject(payload: { directory: string; path: string }) {
+  activeDirectory.value = payload.directory;
+}
+
+function onClosed() {
+  detailVisible.value = false;
+  detailEntry.value = undefined;
+  tagFilter.value = "";
+  batchTagVisible.value = false;
+  activeDirectory.value = "";
+}
 
 const contentRef = ref<InstanceType<typeof AssetLibraryContent>>();
 const selectedEntries = computed<AssetEntry[]>(() => contentRef.value?.selectedEntries ?? []);
@@ -177,12 +198,6 @@ function onEditMeta(entry: AssetEntry) {
   contentRef.value?.openMeta(entry);
 }
 
-function onClosed() {
-  detailVisible.value = false;
-  detailEntry.value = undefined;
-  tagFilter.value = "";
-  batchTagVisible.value = false;
-}
 </script>
 
 <style lang="scss">
