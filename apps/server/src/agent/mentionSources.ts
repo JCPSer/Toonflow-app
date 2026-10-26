@@ -13,6 +13,7 @@ export type MentionCanvasSource = {
   nodes(canvasId: string, options: MentionQuery): Promise<MentionPage<MentionNode>> | undefined;
   outputs(canvasId: string, nodeId: string): MentionOutput[] | undefined;
   selectCanvas(canvasId: string, nodeId: string, outputId: string): Promise<AgentMention> | undefined;
+  selectNode(canvasId: string, nodeId: string): AgentMention | undefined;
 };
 
 export function mentionRecord(value: unknown): value is Record<string, unknown> {
@@ -121,6 +122,13 @@ export async function createCanvasMention(node: MentionCanvasNode, canvasId: str
   const nodeName = mentionNodeName(node);
   return { id: crypto.randomUUID(), label: `${nodeName} · ${output.name}`.slice(0, 500), source: { kind: "canvas", canvasId, canvasName, nodeId: node.id,
     nodeName, outputId, outputName: output.name }, dataType: selected.dataType, value };
+}
+
+// ACT: 节点引用只带身份：画布与节点 id 供模型用画布工具定位，不带任何 data 快照。
+export function createNodeMention(node: MentionCanvasNode, canvasId: string): AgentMention {
+  const canvasName = canvasId.replace(/\.json$/i, "").slice(0, 255);
+  const nodeName = mentionNodeName(node);
+  return { id: crypto.randomUUID(), label: nodeName, source: { kind: "canvas", canvasId, canvasName, nodeId: node.id, nodeName }, dataType: "NODE", value: null };
 }
 
 export function mentionAssetType(path: string) {

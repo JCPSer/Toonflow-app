@@ -1,7 +1,7 @@
 import { open, opendir, readFile, stat } from "@toonflow/file";
 import { basename } from "node:path";
 import u from "@/utils";
-import { createCanvasMention, mentionAssetType, mentionNodeOutputs, mentionRecord, queryMentionNodes,
+import { createCanvasMention, createNodeMention, mentionAssetType, mentionNodeOutputs, mentionRecord, queryMentionNodes,
   type MentionCanvasNode, type MentionQuery } from "./mentionSources";
 import type { AgentMention } from "./runtime/types";
 import { decodeTextFile } from "@/lib/documentFormats";
@@ -94,6 +94,13 @@ export async function storedMentionOutput(directory: string, canvasId: string, n
   const node = canvas.byId.get(nodeId);
   if (!node) throw Object.assign(new Error("节点已删除，请重新选择"), { status: 404 });
   return outputId === undefined ? mentionNodeOutputs(node) : createCanvasMention(node, canvasId, outputId, path => readMentionText(directory, path));
+}
+
+export async function storedNodeMention(directory: string, canvasId: string, nodeId: string) {
+  const canvas = await readCanvas(directory, canvasId);
+  const node = canvas.byId.get(nodeId);
+  if (!node) throw Object.assign(new Error("节点已删除，请重新选择"), { status: 404 });
+  return createNodeMention(node, canvasId);
 }
 
 export async function selectMentionAsset(relativePath: string, options: { library?: "global" | "project"; directory?: string } = {}): Promise<AgentMention> {

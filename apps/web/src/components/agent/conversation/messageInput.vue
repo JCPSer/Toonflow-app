@@ -174,8 +174,9 @@ function handleSenderKeydown(event: KeyboardEvent) {
 // ACT: 同一画布输出或素材只允许出现一次；重复加入时提示而不是再插入一个标签。
 function mentionIdentity(mention: AgentMention) {
   const source = mention.source;
+  // ACT: 节点引用没有 outputId，用空串占位；否则会拼出 "undefined"，与输出引用的键撞车。
   return source.kind === "canvas"
-    ? `canvas:${source.canvasId}:${source.nodeId}:${source.outputId}`
+    ? `canvas:${source.canvasId}:${source.nodeId}:${source.outputId ?? ""}`
     : `asset:${source.library ?? "global"}:${source.path}`;
 }
 

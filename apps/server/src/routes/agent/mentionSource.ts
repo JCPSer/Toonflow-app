@@ -6,7 +6,7 @@ import { success } from "@/lib/responseFormat";
 
 const router = Router();
 const shape = {
-  operation: z.enum(["canvases", "nodes", "outputs", "selectCanvas", "assets", "selectAsset"]),
+  operation: z.enum(["canvases", "nodes", "outputs", "selectCanvas", "selectNode", "assets", "selectAsset"]),
   directory: z.string().min(1).max(4096), canvasId: z.string().min(1).max(4096).optional(),
   nodeId: z.string().min(1).max(256).optional(), outputId: z.string().min(1).max(256).optional(),
   path: z.string().max(4096).optional(), query: z.string().max(200).optional(), cursor: z.string().max(4096).optional(),
@@ -31,7 +31,10 @@ export default router.get("/", validateFields(shape, "query"), async (req, res) 
     } else {
       if (!args.canvasId) throw Object.assign(new Error("请选择画布"), { status: 400 });
       if (args.operation === "nodes") result = await u.mentionFiles.queryStoredMentionNodes(directory, args.canvasId, options);
-      else {
+      else if (args.operation === "selectNode") {
+        if (!args.nodeId) throw Object.assign(new Error("请选择节点"), { status: 400 });
+        result = await u.mentionFiles.storedNodeMention(directory, args.canvasId, args.nodeId);
+      } else {
         if (!args.nodeId || (args.operation === "selectCanvas" && !args.outputId)) throw Object.assign(new Error("请选择节点输出"), { status: 400 });
         result = await u.mentionFiles.storedMentionOutput(directory, args.canvasId, args.nodeId, args.operation === "selectCanvas" ? args.outputId : undefined);
       }

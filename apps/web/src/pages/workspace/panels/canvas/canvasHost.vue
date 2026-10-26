@@ -30,7 +30,7 @@ import overlayHost from "./overlayHost.vue";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { flushAllLastCanvas, writeLastCanvas } from "@/lib/projectUi";
 import { useWorkspaceStore } from "@/stores/workspace";
-import { createCanvasMention, mentionNodeOutputs, queryMentionNodes, type MentionCanvasSource } from "@toonflow/server/agent/mentionSources";
+import { createCanvasMention, createNodeMention, mentionNodeOutputs, queryMentionNodes, type MentionCanvasSource } from "@toonflow/server/agent/mentionSources";
 import type { NodeDocumentState } from "@toonflow/nodes-scaffold/nodeDocument";
 import { copyCanvasFiles, readCanvasFiles, type DocumentNode, type DocumentNodeOptions } from "./canvasFiles";
 import { createNodeAssetCleanup } from "./nodeAssetCleanup";
@@ -490,6 +490,13 @@ const mentionSource: MentionCanvasSource = {
       if (text.length > 100000) throw new Error("文本引用最多支持 100000 个字符，请缩小内容后重试");
       return text;
     });
+  },
+  selectNode(canvasId, nodeId) {
+    const panel = mentionInstance(canvasId);
+    if (!panel) return;
+    const node = panel.findMentionNode(nodeId);
+    if (!node) throw new Error("节点已删除，请重新选择");
+    return createNodeMention(node, canvasId);
   },
 };
 

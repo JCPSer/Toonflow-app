@@ -16,7 +16,7 @@
       <el-button :icon="IconSun" :disabled="scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="打光" aria-label="打光" @click.stop="openLighting">打光</el-button>
       <el-button :icon="IconCameraRotate" :disabled="scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="多角度" aria-label="多角度" @click.stop="openMultiAngle">多角度</el-button>
       <el-button :icon="IconLayoutGrid" :disabled="scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl" :loading="gridSplit?.splitting" text title="宫格切分" aria-label="宫格切分" @click.stop="gridSplit?.open($event)">宫格切分</el-button>
-      <el-button :icon="IconResize" :disabled="uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || inpaintPrompt?.creating || !previewUrl" :aria-expanded="scale?.visible ?? false" text title="缩放" aria-label="缩放" @click.stop="scale?.open($event)" />
+      <el-button :icon="IconResize" :disabled="uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || inpaintPrompt?.creating || !previewUrl" :aria-expanded="scale?.visible ?? false" text title="缩放" aria-label="缩放" @click.stop="scale?.open($event)">缩放</el-button>
       <el-button
         :icon="IconTransfer"
         :loading="uploading"

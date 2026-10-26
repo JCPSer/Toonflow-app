@@ -431,12 +431,14 @@ async function chooseAgentOutput(output: MentionOutput) {
   await insertNodeAgentMention(nodeId, output.id);
 }
 
-async function insertNodeAgentMention(nodeId: string, outputId: string) {
+async function insertNodeAgentMention(nodeId: string, outputId?: string) {
   const activeCanvasId = canvasId.value;
   if (!activeCanvasId || !project.value?.directory) return ElMessage.warning("请先打开画布");
   try {
-    // ACT: 复用 mention 解析的正式链路，插入结果与手动 @ 节点输出完全一致。
-    const mention = await mentionSources.selectCanvas({ canvasId: activeCanvasId, nodeId, outputId });
+    // ACT: 复用 mention 解析的正式链路，插入结果与手动 @ 节点输出完全一致；不传 outputId 即引用节点本身。
+    const mention = outputId
+      ? await mentionSources.selectCanvas({ canvasId: activeCanvasId, nodeId, outputId })
+      : await mentionSources.selectNode({ canvasId: activeCanvasId, nodeId });
     showAgentPanel?.();
     agentComposer.push(mention, project.value?.directory);
   } catch (error) {
@@ -456,7 +458,8 @@ async function addNodeToAgentContextFromToolbar(nodeId: string, anchor: HTMLElem
     return ElMessage.error(error instanceof Error ? error.message : "读取节点输出失败");
   }
   const available = outputs.filter(output => output.available);
-  if (!available.length) return ElMessage.info("该节点暂无输出");
+  // ACT: 空节点改为引用节点本身，不再提示「暂无输出」把路堵死。
+  if (!available.length) return insertNodeAgentMention(nodeId);
   if (available.length === 1) return insertNodeAgentMention(nodeId, available[0]!.id);
   if (!anchor.isConnected) return;
   await openAgentPortMenu(nodeId, anchor, outputs);

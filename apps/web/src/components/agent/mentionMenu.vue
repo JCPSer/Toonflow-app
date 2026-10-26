@@ -22,13 +22,14 @@
               <div v-else-if="loadError" class="mentionStatus" role="alert"><span>{{ loadError }}</span><el-button text type="primary" size="small" @click="loadList()">重试</el-button></div>
               <div v-else-if="!rows.length" class="mentionStatus" role="status">{{ emptyText }}</div>
               <div class="mentionRows" :style="{ height: `${listVirtualizer.getTotalSize()}px` }">
-                <button v-for="{ row, index, start } in visibleRows" :id="`${listId}-${index}`" :key="`${row.kind}-${row.id}`" class="mentionItem" :style="{ transform: `translateY(${start}px)` }" :class="{ active: index === activeIndex, unavailable: !row.available, checked: row.kind === 'output' && selectedOutputs.includes(row.id) }" type="button" role="option" :aria-selected="row.kind === 'output' ? selectedOutputs.includes(row.id) : index === activeIndex" :aria-disabled="!row.available || selecting" :aria-posinset="index + 1" :aria-setsize="rows.length" :title="row.name" @mouseenter="activeIndex = index" @mousedown.prevent @click="chooseRow(row)">
+                <div v-for="{ row, index, start } in visibleRows" :id="`${listId}-${index}`" :key="`${row.kind}-${row.id}`" class="mentionItem" :style="{ transform: `translateY(${start}px)` }" :class="{ active: index === activeIndex, unavailable: !row.interactive, checked: row.kind === 'output' && selectedOutputs.includes(row.id) }" role="option" tabindex="-1" :aria-selected="row.kind === 'output' ? selectedOutputs.includes(row.id) : index === activeIndex" :aria-disabled="!row.interactive || selecting" :aria-posinset="index + 1" :aria-setsize="rows.length" :title="row.name" @mouseenter="activeIndex = index" @mousedown.prevent @click="chooseRow(row)">
                   <mentionThumbnail :thumbnail="row.thumbnail" :directory="directory" :globalAsset="row.kind === 'file'" :library="row.kind === 'file' ? assetLibrary : undefined"><component :is="row.kind === 'canvas' ? IconVector : row.kind === 'directory' ? IconFolder : row.dataType === 'image' || row.dataType === 'mask' ? IconPhoto : row.dataType === 'video' ? IconVideo : row.dataType === 'audio' ? IconMusic : row.dataType ? IconFileText : IconBox" :size="18" /></mentionThumbnail>
                   <span class="mentionContent"><span class="mentionName">{{ row.name }}</span><span v-if="row.description" class="mentionDescription">{{ row.description }}</span></span>
-                  <span v-if="!row.available" class="mentionState">{{ row.kind === 'file' ? '不支持' : '暂无输出' }}</span>
+                  <span v-if="!row.available" class="mentionState">{{ row.kind === 'file' ? translate('不支持') : translate('无输出') }}</span>
                   <span v-else-if="row.kind === 'output'" class="mentionCheck" :class="{ selected: selectedOutputs.includes(row.id) }"><icon-check v-if="selectedOutputs.includes(row.id)" :size="12" /></span>
-                  <icon-chevron-right v-else-if="['canvas', 'directory'].includes(row.kind) || row.kind === 'node' && row.outputCount > 1" :size="14" class="mentionArrow" />
-                </button>
+                  <button v-if="row.kind === 'node'" class="mentionNodeButton" type="button" data-mention-node :disabled="selecting" :aria-label="`${translate('引用节点')} ${row.name}`" :title="translate('引用节点本身，不读取输出')" @mousedown.prevent @click.stop="chooseNode(row)">{{ translate('节点') }}</button>
+                  <icon-chevron-right v-if="row.kind === 'node' && row.available && row.outputCount > 1 || ['canvas', 'directory'].includes(row.kind)" :size="14" class="mentionArrow" />
+                </div>
               </div>
               <el-button v-if="hasMore && !loadError" class="mentionMore" text :loading="loading" :disabled="selecting" @click="loadMore">加载更多</el-button>
             </div>
@@ -61,8 +62,9 @@ const scopes = [{ id: "current", get name() { return translate("当前画布"); 
 const assetLibraries = [{ id: "global", get name() { return translate("全局素材"); } }, { id: "project", get name() { return translate("本项目素材"); } }] as const;
 type MentionScope = typeof scopes[number]["id"];
 type AssetLibrary = typeof assetLibraries[number]["id"];
-type MentionRow = { id: string; name: string; kind: "canvas" | "node" | "output" | "file" | "directory"; available: boolean; description: string; dataType?: string; thumbnail?: { url: string; mimeType: string }; outputCount: number };
+type MentionRow = { id: string; name: string; kind: "canvas" | "node" | "output" | "file" | "directory"; available: boolean; interactive: boolean; description: string; dataType?: string; thumbnail?: { url: string; mimeType: string }; outputCount: number };
 const typeLabels: Record<string, string> = { STRING: "文本", INT: "整数", FLOAT: "数字", BOOLEAN: "布尔值", IMAGE: "图片", MASK: "遮罩", VIDEO: "视频", AUDIO: "音频", FILE: "文件" };
+// ACT: available 只表示「有没有可用输出」；节点行恒可交互（可以引用节点本身），所以两者必须分开。
 const scope = ref<MentionScope>("current");
 const assetLibrary = ref<AssetLibrary>("global");
 const buttonVisible = ref(false);
@@ -93,12 +95,15 @@ const searchText = computed(() => search.value.trim().toLocaleLowerCase());
 const filteredCanvases = computed(() => canvases.value.filter(item => item.id !== (props.currentCanvasId ?? sources.currentCanvasId()) && `${item.name} ${item.id}`.toLocaleLowerCase().includes(searchText.value)));
 const filteredOutputs = computed(() => outputs.value.filter(item => `${item.name} ${item.preview}`.toLocaleLowerCase().includes(searchText.value)));
 const rows = computed<MentionRow[]>(() => {
-  if (listingCanvases.value) return filteredCanvases.value.map(item => ({ ...item, kind: "canvas", available: true, description: translate("画布"), outputCount: 0 }));
-  if (selectedNode.value) return filteredOutputs.value.map(item => ({ ...item, kind: "output", dataType: item.dataType.toLocaleLowerCase(), description: typeLabels[item.dataType] ?? translate("数据"), outputCount: 0 }));
-  if (scope.value === "assets") return assets.value.map(item => ({ ...item, id: item.path, kind: item.type, available: item.type === "directory" || !!item.dataType, dataType: item.dataType?.toLocaleLowerCase(),
-    thumbnail: ["IMAGE", "MASK", "VIDEO"].includes(item.dataType ?? "") ? { url: item.path, mimeType: mentionAssetType(item.path).mimeType } : undefined,
-    description: item.type === "directory" ? translate("文件夹") : typeLabels[item.dataType ?? ""] ?? translate("文件"), outputCount: 0 }));
-  return nodes.value.map(item => ({ ...item, kind: "node", dataType: item.dataType?.toLocaleLowerCase(), description: typeLabels[item.dataType ?? ""] ?? translate("节点"), outputCount: item.outputCount }));
+  if (listingCanvases.value) return filteredCanvases.value.map(item => ({ ...item, kind: "canvas", available: true, interactive: true, description: translate("画布"), outputCount: 0 }));
+  if (selectedNode.value) return filteredOutputs.value.map(item => ({ ...item, kind: "output", available: item.available, interactive: item.available, dataType: item.dataType.toLocaleLowerCase(), description: typeLabels[item.dataType] ?? translate("数据"), outputCount: 0 }));
+  if (scope.value === "assets") return assets.value.map(item => {
+    const available = item.type === "directory" || !!item.dataType;
+    return { ...item, id: item.path, kind: item.type, available, interactive: available, dataType: item.dataType?.toLocaleLowerCase(),
+      thumbnail: ["IMAGE", "MASK", "VIDEO"].includes(item.dataType ?? "") ? { url: item.path, mimeType: mentionAssetType(item.path).mimeType } : undefined,
+      description: item.type === "directory" ? translate("文件夹") : typeLabels[item.dataType ?? ""] ?? translate("文件"), outputCount: 0 };
+  });
+  return nodes.value.map(item => ({ ...item, kind: "node", interactive: true, dataType: item.dataType?.toLocaleLowerCase(), description: typeLabels[item.dataType ?? ""] ?? translate("节点"), outputCount: item.outputCount }));
 });
 const listVirtualizer = useVirtualizer<HTMLDivElement, HTMLButtonElement>(computed(() => ({
   count: rows.value.length,
@@ -206,7 +211,7 @@ function loadMore() {
 }
 
 async function chooseRow(row: MentionRow) {
-  if (!row.available || selecting.value) return;
+  if (!row.interactive || selecting.value) return;
   selectionError.value = "";
   if (row.kind === "canvas") {
     selectedCanvas.value = { id: row.id, name: row.name };
@@ -220,6 +225,11 @@ async function chooseRow(row: MentionRow) {
   }
   if (row.kind === "output") {
     selectedOutputs.value = selectedOutputs.value.includes(row.id) ? selectedOutputs.value.filter(id => id !== row.id) : [...selectedOutputs.value, row.id];
+    return;
+  }
+  // ACT: 没有可用输出（含「有端口但内容为空」）时，点行主体改为引用节点本身；有输出时保持原有行为。
+  if (row.kind === "node" && !row.available) {
+    await chooseNode(row);
     return;
   }
   if (row.kind === "node" && row.outputCount > 1) {
@@ -242,6 +252,26 @@ async function chooseRow(row: MentionRow) {
       if (!output) throw new Error("该节点输出已不可用，请重新选择");
       mention = await sources.selectCanvas({ canvasId: id, nodeId: row.id, outputId: output.id, signal: controller.signal });
     }
+    if (controller.signal.aborted) return;
+    emit("select", [mention]);
+    closeMenu();
+  } catch (error) {
+    if (!controller.signal.aborted) selectionError.value = error instanceof Error ? error.message : "引用失败，请重试";
+  } finally {
+    if (!controller.signal.aborted) selecting.value = false;
+  }
+}
+
+/** 引用节点本身：只带画布与节点身份，不读取任何输出内容。 */
+async function chooseNode(row: MentionRow) {
+  const id = canvasId.value;
+  if (!id || selecting.value) return;
+  const controller = new AbortController();
+  selectionController = controller;
+  selecting.value = true;
+  selectionError.value = "";
+  try {
+    const mention = await sources.selectNode({ canvasId: id, nodeId: row.id, signal: controller.signal });
     if (controller.signal.aborted) return;
     emit("select", [mention]);
     closeMenu();
@@ -281,7 +311,8 @@ function handleKeydown(event: KeyboardEvent): boolean {
     return true;
   }
   const target = event.target;
-  if (target instanceof HTMLElement && target.closest("button") && !target.closest(".mentionItem")) return false;
+  // ACT: 行内按钮（如「节点」）必须自己处理 Enter；焦点落在任意 button 上时不接管按键。
+  if (target instanceof HTMLElement && target.closest("button")) return false;
   if (!["ArrowUp", "ArrowDown", "Enter"].includes(event.key)) return false;
   event.preventDefault();
   event.stopPropagation();
@@ -293,7 +324,7 @@ function handleKeydown(event: KeyboardEvent): boolean {
   const direction = event.key === "ArrowDown" ? 1 : -1;
   for (let step = 1; step <= rows.value.length; step++) {
     const index = (activeIndex.value + direction * step + rows.value.length) % rows.value.length;
-    if (rows.value[index]?.available) {
+    if (rows.value[index]?.interactive) {
       activeIndex.value = index;
       listVirtualizer.value.scrollToIndex(index, { align: "auto" });
       break;
@@ -371,7 +402,7 @@ watch(search, () => {
 watch(rows, async (items, previous) => {
   const previousId = previous[activeIndex.value]?.id;
   const retainedIndex = items.findIndex(item => item.id === previousId);
-  activeIndex.value = retainedIndex >= 0 ? retainedIndex : Math.max(0, items.findIndex(item => item.available));
+  activeIndex.value = retainedIndex >= 0 ? retainedIndex : Math.max(0, items.findIndex(item => item.interactive));
   if (retainedIndex >= 0 || !items.length) return;
   await nextTick();
   listVirtualizer.value.scrollToIndex(activeIndex.value, { align: "start" });
@@ -502,6 +533,23 @@ defineExpose({ handleKeydown, openMenu, closeMenu });
           }
           .mentionState { flex-shrink: 0; font-size: 11px; color: var(--el-text-color-secondary); }
           .mentionArrow { flex-shrink: 0; color: var(--el-text-color-secondary); }
+          // ACT: 行主体保持「插入输出」，行尾按钮是「引用节点本身」的唯一入口。
+          .mentionNodeButton {
+            flex-shrink: 0;
+            height: 22px;
+            padding: 0 7px;
+            border: 1px solid var(--el-border-color);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--el-text-color-secondary);
+            font: inherit;
+            font-size: 11px;
+            line-height: 20px;
+            cursor: pointer;
+
+            &:hover { border-color: var(--el-color-primary-light-5); color: var(--el-color-primary); }
+            &:disabled { cursor: not-allowed; opacity: 0.5; }
+          }
           .mentionCheck {
             display: flex;
             align-items: center;

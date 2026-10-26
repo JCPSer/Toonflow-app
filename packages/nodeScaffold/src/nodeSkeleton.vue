@@ -47,15 +47,15 @@
             v-if="nodeAgentContext && !documentTarget"
             :icon="IconAt"
             :loading="addingToAgentContext"
-            :disabled="!hasAgentContextOutput || addingToAgentContext"
+            :disabled="addingToAgentContext"
             text
-            :title="hasAgentContextOutput ? '将该节点的输出加入右侧 Agent 对话上下文' : '暂无输出'"
+            :title="hasAgentContextOutput ? '将该节点的输出加入右侧 Agent 对话上下文' : '该节点暂无输出，将该节点本身加入右侧 Agent 对话上下文'"
             aria-label="加入对话上下文"
             data-node-agent-context
             @pointerdown.stop
             @mousedown.stop
             @dblclick.stop
-            @click.stop="addToAgentContext" />
+            @click.stop="addToAgentContext">加入对话</el-button>
           <slot name="topActions" />
           <el-divider direction="vertical" />
           <slot name="topRightActions" />
@@ -486,7 +486,8 @@ const hasAgentContextOutput = computed(() =>
 );
 
 async function addToAgentContext(event: MouseEvent) {
-  if (!nodeAgentContext || !hasAgentContextOutput.value || addingToAgentContext.value) return;
+  // ACT: 没有可用输出也能加入上下文——画布侧会改为插入「节点引用」，只带节点身份。
+  if (!nodeAgentContext || addingToAgentContext.value) return;
   addingToAgentContext.value = true;
   try {
     await nodeAgentContext(nodeId, event.currentTarget as HTMLElement);

@@ -6,8 +6,9 @@ export type AgentToolCall = ToolCall & { question?: QuestionRequest & { callId: 
 export type AgentMention = {
   id: string;
   label: string;
+  // ACT: 没有 outputId 表示「节点引用」，只带画布与节点身份；有 outputId 才是输出引用，value 为输出内容。
   source:
-    | { kind: "canvas"; canvasId: string; canvasName: string; nodeId: string; nodeName: string; outputId: string; outputName: string }
+    | { kind: "canvas"; canvasId: string; canvasName: string; nodeId: string; nodeName: string; outputId?: string; outputName?: string }
     | { kind: "asset"; path: string; library?: "global" | "project" };
   dataType: string;
   value: unknown;

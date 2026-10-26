@@ -62,6 +62,15 @@ export function useMentionSources(getDirectory: () => string | undefined) {
       if (directory !== getDirectory()) throw new Error("工作区已切换，请重新选择");
       return selected;
     },
+    async selectNode({ canvasId, nodeId, signal }: { canvasId: string; nodeId: string; signal?: AbortSignal }) {
+      signal?.throwIfAborted();
+      const directory = getDirectory();
+      const selected = await (getCanvasSource?.()?.selectNode(canvasId, nodeId)
+        ?? request<AgentMention>("selectNode", { canvasId, nodeId }, signal));
+      signal?.throwIfAborted();
+      if (directory !== getDirectory()) throw new Error("工作区已切换，请重新选择");
+      return selected;
+    },
     selectAsset({ path, library = "global", signal }: { path: string; library?: "global" | "project"; signal?: AbortSignal }) {
       return request<AgentMention>("selectAsset", { path, library }, signal);
     },
