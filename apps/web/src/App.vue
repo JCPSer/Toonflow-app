@@ -41,6 +41,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch, watchEffect } from "vue";
+import { useRoute } from "vue-router";
 import { ElMessage, useZIndex } from "element-plus";
 import { elementLocales } from "@toonflow/i18n/elementPlus";
 import { ConfigProvider, type GlobalConfigProvider } from "tdesign-vue-next";
@@ -124,6 +125,11 @@ function rememberUpdateBox() {
   }).catch(() => { ElMessage.warning("更新说明的展示记录保存失败，下次启动时可能再次显示。"); });
 }
 
+// ACT: 工作区是整窗固定布局，窗口级滚动条一律视为缺陷；只在该路由下锁死文档滚动。
+const route = useRoute();
+watchEffect(() => {
+  document.documentElement.classList.toggle("workspaceViewportLock", route.path.startsWith("/workspace"));
+});
 function preventPageZoom(event: WheelEvent) {
   if (event.ctrlKey || event.metaKey) event.preventDefault();
 }
@@ -178,6 +184,12 @@ watchEffect(() => {
 </script>
 
 <style lang="scss">
+html.workspaceViewportLock,
+html.workspaceViewportLock body {
+  height: 100%;
+  overflow: hidden;
+}
+
 html {
   background-color: var(--el-bg-color);
   color: var(--el-text-color-primary);

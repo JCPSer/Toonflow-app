@@ -44,6 +44,25 @@ echo "== 安装节点包（Resources）=="
 mkdir -p "$RES/nodes"
 cp "$ROOT"/build/nodes/*.umd.js "$RES/nodes/"
 
+if ls "$ROOT"/build/ext/*.umd.js >/dev/null 2>&1; then
+  echo "== 安装扩展（Resources）=="
+  mkdir -p "$RES/ext"
+  cp "$ROOT"/build/ext/*.umd.js "$RES/ext/"
+  if [ -d "$DATA/ext" ]; then
+    echo "== 同步运行期扩展（$DATA/ext）=="
+    extChanged=0
+    for file in "$ROOT"/build/ext/*.umd.js; do
+      name="$(basename "$file")"
+      target="$DATA/ext/$name"
+      if [ -f "$target" ] && cmp -s "$file" "$target"; then continue; fi
+      cp "$file" "$target"
+      echo "  updated: $name"
+      extChanged=$((extChanged + 1))
+    done
+    [ "$extChanged" -eq 0 ] && echo "  无变化" || echo "  共更新 $extChanged 个扩展（需重启应用生效）"
+  fi
+fi
+
 if [ -d "$DATA/nodes" ]; then
   echo "== 同步运行期节点包（$DATA/nodes）=="
   changed=0

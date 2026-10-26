@@ -374,9 +374,13 @@ onBeforeUnmount(() => {
 .comfyMonitor {
   position: absolute;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  // ACT: 窗口变窄时折行而不是把芯片挤出画布；折行后最多占满画布高度，超出自身滚动。
   max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
+  overflow: auto;
   padding: 5px 6px 5px 4px;
   border: 1px solid var(--el-border-color-light);
   border-radius: 8px;
