@@ -1,5 +1,5 @@
 <template>
-  <div class="videoPlayer" @pointerenter="clearIdle" @pointerleave="scheduleIdle">
+  <div ref="rootElement" class="videoPlayer" @pointerenter="clearIdle" @pointerleave="scheduleIdle">
     <video
       v-if="hasSource"
       ref="video"
@@ -28,7 +28,7 @@
     <div v-show="!fullscreen" class="playerControls nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
       <el-button class="playerButton playButton" text circle :icon="playing ? IconPlayerPause : IconPlayerPlay" :disabled="hasSource && !ready" :aria-label="playing ? '暂停视频' : '播放视频'" :title="playing ? '暂停' : '播放'" @click="requestPlay" />
       <span class="currentTime">{{ formatTime(currentTime) }}</span>
-      <el-slider class="progressSlider" :modelValue="currentTime" :min="0" :max="duration || 1" :step="0.01" :disabled="!ready || !duration" :formatTooltip="formatTime" aria-label="视频播放进度" @input="seek" />
+      <el-slider class="progressSlider" :modelValue="currentTime" :min="0" :max="duration || 1" :step="0.01" :disabled="!ready || !duration" :show-tooltip="Boolean(ready && duration)" :formatTooltip="formatTime" aria-label="视频播放进度" @input="seek" />
       <span class="durationLabel"><span class="timeSeparator">/</span>{{ formatTime(duration) }}</span>
       <div class="volumeControl">
         <el-popover trigger="hover" placement="top" :width="40" :popperStyle="{ minWidth: '40px', padding: '8px 0', borderRadius: 'var(--el-border-radius-base)' }" :showArrow="false" :showAfter="80" :hideAfter="150" :disabled="!ready">
@@ -66,6 +66,7 @@ const { src, posterUrl = "", label = "节点视频", readOnly = false } = define
 // ACT: 海报态由父层提供首帧图；src 为空时只显示海报，用户点播放才 emit activate 索取视频。
 const emit = defineEmits<{ loadedmetadata: [event: Event]; posterSize: [width: number, height: number]; activate: []; deactivate: [] }>();
 const video = ref<HTMLVideoElement>();
+const rootElement = ref<HTMLElement>();
 const fullscreen = ref(false);
 const ready = ref(false);
 const poster = ref("");
@@ -93,6 +94,7 @@ let captureController: AbortController | undefined;
 watch(() => getCanvas?.()?.id, () => captureController?.abort(), { flush: "sync" });
 watch(() => readOnly, value => { if (value) captureController?.abort(); }, { flush: "sync" });
 watch(() => src, () => {
+  closeHoverOverlays();
   captureController?.abort();
   ready.value = false;
   poster.value = "";
@@ -103,6 +105,7 @@ watch(() => src, () => {
 onBeforeUnmount(() => {
   captureController?.abort();
   clearIdle();
+  closeHoverOverlays();
 });
 
 watch(playing, value => {
@@ -118,6 +121,25 @@ watch(ready, value => {
   if (pendingPlay) void startPlayback();
 });
 
+/**
+ * ACT: 播放器被卸载/切换成海报态时，若鼠标正停在进度条上，Element Plus 的 slider tooltip 会残留在 body 上。
+ * 主动派发离开事件并关闭没有触发器的浮层，避免「0:00」这种气泡永久挂在画布上。
+ */
+function closeHoverOverlays() {
+  const root = rootElement.value;
+  if (root) {
+    for (const element of root.querySelectorAll(".el-slider__button-wrapper, .el-slider__button, .el-slider__runway")) {
+      element.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+      element.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+    }
+  }
+  for (const popper of document.querySelectorAll<HTMLElement>("body > .el-popper")) {
+    const describedBy = popper.id;
+    const trigger = describedBy ? document.querySelector(`[aria-describedby="${describedBy}"]`) : null;
+    if (!trigger) popper.style.display = "none";
+  }
+}
+
 function clearIdle() {
   if (!idleTimer) return;
   clearTimeout(idleTimer);
@@ -130,7 +152,9 @@ function scheduleIdle() {
   if (playing.value) return;
   idleTimer = setTimeout(() => {
     idleTimer = undefined;
-    if (!playing.value && hasSource.value) emit("deactivate");
+    if (playing.value || !hasSource.value) return;
+    closeHoverOverlays();
+    emit("deactivate");
   }, idleDelayMs);
 }
 

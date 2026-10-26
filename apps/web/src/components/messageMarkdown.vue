@@ -113,6 +113,13 @@ const chunks = computed(() => {
     font-size: inherit;
     line-height: inherit;
 
+    // ACT: 消息列表用 transform: translateY 做虚拟滚动，代码块头是 position: sticky，
+    // WebKit 会把它按 transform 祖先而不是滚动容器定位，导致头部错位叠在正文上。
+    // 头部不需要吸顶（真正的滚动容器是它下面的 code-block-content），直接取消粘性。
+    :deep([data-stream-markdown="code-block-header"]) {
+      position: static;
+    }
+
     & + .markdownChunk {
       margin-top: 12px;
     }
