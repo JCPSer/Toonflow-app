@@ -66,6 +66,8 @@ const addressDraft = ref("");
 const addressInput = ref<InstanceType<typeof ElInput>>();
 const navigationPending = ref(false);
 const canInteract = computed(() => props.interactive && props.active && props.live !== false && status.value === "live");
+// ACT: 只读滚动不改变页面状态，助手运行期间也放行；点击与键入仍只看 canInteract。
+const canScroll = computed(() => props.active && props.live !== false && status.value === "live" && session.value?.status === "running" && !!session.value.tabId && !!browserScope.value);
 const canNavigate = computed(() => canInteract.value && session.value?.status === "running" && !!session.value.tabId && !!browserScope.value && !navigationPending.value);
 const composing = ref(false);
 type InputTarget = BrowserScope & { sessionId: string; tabId: string };
@@ -308,9 +310,9 @@ function focusInput() {
   if (canInteract.value) keyboardInput.value?.focus({ preventScroll: true });
 }
 
-function screenPoint(event: MouseEvent, outside = false) {
+function screenPoint(event: MouseEvent, outside = false, allow = canInteract.value) {
   const image = frameImage.value;
-  if (!canInteract.value || !image?.naturalWidth || !image.naturalHeight || !frameViewport.value.width || !frameViewport.value.height) return;
+  if (!allow || !image?.naturalWidth || !image.naturalHeight || !frameViewport.value.width || !frameViewport.value.height) return;
   const rect = image.getBoundingClientRect();
   const scale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
   const width = image.naturalWidth * scale;
@@ -321,10 +323,11 @@ function screenPoint(event: MouseEvent, outside = false) {
   return { x: x / width * frameViewport.value.width, y: y / height * frameViewport.value.height };
 }
 
-function sendInput(input: BrowserInput) {
+function sendInput(input: BrowserInput, allowReadOnlyScroll = false) {
   const current = session.value;
   const scope = browserScope.value;
-  if (!canInteract.value || !current?.tabId || !scope || !streamController) return;
+  // ACT: 只读滚动（allowReadOnlyScroll）不受 interactive 限制，其余输入仍要求可交互。
+  if (!(canInteract.value || (allowReadOnlyScroll && canScroll.value)) || !current?.tabId || !scope || !streamController) return;
   if (navigationPending.value && !["navigate", "back", "forward", "reload"].includes(input.type)) return;
   const target = { ...scope, sessionId: current.browserSessionId, tabId: current.tabId };
   inputTarget = target;
@@ -348,6 +351,8 @@ async function drainInput() {
       const result = await response.json();
       if (controller.signal.aborted) continue;
       if (response.status === 404) { endSession(result.message); continue; }
+      // ACT: 助手正在操作页面时滚动会被服务端拒绝（409）；只读浏览静默丢弃，不弹错也不打断输入。
+      if (response.status === 409 && input.type === "wheel") continue;
       if (!response.ok || result.code !== 200) throw new Error(result.message || "网页操作失败");
       if (["navigate", "back", "forward", "reload"].includes(input.type)) receiveEvent({ type: "state", session: result.data }, target.sessionId);
       inputError.value = "";
@@ -425,7 +430,7 @@ function leaveScreen(event: PointerEvent) {
 }
 
 function wheelScreen(event: WheelEvent) {
-  const point = screenPoint(event);
+  const point = screenPoint(event, false, canScroll.value);
   if (!point) return;
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? frameViewport.value.height : 1;
   pendingWheel = { type: "wheel", ...point, modifiers: inputModifiers(event), deltaX: (pendingWheel?.deltaX || 0) + event.deltaX * unit, deltaY: (pendingWheel?.deltaY || 0) + event.deltaY * unit };
@@ -436,7 +441,7 @@ function wheelScreen(event: WheelEvent) {
 function flushWheel() {
   clearTimeout(wheelTimer);
   wheelTimer = undefined;
-  if (pendingWheel) sendInput({ ...pendingWheel, deltaX: Math.max(-10000, Math.min(10000, pendingWheel.deltaX)), deltaY: Math.max(-10000, Math.min(10000, pendingWheel.deltaY)) });
+  if (pendingWheel) sendInput({ ...pendingWheel, deltaX: Math.max(-10000, Math.min(10000, pendingWheel.deltaX)), deltaY: Math.max(-10000, Math.min(10000, pendingWheel.deltaY)) }, true);
   pendingWheel = undefined;
 }
 

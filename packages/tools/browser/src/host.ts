@@ -11,6 +11,20 @@ type ToolUpdate = Parameters<ToolDefinition["execute"]>[3];
 type FrameEvent = Extract<BrowserStreamEvent, { type: "frame" }>;
 type Tab = { id: string; page: Page; navigationVersion: number; inputVersion: number; inputKeys: Set<KeyInput>; inputButtons: Set<"left" | "right" | "middle"> };
 type Subscriber = { listener: (event: BrowserStreamEvent) => void; frame?: FrameEvent; scheduled: boolean };
+// ACT: 文本密集页面单帧可达数百 KB，滚轮一次能触发二十多帧。用推迟 ack 做源头限流：
+// Chromium 收到 screencastFrameAck 才会继续推帧，因此 ack 间隔即帧率上限。
+const frameIntervalMs = 120;
+const frameQuality = 55;
+const frameMaxWidth = 960;
+const frameMaxHeight = 600;
+type ScreencastStream = {
+  tabId: string;
+  client: CDPSession;
+  lastSentAt: number;
+  timer?: ReturnType<typeof setTimeout>;
+  pending?: Protocol.Page.ScreencastFrameEvent;
+  lastData?: string;
+};
 type BrowserSession = {
   cwd: string;
   ownerKey: string;
@@ -25,7 +39,7 @@ type BrowserSession = {
   queue: Promise<void>;
   subscribers: Set<Subscriber>;
   frame?: FrameEvent;
-  stream?: { tabId: string; client: CDPSession };
+  stream?: ScreencastStream;
   streamQueue: Promise<void>;
   closed: boolean;
   closing?: Promise<void>;
@@ -200,6 +214,10 @@ export function createBrowserRuntime() {
     session.stream = undefined;
     session.frame = undefined;
     if (!stream) return;
+    // ACT: 挂起的节流定时器必须清掉，否则会在 detach 之后去 ack 一个已失效的会话。
+    clearTimeout(stream.timer);
+    stream.timer = undefined;
+    stream.pending = undefined;
     await stream.client.send("Page.stopScreencast").catch(() => {});
     await stream.client.detach().catch(() => {});
   }
@@ -212,19 +230,34 @@ export function createBrowserRuntime() {
       if (session.closed || !session.subscribers.size || !tab || tab.page.isClosed()) return;
       const client = await tab.page.createCDPSession();
       if (session.closed || !session.subscribers.size || session.state.tabId !== tab.id) { await client.detach(); return; }
-      const stream = { tabId: tab.id, client };
+      const stream: ScreencastStream = { tabId: tab.id, client, lastSentAt: 0 };
       session.stream = stream;
       client.on("Page.screencastFrame", event => {
-        void client.send("Page.screencastFrameAck", { sessionId: event.sessionId }).catch(() => {});
-        if (session.closed || session.stream !== stream || session.state.tabId !== tab.id || !isBrowserPageUrl(tab.page.url())) return;
-        const frame: FrameEvent = {
-          type: "frame", sessionId: session.state.browserSessionId, tabId: tab.id, data: event.data, mimeType: "image/jpeg",
-          width: Math.round(event.metadata.deviceWidth), height: Math.round(event.metadata.deviceHeight),
-        };
-        session.frame = frame;
-        emit(session, frame);
+        stream.pending = event;
+        if (stream.timer) return;
+        // ACT: 只在允许发出下一帧时 ack；等待期间只保留最新一帧，不排队。
+        const wait = Math.max(0, frameIntervalMs - (Date.now() - stream.lastSentAt));
+        stream.timer = setTimeout(() => {
+          stream.timer = undefined;
+          const current = stream.pending;
+          stream.pending = undefined;
+          if (!current) return;
+          stream.lastSentAt = Date.now();
+          // ACT: ack 必须无条件发送，包括跳过转发的分支；否则 Chromium 不再推送，画面永久停住。
+          void client.send("Page.screencastFrameAck", { sessionId: current.sessionId }).catch(() => {});
+          if (session.closed || session.stream !== stream || session.state.tabId !== tab.id || !isBrowserPageUrl(tab.page.url())) return;
+          // ACT: 静止页面会重复推送同一帧；比较长度再比较内容，省掉重复的序列化与解码。
+          if (current.data === stream.lastData) return;
+          stream.lastData = current.data;
+          const frame: FrameEvent = {
+            type: "frame", sessionId: session.state.browserSessionId, tabId: tab.id, data: current.data, mimeType: "image/jpeg",
+            width: Math.round(current.metadata.deviceWidth), height: Math.round(current.metadata.deviceHeight),
+          };
+          session.frame = frame;
+          emit(session, frame);
+        }, wait);
       });
-      await client.send("Page.startScreencast", { format: "jpeg", quality: 65, maxWidth: 1280, maxHeight: 800, everyNthFrame: 1 });
+      await client.send("Page.startScreencast", { format: "jpeg", quality: frameQuality, maxWidth: frameMaxWidth, maxHeight: frameMaxHeight, everyNthFrame: 1 });
     }).catch(async error => {
       await stopStream(session);
       if (!session.closed) emit(session, { type: "error", message: error instanceof Error ? error.message : "浏览器画面连接失败" });
@@ -643,7 +676,8 @@ export function createBrowserRuntime() {
               await updateState(session);
             }
             timeout.throwIfAborted();
-            if (input.type === "click" || input.type === "wheel" || input.type === "key" || input.type === "text" || input.type === "mouse" && input.event !== "move") void updateState(session).catch(() => {});
+            // ACT: 滚轮只改变滚动位置，不会改地址与标题；逐次刷新状态会给主循环增加 CDP 往返。
+            if (input.type === "click" || input.type === "key" || input.type === "text" || input.type === "mouse" && input.event !== "move") void updateState(session).catch(() => {});
             return { ...session.state };
           } catch (error) {
             current.inputVersion++;

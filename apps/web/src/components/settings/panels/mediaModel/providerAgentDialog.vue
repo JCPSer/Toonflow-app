@@ -140,7 +140,7 @@ function canOperateBrowser(tools: ToolCall[], status: SingleAgentStatus, busy: b
 function browserHint(tools: ToolCall[], status: SingleAgentStatus, busy: boolean) {
   if (status === "paused") return translate("已暂停，可点击画面或放大后登录。操作完成后点击继续。");
   if (status === "pausing" && !canOperateBrowser(tools, status, busy)) return translate("正在等待当前操作结束，暂停后即可人工操作。");
-  return canOperateBrowser(tools, status, busy) ? translate("可直接点击画面或放大操作，完成后在左侧继续对话。") : translate("助手正在浏览。需要登录或人工操作时，先点击暂停。");
+  return canOperateBrowser(tools, status, busy) ? translate("可直接点击画面或放大操作，完成后在左侧继续对话。") : translate("助手正在浏览，可上下滚动查看页面；需要点击或输入时，先点击暂停。");
 }
 
 function useSource() {
