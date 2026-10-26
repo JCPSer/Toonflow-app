@@ -20,9 +20,11 @@
 - 停靠素材库面板 `backdrop-filter` 变为 `none`，Agent 未停靠面板保留 blur。
 - `vue-tsc`、nodes build、web build 通过；app 已重打包。
 
-## 追加：应用内 30 帧
+## 追加：应用内 30 帧 = 低电量模式
 
-dev 浏览器 60 帧、打包 WKWebView 约 30 帧。新增 `lib/frameBudget.ts`：2s 窗口统计 rAF，连续 2 窗口 <45 帧给 `html` 打 `data-performance="low"`，全局 CSS 关掉浮层/工具卡片毛玻璃与连线动画；恢复 >55 帧 3 窗口后移除。开发者选项提供开关与「当前 N 帧」。浏览器内用主线程占用模拟低帧验证了触发与恢复。
+dev（Chromium）60 帧、打包应用（WKWebView）30 帧。最小 WKWebView 空页面同样 31 帧，Safari 打开本地帧率页也是 30 帧，CVDisplayLink 为 60Hz；关闭 macOS 低电量模式后 `pmset powermode` 从 1 回 0，复测 61 帧。确认是系统限帧，非应用问题。
+
+曾实现的 `frameBudget.ts`（自动关毛玻璃/连线动画）已按用户要求整体移除，避免低电量时误关用户偏好的特效。
 
 ## 精度要点
 

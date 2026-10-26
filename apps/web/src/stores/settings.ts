@@ -128,11 +128,7 @@ export const agentSettings = computed(() => {
 
 export const developerSettings = computed(() => {
   const developer = record(settings.value.developer);
-  return {
-    agentFullAccess: developer.agentFullAccess === true,
-    // ACT: 帧率跌破阈值时自动关掉毛玻璃与连线动画；默认开启，用户可在开发者选项里固定为「始终完整效果」。
-    performanceAutoDegrade: developer.performanceAutoDegrade !== false,
-  };
+  return { agentFullAccess: developer.agentFullAccess === true };
 });
 
 // ACT: 隐藏状态是旁路设置，不进供应商或模型对象；媒体供应商配置会原样传给插件运行时。

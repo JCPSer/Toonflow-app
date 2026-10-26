@@ -37,15 +37,12 @@
 - `vue-tsc` 通过；`bun run build:nodes` 通过；`bun run build`（web）通过。
 - `textNode.umd.js` 已同步到 dev 数据目录与 app；桌面入口重打包安装。
 
-## 五之二、自适应降级实测（浏览器）
+## 五之二、应用内 30 帧的定位过程
 
-用 25ms/帧的主线程占用模拟低帧 6s：
-
-1. 触发前 `html[data-performance]` 为空，实测 60 fps；
-2. 模拟结束后标记出现：`data-performance="low"`；
-3. 停止占用约 6s 后标记被移除（恢复 60 fps）。
-
-`vue-tsc` 通过、web build 通过、app 已重打包。真实 WKWebView 下的触发与恢复待用户在应用内确认（开发者选项 → 自动降低特效 → 「当前 N 帧」）。
+1. 最小 WKWebView（空页面、带持续动画）：rAF 31 帧；CVDisplayLink 实测 60 次/秒。
+2. Safari 打开本地帧率页：30 帧；同机 Chromium（dev）60 帧。
+3. 关闭 macOS 低电量模式后：`pmset` `powermode` 由 1 回 0，WKWebView 复测 61 帧。
+4. 结论：低电量模式限制 WebKit 渲染帧率，非应用问题。曾据此加入的自动降级功能已按要求整体移除，并重新构建安装。
 
 ## 六、未覆盖
 

@@ -64,20 +64,3 @@ body,
   background-color: transparent;
 }
 
-// ACT: 帧率持续偏低时由 frameBudget 打上标记，临时关闭最贵的合成效果；恢复后自动移除。
-html[data-performance="low"] {
-  .floatingPanel,
-  .canvasMenu,
-  .canvasControlsCard,
-  .toolMenu,
-  .panelSwitcher,
-  .workspaceMenu > .el-card,
-  .balanceCard,
-  .comfyMonitor {
-    backdrop-filter: none !important;
-  }
-
-  .vue-flow__edge.animated .vue-flow__edge-path {
-    animation: none !important;
-  }
-}
