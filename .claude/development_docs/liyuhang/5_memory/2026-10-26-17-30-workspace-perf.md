@@ -20,6 +20,10 @@
 - 停靠素材库面板 `backdrop-filter` 变为 `none`，Agent 未停靠面板保留 blur。
 - `vue-tsc`、nodes build、web build 通过；app 已重打包。
 
+## 追加：应用内 30 帧
+
+dev 浏览器 60 帧、打包 WKWebView 约 30 帧。新增 `lib/frameBudget.ts`：2s 窗口统计 rAF，连续 2 窗口 <45 帧给 `html` 打 `data-performance="low"`，全局 CSS 关掉浮层/工具卡片毛玻璃与连线动画；恢复 >55 帧 3 窗口后移除。开发者选项提供开关与「当前 N 帧」。浏览器内用主线程占用模拟低帧验证了触发与恢复。
+
 ## 精度要点
 
 - 长帧主因是 SVG `stroke-dashoffset` 动画叠加浮层模糊，不是节点数量；单视频播放与拖拽本身都很便宜。

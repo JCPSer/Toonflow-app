@@ -20,7 +20,14 @@
 - 不改 `preload="auto"`：`videoPlayer` 的播放按钮依赖 `loadeddata`，改成 metadata 会让按钮永久不可点，需要单独设计（ready 改到 metadata、封面单独生成）。
 - 不改节点 Blob 加载方式：`acquireUrl` 会把整段视频读成 Blob 并缓存，26 节点实测堆 313 MB；改为同源 Range URL 需要新增服务端媒体端点与移动端回退，单独立项。
 - 不调低 `useNodePreviewReady` 的 240px 预挂载阈值。
-- 环境侧：ComfyUI 占满 GPU/内存导致的冻结属于系统资源竞争，建议卡顿时记录监控条数据（GPU/内存/队列）便于区分。
+- 环境侧（已更正）：截图中的 GPU/内存是远端 ComfyUI 机器的数据，不代表本机；本机卡顿需以应用内帧率读数为准。
+
+## 三之二、应用内 30 帧：自适应降级
+
+- 新增 `apps/web/src/lib/frameBudget.ts`：每 2s 统计 rAF 帧率；连续 2 个窗口 < 45 帧 → `html[data-performance="low"]`；恢复 > 55 帧连续 3 个窗口后移除。页面隐藏时不计。
+- 低帧模式下用全局 CSS 关闭浮层与工具卡片的 `backdrop-filter`、关闭 `.vue-flow__edge.animated` 的描边动画；不动用户的设置值。
+- 开发者选项新增「自动降低特效」开关（默认开启），并显示「当前 N 帧」；关闭后始终使用完整效果。
+- 取舍：降级约需 4s 才触发，避免瞬时卡顿误伤；恢复同样滞后，避免来回抖动。
 
 ## 四、验证要点
 

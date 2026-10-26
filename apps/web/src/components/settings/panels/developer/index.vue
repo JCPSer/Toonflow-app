@@ -91,6 +91,16 @@
         show-icon
         title="Agent 全部权限已开启"
         description="Agent 可在项目内执行 shell 命令，并可只读访问项目外文件。调试完成后请及时关闭。" />
+      <div class="developerRow">
+        <div class="toolDescription">
+          <h3>自动降低特效</h3>
+          <p>帧率持续低于 45 帧时自动关闭毛玻璃与连线动画，恢复后自动还原；关闭后始终使用完整效果。</p>
+        </div>
+        <div class="contextControls">
+          <span class="unit" aria-hidden="true">当前 {{ measuredFps }} 帧</span>
+          <el-switch :model-value="developerSettings.performanceAutoDegrade" :loading="savingPerformance" aria-label="自动降低特效" title="自动降低特效" @change="togglePerformanceAutoDegrade" />
+        </div>
+      </div>
       <div v-if="!isRemoteConnection" class="developerRow">
         <div class="toolDescription">
           <h3>自定义更新源</h3>
@@ -180,6 +190,7 @@ import { useRouter } from "vue-router";
 import { useDeveloperStore } from "@/stores/developer";
 import { useHelloStore } from "@/stores/hello";
 import { agentSettings, developerSettings, saveSettings, settings } from "@/stores/settings";
+import { measuredFps } from "@/lib/frameBudget";
 import { desktopUpdateSnapshot } from "@/stores/desktopUpdate";
 import type { updateSnapshot } from "@toonflow/server/desktop";
 import saveFile from "@/lib/saveFile";
@@ -266,6 +277,21 @@ async function toggleAgentFullAccess(value: string | number | boolean) {
     ElMessage.error(saveErrorMessage(error, enabled ? "开放 Agent 全部权限失败" : "关闭 Agent 全部权限失败"));
   } finally {
     savingFullAccess.value = false;
+  }
+}
+
+const savingPerformance = ref(false);
+async function togglePerformanceAutoDegrade(enabled: boolean | string | number) {
+  if (savingPerformance.value) return;
+  savingPerformance.value = true;
+  try {
+    await saveSettings(current => ({
+      developer: { ...objectRecord(current.developer), performanceAutoDegrade: enabled === true },
+    }));
+  } catch (error) {
+    ElMessage.error(saveErrorMessage(error, "保存自动降低特效设置失败"));
+  } finally {
+    savingPerformance.value = false;
   }
 }
 

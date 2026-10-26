@@ -17,6 +17,7 @@ import "@/lib/mobile";
 import { getMissingBrowserFeatures } from "@/lib/browserCapabilities";
 import { registerAnonymousData } from "@/lib/anonymousData";
 import { installMediaPlayback } from "@/lib/mediaPlayback";
+import { installFrameBudget } from "@/lib/frameBudget";
 import { loadSettings, settingsStorage } from "@/stores/settings";
 import { useSessionStateStore } from "@/stores/sessionState";
 import { checkDesktopUpdate } from "@/stores/desktopUpdate";
@@ -25,6 +26,7 @@ import { locale, translate } from "@toonflow/i18n/vue";
 
 // ACT: 先装协调器，任何视图里的原生播放器都受「同时只播一个」约束。
 installMediaPlayback();
+installFrameBudget();
 const app = createApp(App);
 app.onUnmount(registerLanguage());
 const requiresWebView2Update = isDesktop && /Windows/i.test(navigator.userAgent)

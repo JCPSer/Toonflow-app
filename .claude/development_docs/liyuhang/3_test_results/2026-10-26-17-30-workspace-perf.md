@@ -37,7 +37,17 @@
 - `vue-tsc` 通过；`bun run build:nodes` 通过；`bun run build`（web）通过。
 - `textNode.umd.js` 已同步到 dev 数据目录与 app；桌面入口重打包安装。
 
+## 五之二、自适应降级实测（浏览器）
+
+用 25ms/帧的主线程占用模拟低帧 6s：
+
+1. 触发前 `html[data-performance]` 为空，实测 60 fps；
+2. 模拟结束后标记出现：`data-performance="low"`；
+3. 停止占用约 6s 后标记被移除（恢复 60 fps）。
+
+`vue-tsc` 通过、web build 通过、app 已重打包。真实 WKWebView 下的触发与恢复待用户在应用内确认（开发者选项 → 自动降低特效 → 「当前 N 帧」）。
+
 ## 六、未覆盖
 
-1. ComfyUI 满负载（GPU 100%、内存 ~31.7 GB）下的冻结复现与对比，需要在用户机器上带监控条验证。
+1. 打包应用（WKWebView）内的真实帧率与冻结复现：需用户在应用内查看开发者选项的「当前 N 帧」或在卡死时记录本机内存。
 2. `preload=auto` 改为 metadata、视频 Blob 改同源 Range URL 两项未实施（见方案「不做 / 待办」）。
