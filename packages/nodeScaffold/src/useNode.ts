@@ -42,7 +42,7 @@ export function useNode<T extends NodeOutputs = NodeOutputs>(options: NodeOption
     outputs: outputs.value,
   }));
   const nodeEvent = useNodeEvent();
-  const { getWorkspaceFiles, uploadFile, removeNodeFiles, useFileUrl } = useNodeFiles();
+  const { getWorkspaceFiles, uploadFile, removeNodeFiles, useFileUrl, useLazyFileUrl } = useNodeFiles();
 
   return {
     id,
@@ -60,6 +60,7 @@ export function useNode<T extends NodeOutputs = NodeOutputs>(options: NodeOption
     files: {
       getWorkspaceFiles,
       useFileUrl,
+      useLazyFileUrl,
       uploadFile: (file: File) => uploadFile(id, file),
       removeNodeFiles: () => removeNodeFiles(id),
     },

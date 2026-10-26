@@ -15,16 +15,23 @@ export function isLocalWorkspaceRequest(req: Request) {
   return localAddress && localHost && sameOrigin && req.get("x-toonflow-workspace") === "1";
 }
 
-/** 桌面端项目可以位于 workspaces 根之外；媒体端点只认已经声明过素材库的项目根。 */
-async function isAssetLibraryWorkspaceRoot(directory: string) {
-  for (const name of ["library", "library-assets"]) {
-    const info = await stat(join(directory, name, ".library", "index.json")).catch((error: NodeJS.ErrnoException) => {
+/**
+ * 桌面端项目可以位于 workspaces 根之外；媒体端点只认已经是项目的目录。
+ * ACT: 除素材库标记外把 `.toonflow` 也算作项目标记——项目打开时会写 `.toonflow/ui.json`，
+ * 而素材库索引 `.library/index.json` 要等素材面板首次列表才创建，只看后者会让新项目首屏缩略图 404。
+ */
+async function isKnownWorkspaceRoot(directory: string) {
+  const exists = async (path: string, wantsDirectory = false) => {
+    const info = await stat(path).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT" || error.code === "ENOTDIR") return null;
       throw error;
     });
-    if (info?.isFile()) return true;
+    return wantsDirectory ? Boolean(info?.isDirectory()) : Boolean(info?.isFile());
+  };
+  for (const name of ["library", "library-assets"]) {
+    if (await exists(join(directory, name, ".library", "index.json"))) return true;
   }
-  return false;
+  return exists(join(directory, ".toonflow"), true);
 }
 
 export async function resolveWorkspace(req: Request, path: string, options: { sameOriginMedia?: boolean } = {}) {
@@ -55,7 +62,7 @@ export async function resolveWorkspace(req: Request, path: string, options: { sa
   // ACT: 媒体端点没有工作区标记（<img>/<video> 无法带头），桌面端只放行已存在且带素材库标记的项目根，
   // 不能再因为“同源”就放行任意绝对路径；服务器部署则始终限制在 workspaces 根内。
   if (options.sameOriginMedia === true && getRuntimePlatform().local) {
-    if (await isAssetLibraryWorkspaceRoot(directory)) return directory;
+    if (await isKnownWorkspaceRoot(directory)) return directory;
     throw Object.assign(new Error("项目素材库不存在"), { status: 404, code: "ENOENT" });
   }
   throw Object.assign(new Error("服务器部署只能使用服务器工作区"), { status: 403 });

@@ -3,9 +3,11 @@
     v-bind="nodeProps"
     :topVisible="node.selected"
     topWidth="max-content"
-    :downloadUrl="exporting ? '' : previewUrl"
+    :downloadUrl="exporting ? '' : undefined"
     :downloadName="outputFile?.url.split(/[\\/]/).at(-1)"
-    :style="{ width: previewUrl && videoWidth ? `${videoWidth + 18}px` : undefined }"
+    :downloadResolver="exporting ? undefined : resolveDownload"
+    :fullscreenResolver="resolveFullscreen"
+    :style="{ width: videoWidth ? `${videoWidth + 18}px` : undefined }"
     @fullscreen="player?.enterFullscreen()">
     <template #topActions>
       <el-button :icon="IconMusic" text :disabled="!outputFile || uploading || exporting || actions?.processing" @click.stop="actions?.open('extractAudio')">提取音轨</el-button>
@@ -39,10 +41,14 @@
         <span>正在导出视频</span>
       </div>
       <videoPlayer
-        v-else-if="previewUrl"
+        v-else-if="outputFile"
         ref="player"
         :src="previewUrl"
-        @loadedmetadata="resizeVideo" />
+        :poster-url="posterUrl"
+        @activate="activate"
+        @deactivate="deactivate"
+        @loadedmetadata="resizeVideo"
+        @poster-size="resizeFromPoster" />
       <input ref="fileInput" class="fileInput" type="file" accept="video/*" aria-label="选择视频" :disabled="uploading || exporting" @change="uploadVideo" />
       <el-button
         v-if="!exporting && !outputs.video"
@@ -61,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { IconVideo, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconMovie, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { ElButton, ElMessage, ElProgress, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
@@ -85,10 +91,30 @@ const exporting = computed(() => typeof exportProgress.value === "number");
 const videoWidth = ref(0);
 
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
-const previewUrl = files.useFileUrl(
+// ACT: 默认只取服务端首帧图，点播放才把整段视频读成 Blob；闲置后自动释放。
+const { url: previewUrl, posterUrl, activate, deactivate } = files.useLazyFileUrl(
   outputFile,
   (error) => showError(error, "视频读取失败")
 );
+
+async function resolveDownload() {
+  await activate();
+  return previewUrl.value;
+}
+
+async function resolveFullscreen() {
+  await activate();
+  await nextTick();
+  await player.value?.enterFullscreen();
+}
+
+watch(outputFile, () => { videoWidth.value = 0; }, { flush: "sync" });
+
+function resizeFromPoster(width: number, height: number) {
+  if (!width || !height || videoWidth.value) return;
+  videoWidth.value = Math.max(180, (240 * width) / height);
+  void nextTick().then(() => updateNodeInternals());
+}
 
 nodeEvent.on("save", (reason) => {
   if (uploading.value) throw new Error("视频处理中，请完成后再切换或刷新节点");
@@ -145,6 +171,7 @@ async function uploadVideo(event: Event) {
     const url = await files.uploadFile(file);
     // ACT: 复制节点可能仍引用旧视频，替换输出不删除共享文件。
     outputs.value.video = { dataType: "VIDEO", value: { url, mimeType: file.type } };
+    files.getWorkspaceFiles().warmThumb?.(url);
   } catch (error) {
     showError(error, "视频替换失败");
   } finally {

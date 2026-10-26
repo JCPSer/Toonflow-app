@@ -1,6 +1,7 @@
 <template>
-  <div class="videoPlayer">
+  <div class="videoPlayer" @pointerenter="clearIdle" @pointerleave="scheduleIdle">
     <video
+      v-if="hasSource"
       ref="video"
       class="videoPreview"
       :class="{ nodrag: fullscreen }"
@@ -20,8 +21,12 @@
       @ended="playing = false"
       @volumechange="readVolume"
       @error="mediaError" />
+    <div v-if="!hasSource" class="posterStage" :class="{ empty: !posterUrl }">
+      <img v-if="posterUrl" class="posterImage" :src="posterUrl" :alt="label" draggable="false" @load="readPosterSize" />
+      <el-button class="posterPlay" circle :icon="IconPlayerPlay" :loading="activating" aria-label="播放视频" title="播放" @click.stop="requestPlay" />
+    </div>
     <div v-show="!fullscreen" class="playerControls nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
-      <el-button class="playerButton playButton" text circle :icon="playing ? IconPlayerPause : IconPlayerPlay" :disabled="!ready" :aria-label="playing ? '暂停视频' : '播放视频'" :title="playing ? '暂停' : '播放'" @click="togglePlayback" />
+      <el-button class="playerButton playButton" text circle :icon="playing ? IconPlayerPause : IconPlayerPlay" :disabled="hasSource && !ready" :aria-label="playing ? '暂停视频' : '播放视频'" :title="playing ? '暂停' : '播放'" @click="requestPlay" />
       <span class="currentTime">{{ formatTime(currentTime) }}</span>
       <el-slider class="progressSlider" :modelValue="currentTime" :min="0" :max="duration || 1" :step="0.01" :disabled="!ready || !duration" :formatTooltip="formatTime" aria-label="视频播放进度" @input="seek" />
       <span class="durationLabel"><span class="timeSeparator">/</span>{{ formatTime(duration) }}</span>
@@ -51,14 +56,15 @@
 </template>
 
 <script setup lang="ts">
-import { inject, onBeforeUnmount, ref, watch } from "vue";
+import { computed, inject, onBeforeUnmount, ref, watch } from "vue";
 import { useNode, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElDropdown, ElDropdownMenu, ElDropdownItem, ElMessage, ElPopover, ElSlider } from "element-plus";
 import { IconPlayerPlay, IconPlayerPause, IconVolume, IconVolumeOff, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { useNodeFiles } from "@toonflow/nodes-scaffold/workspaceFiles";
 
-const { src, label = "节点视频", readOnly = false } = defineProps<{ src: string; label?: string; readOnly?: boolean }>();
-const emit = defineEmits<{ loadedmetadata: [event: Event] }>();
+const { src, posterUrl = "", label = "节点视频", readOnly = false } = defineProps<{ src: string; posterUrl?: string; label?: string; readOnly?: boolean }>();
+// ACT: 海报态由父层提供首帧图；src 为空时只显示海报，用户点播放才 emit activate 索取视频。
+const emit = defineEmits<{ loadedmetadata: [event: Event]; posterSize: [width: number, height: number]; activate: []; deactivate: [] }>();
 const video = ref<HTMLVideoElement>();
 const fullscreen = ref(false);
 const ready = ref(false);
@@ -71,6 +77,12 @@ const currentTime = ref(0);
 const duration = ref(0);
 const capturing = ref(false);
 const captureMenuVisible = ref(false);
+const activating = ref(false);
+const hasSource = computed(() => Boolean(src));
+// ACT: 暂停/播完后闲置 30s 卸载视频与 Blob，避免「播过一次」的节点长期占内存。
+const idleDelayMs = 30000;
+let idleTimer: ReturnType<typeof setTimeout> | undefined;
+let pendingPlay = false;
 // ACT: 只读预览挂载时不连接节点和工作区；从只读切换到编辑模式时重新挂载播放器。
 const node = readOnly ? undefined : useNode().node;
 const flow = readOnly ? undefined : useVueFlow();
@@ -88,7 +100,63 @@ watch(() => src, () => {
   currentTime.value = 0;
   duration.value = 0;
 }, { flush: "sync" });
-onBeforeUnmount(() => captureController?.abort());
+onBeforeUnmount(() => {
+  captureController?.abort();
+  clearIdle();
+});
+
+watch(playing, value => {
+  if (value) {
+    clearIdle();
+    pendingPlay = false;
+  } else scheduleIdle();
+});
+
+watch(ready, value => {
+  if (!value) return;
+  activating.value = false;
+  if (pendingPlay) void startPlayback();
+});
+
+function clearIdle() {
+  if (!idleTimer) return;
+  clearTimeout(idleTimer);
+  idleTimer = undefined;
+}
+
+function scheduleIdle() {
+  if (readOnly) return;
+  clearIdle();
+  if (playing.value) return;
+  idleTimer = setTimeout(() => {
+    idleTimer = undefined;
+    if (!playing.value && hasSource.value) emit("deactivate");
+  }, idleDelayMs);
+}
+
+// ACT: 海报态点击播放只做「激活」；真实视频挂载后再自动开播。
+function requestPlay() {
+  if (!hasSource.value) {
+    pendingPlay = true;
+    activating.value = true;
+    emit("activate");
+    return;
+  }
+  void togglePlayback();
+}
+
+async function startPlayback() {
+  if (!video.value) return;
+  try { await video.value.play(); }
+  catch (error) { if (!(error instanceof DOMException && error.name === "AbortError")) ElMessage.error("视频播放失败"); }
+}
+
+/** 海报尺寸用于节点定宽，避免激活后节点宽度跳变。 */
+function readPosterSize(event: Event) {
+  const source = event.currentTarget as HTMLImageElement;
+  if (!source.naturalWidth || !source.naturalHeight) return;
+  emit("posterSize", source.naturalWidth, source.naturalHeight);
+}
 
 async function enterFullscreen() {
   if (!video.value) return;
@@ -118,7 +186,8 @@ function readPreview(event: Event) {
   const source = event.currentTarget as HTMLVideoElement;
   if (source.currentSrc !== src) return;
   ready.value = true;
-  if (poster.value || !source.videoWidth || !source.videoHeight) return;
+  // ACT: 已有服务端首帧图时不再用 canvas 重复生成，省一次同步绘制。
+  if (posterUrl || poster.value || !source.videoWidth || !source.videoHeight) return;
   try {
     const canvas = document.createElement("canvas");
     // ACT: 复用已解码帧，封面最长边限制为 640px；更高清画面由视频播放提供。
@@ -276,6 +345,35 @@ async function captureFrame(command: "current" | "first" | "last") {
   cursor: grab;
 
   &:active { cursor: grabbing; }
+  .posterStage {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 84px;
+    max-height: 240px;
+    overflow: hidden;
+    background: var(--el-fill-color-darker);
+
+    &.empty { min-height: 84px; }
+    .posterImage {
+      display: block;
+      width: 100%;
+      max-height: 240px;
+      object-fit: contain;
+    }
+    .posterPlay {
+      position: absolute;
+      width: 46px;
+      height: 46px;
+      font-size: 22px;
+      color: #fff;
+      background: rgb(0 0 0 / 45%);
+      border: none;
+      backdrop-filter: none;
+      &:hover { background: rgb(0 0 0 / 65%); }
+    }
+  }
   .videoPreview {
     display: block;
     width: 100%;

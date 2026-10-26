@@ -157,6 +157,16 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
     await client.post("/mkdir", { directory: getDirectory(), path });
   }
 
+  function thumbUrl(path: string, size = 512) {
+    const params = new URLSearchParams({ directory: getDirectory(), path, size: String(size) });
+    return `/api/workspaces/files/thumb?${params.toString()}`;
+  }
+
+  // ACT: 预热只填服务端缓存，失败静默；节点真正需要时仍是同一条 URL。
+  function warmThumb(path: string, size = 512) {
+    void fetch(thumbUrl(path, size)).catch(() => {});
+  }
+
   // ACT: 当前目录逐次读取；跨 await 或防抖的操作传入目录字符串，固定本次目标。
-  return { list, read, importImage, cloneProject, acquireUrl, readText, readJson, readTextSnapshot, writeTextSnapshot, write, writeJson, rename, copy, reveal, remove, mkdir };
+  return { list, read, importImage, cloneProject, acquireUrl, thumbUrl, warmThumb, readText, readJson, readTextSnapshot, writeTextSnapshot, write, writeJson, rename, copy, reveal, remove, mkdir };
 }

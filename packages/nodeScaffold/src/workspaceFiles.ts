@@ -1,4 +1,4 @@
-import { inject, ref, toValue, watch, type MaybeRefOrGetter } from "vue";
+import { inject, onScopeDispose, ref, toValue, watch, type MaybeRefOrGetter } from "vue";
 import type { NodeMediaValue } from "./values";
 import { useNodePreviewReady } from "./useNodePreviewReady";
 
@@ -6,6 +6,10 @@ export interface WorkspaceFiles {
   list(path?: string): Promise<{ directory: string; entries: { name: string; path: string; type: "file" | "directory" }[] }>;
   read(path: string): Promise<ArrayBuffer>;
   acquireUrl?(path: string, mimeType: string): { url: Promise<string>; release(): void };
+  /** 服务端生成的缩略图地址（同源直连，同源 <img> 可直接加载），无能力时缺省。 */
+  thumbUrl?(path: string, size?: number): string;
+  /** 预热缩略图缓存（落盘后调用，失败静默）。 */
+  warmThumb?(path: string, size?: number): void;
   readText(path: string): Promise<string>;
   readTextSnapshot(path: string): Promise<{ text: string; revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" }>;
   writeTextSnapshot(path: string, text: string, snapshot: { revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" }): Promise<string>;
@@ -90,5 +94,62 @@ export function useNodeFiles() {
     return fileUrl;
   }
 
-  return { getWorkspaceFiles, uploadFile, removeNodeFiles, useFileUrl };
+  /** 缩略图地址；节点包拿不到目录，统一经画布注入的 WorkspaceFiles 生成。 */
+  function thumbUrl(path: string, size = 512) {
+    return getWorkspaceFiles().thumbUrl?.(path, size) ?? "";
+  }
+
+  /**
+   * 惰性媒体地址：默认只给缩略图，activate() 才真正读取 Blob，deactivate() 立即释放。
+   * 用于「不播放就不把整段视频读进内存」的节点；没有 acquireUrl 能力时回退为整段读取。
+   */
+  function useLazyFileUrl(file: MaybeRefOrGetter<NodeMediaValue | undefined>, onError: (error: unknown) => void) {
+    const url = ref("");
+    const posterUrl = ref("");
+    let shared: ReturnType<NonNullable<WorkspaceFiles["acquireUrl"]>> | undefined;
+    let fallbackUrl = "";
+    let generation = 0;
+
+    function release() {
+      generation++;
+      shared?.release();
+      shared = undefined;
+      if (fallbackUrl) URL.revokeObjectURL(fallbackUrl);
+      fallbackUrl = "";
+      url.value = "";
+    }
+
+    async function activate() {
+      const value = toValue(file);
+      if (!value || url.value) return;
+      const current = ++generation;
+      try {
+        const files = getWorkspaceFiles();
+        if (files.acquireUrl) {
+          const acquired = files.acquireUrl(value.url, value.mimeType);
+          shared = acquired;
+          const resolved = await acquired.url;
+          if (current !== generation) { acquired.release(); shared = undefined; return; }
+          url.value = resolved;
+          return;
+        }
+        const content = await files.read(value.url);
+        if (current !== generation) return;
+        fallbackUrl = URL.createObjectURL(new Blob([content], { type: value.mimeType }));
+        url.value = fallbackUrl;
+      } catch (error) {
+        if (current === generation) onError(error);
+      }
+    }
+
+    watch(() => toValue(file), value => {
+      release();
+      posterUrl.value = value && getWorkspaceFiles().thumbUrl ? thumbUrl(value.url) : "";
+    }, { immediate: true });
+    onScopeDispose(release);
+
+    return { url, posterUrl, activate, deactivate: release };
+  }
+
+  return { getWorkspaceFiles, uploadFile, removeNodeFiles, useFileUrl, useLazyFileUrl, thumbUrl };
 }

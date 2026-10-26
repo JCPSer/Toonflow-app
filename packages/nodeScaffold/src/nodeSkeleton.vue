@@ -60,26 +60,26 @@
           <el-divider direction="vertical" />
           <slot name="topRightActions" />
           <el-button
-            :tag="downloadUrl ? 'a' : 'button'"
+            :tag="downloadUrl || !downloadResolver ? 'a' : 'button'"
             :href="downloadUrl || undefined"
             :download="downloadName"
             :icon="IconDownload"
-            :disabled="!downloadUrl"
+            :disabled="!downloadUrl && !downloadResolver"
             :loading="downloading"
             :aria-busy="downloading"
             text
             :title="downloading ? '正在保存…' : '下载'"
             aria-label="下载"
             @downloadstate="downloading = $event.detail"
-            @click.stop />
+            @click.stop="!downloadUrl && downloadResolver && downloadNow()" />
           <el-button
             v-if="fullscreenVisible"
             :icon="IconMaximize"
-            :disabled="!downloadUrl"
+            :disabled="!downloadUrl && !downloadResolver"
             text
             title="全屏"
             aria-label="全屏"
-            @click.stop="emit('fullscreen')" />
+            @click.stop="!downloadUrl && downloadResolver ? openFullscreen() : emit('fullscreen')" />
         </el-card>
       </slot>
     </div>
@@ -216,6 +216,9 @@ const props = withDefaults(
       bottomWidth?: string | number;
       downloadUrl?: string;
       downloadName?: string;
+      /** ACT: 按需下载/全屏——媒体节点未播放前不持有 Blob，点击时再向节点要地址。 */
+      downloadResolver?: () => Promise<string>;
+      fullscreenResolver?: () => Promise<void>;
       fullscreenVisible?: boolean;
       /** ACT: 生成中钉住底栏，避免取消选中/多选/拖拽时底栏被卸载导致无法停止。 */
       bottomPinned?: boolean;
@@ -233,6 +236,33 @@ const props = withDefaults(
     bottomWidth: "20vw",
   }
 );
+// ACT: 媒体节点未播放时不持有 Blob，下载/全屏按钮点击时才向节点索取真实地址。
+async function downloadNow() {
+  if (!props.downloadResolver) return;
+  downloading.value = true;
+  try {
+    const href = await props.downloadResolver();
+    if (!href) return;
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = props.downloadName ?? "";
+    anchor.rel = "noopener";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  } catch (error) {
+    console.warn("下载失败", error);
+  } finally {
+    downloading.value = false;
+  }
+}
+
+async function openFullscreen() {
+  if (!props.fullscreenResolver) return void emit("fullscreen");
+  try { await props.fullscreenResolver(); }
+  catch (error) { console.warn("全屏失败", error); }
+}
+
 const handleGroups = computed(() => [
   { type: "target" as const, position: Position.Left, items: props.handles.filter((item) => item.type === "target") },
   { type: "source" as const, position: Position.Right, items: props.handles.filter((item) => item.type === "source") },

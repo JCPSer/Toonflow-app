@@ -126,6 +126,8 @@ export async function importCanvasFiles(droppedFiles: File[], position: { x: num
         textSnapshot = await file.text();
       } else {
         copiedPath = await uploadNodeFile(files, id, file);
+        // ACT: 落盘即预热首帧缩略图，画布打开时不用等 FFmpeg。
+        if (kind === "video") files.warmThumb(copiedPath);
         output = { dataType: kind === "image" ? "IMAGE" : kind === "audio" ? "AUDIO" : "VIDEO", value: { url: copiedPath, mimeType } };
       }
       signal.throwIfAborted();

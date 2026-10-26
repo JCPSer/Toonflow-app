@@ -84,6 +84,8 @@ export async function createApp({
     }
     await initializePlugins(resolve(dataDirectory, "providers"), sourceDirectory, autoInstallProviders, providerRevision);
   }
+  // ACT: 缩略图缓存目录在模块加载时由 conf 决定，必须在确定 TOONFLOW_DATA_DIR 之后动态引入。
+  void import("@/utils/assets/thumb").then(({ sweepThumbnailCache }) => sweepThumbnailCache()).catch(() => {});
   // ACT: 技能和团队只补首次安装，保留用户修改。
   if (dataDirectory && skillsRoot) await initializePlugins(resolve(dataDirectory, "skills"), skillsRoot);
   if (dataDirectory && agentsRoot) await initializePlugins(resolve(dataDirectory, "agents"), agentsRoot);

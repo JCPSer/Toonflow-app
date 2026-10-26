@@ -157,9 +157,10 @@ import route154 from "./routes/workspaces/files/read";
 import route155 from "./routes/workspaces/files/remove";
 import route156 from "./routes/workspaces/files/rename";
 import route157 from "./routes/workspaces/files/reveal";
-import route158 from "./routes/workspaces/files/write";
-import route159 from "./routes/workspaces/list";
-import route160 from "./routes/workspaces/selectDirectory";
+import route158 from "./routes/workspaces/files/thumb";
+import route159 from "./routes/workspaces/files/write";
+import route160 from "./routes/workspaces/list";
+import route161 from "./routes/workspaces/selectDirectory";
 
 export default (app: Express) => {
   app.use("/api/agent", route1);
@@ -319,7 +320,8 @@ export default (app: Express) => {
   app.use("/api/workspaces/files/remove", route155);
   app.use("/api/workspaces/files/rename", route156);
   app.use("/api/workspaces/files/reveal", route157);
-  app.use("/api/workspaces/files/write", route158);
-  app.use("/api/workspaces/list", route159);
-  app.use("/api/workspaces/selectDirectory", route160);
+  app.use("/api/workspaces/files/thumb", route158);
+  app.use("/api/workspaces/files/write", route159);
+  app.use("/api/workspaces/list", route160);
+  app.use("/api/workspaces/selectDirectory", route161);
 }

@@ -4,16 +4,18 @@
     v-model:bottomVisible="node.selected"
     :topVisible="node.selected"
     topWidth="max-content"
-    :downloadUrl="previewUrl"
+    :downloadUrl="undefined"
+    :downloadResolver="resolveDownload"
+    :fullscreenResolver="resolveFullscreen"
     :downloadName="outputFile?.url.split(/[\\/]/).at(-1)"
     @fullscreen="player?.enterFullscreen()"
     :bottomWidth="660"
-    :style="{ width: previewUrl && videoWidth ? `${videoWidth + 18}px` : undefined }">
+    :style="{ width: videoWidth ? `${videoWidth + 18}px` : undefined }">
     <template #topActions>
-      <el-button :icon="IconMusic" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="actions?.open('extractAudio')">提取音轨</el-button>
-      <el-button :icon="IconLayersSubtract" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="actions?.open('separate')">分离音视频</el-button>
-      <el-button :icon="IconScissors" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="actions?.open('trim')">截取片段</el-button>
-      <el-button :icon="IconMovie" text :loading="actions?.creatingAnalysis" :disabled="!outputFile || generating || deleting || uploading || actions?.processing || actions?.creatingAnalysis" @click.stop="actions?.createFrameAnalysis()">逐帧拉片</el-button>
+      <el-button :icon="IconMusic" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="openAction('extractAudio')">提取音轨</el-button>
+      <el-button :icon="IconLayersSubtract" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="openAction('separate')">分离音视频</el-button>
+      <el-button :icon="IconScissors" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="openAction('trim')">截取片段</el-button>
+      <el-button :icon="IconMovie" text :loading="actions?.creatingAnalysis" :disabled="!outputFile || generating || deleting || uploading || actions?.processing || actions?.creatingAnalysis" @click.stop="createAnalysis()">逐帧拉片</el-button>
       <mediaHistory mediaType="video" :current="outputFile" :disabled="generating || deleting || uploading" @select="outputs.video = { dataType: 'VIDEO', value: $event }" @clear="outputs.video = undefined" />
       <el-button :icon="IconTransfer" :loading="uploading" :disabled="generating || deleting" text title="替换视频" aria-label="替换视频" @click.stop="fileInput?.click()">替换视频</el-button>
       <input ref="fileInput" type="file" accept="video/*" hidden aria-label="选择替换视频" :disabled="generating || deleting || uploading" @change="replaceOutput" />
@@ -32,11 +34,15 @@
     </template>
     <div v-loading="generating || uploading" class="videoContent nopan" :aria-busy="generating || uploading">
       <videoPlayer
-        v-if="previewUrl"
+        v-if="previewUrl || posterUrl"
         ref="player"
         :src="previewUrl"
+        :poster-url="posterUrl"
         label="生成视频"
-        @loadedmetadata="resizeVideo" />
+        @activate="activate"
+        @deactivate="deactivate"
+        @loadedmetadata="resizeVideo"
+        @poster-size="resizeFromPoster" />
       <div v-else class="videoEmpty" role="img" aria-label="暂无生成视频">
         <icon-camera-ai :size="48" stroke="1.25" aria-hidden="true" />
       </div>
@@ -237,10 +243,40 @@ const generationInput = computed<Omit<NodeVideoRequest, "directory"> | undefined
   };
 });
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
-const previewUrl = files.useFileUrl(
+// ACT: 默认只显示服务端首帧图，点播放或使用剪辑类操作时才读取整段视频。
+const { url: previewUrl, posterUrl, activate, deactivate } = files.useLazyFileUrl(
   outputFile,
   (error) => showNodeError(error, "视频读取失败")
 );
+
+async function resolveDownload() {
+  await activate();
+  return previewUrl.value;
+}
+
+async function resolveFullscreen() {
+  await activate();
+  await nextTick();
+  await player.value?.enterFullscreen();
+}
+
+// ACT: 剪辑类操作需要真实 src 预览，先激活再打开，避免打开后被 src 变化重置。
+async function openAction(command: "extractAudio" | "separate" | "trim") {
+  await activate();
+  actions.value?.open(command);
+}
+
+async function createAnalysis() {
+  await activate();
+  actions.value?.createFrameAnalysis();
+}
+
+watch(outputFile, () => { videoWidth.value = 0; }, { flush: "sync" });
+
+function resizeFromPoster(width: number, height: number) {
+  if (!width || !height || videoWidth.value) return;
+  videoWidth.value = Math.max(180, (240 * width) / height);
+}
 
 onMounted(() => {
   window.addEventListener("toonflow:plugin-installed", refreshProviderModels);
@@ -330,6 +366,7 @@ async function startGeneration() {
       controller.signal.throwIfAborted();
       if (!result) throw new Error("供应商未返回视频");
       outputs.value.video = { dataType: "VIDEO", value: { url: result.path, mimeType: result.mimeType } };
+      files.getWorkspaceFiles().warmThumb?.(result.path);
     }))
     .catch((error) => showNodeError(error, "视频生成失败"))
     .finally(() => {
