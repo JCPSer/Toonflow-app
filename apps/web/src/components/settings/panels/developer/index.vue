@@ -38,6 +38,59 @@
         </div>
         <el-button :icon="IconEdit" @click="systemPromptVisible = true">编辑提示词</el-button>
       </div>
+      <section class="contextSection" aria-labelledby="agentContextTitle">
+        <div class="toolDescription">
+          <h3 id="agentContextTitle">上下文</h3>
+          <p>控制 Agent 的上下文压缩与工具输出上限，保存后下一条消息生效。</p>
+        </div>
+        <div class="contextRow">
+          <div class="toolDescription">
+            <h4>自动压缩</h4>
+            <p>上下文接近阈值时自动压缩历史记录，减少后续请求的 token 消耗。</p>
+          </div>
+          <el-switch v-model="autoCompact" aria-label="自动压缩上下文" title="自动压缩上下文" />
+        </div>
+        <div class="contextRow">
+          <div class="toolDescription">
+            <h4>压缩阈值</h4>
+            <p>上下文使用到该比例时自动压缩，越早越省 token，但会丢更多原文。</p>
+          </div>
+          <div class="contextControls">
+            <el-slider v-model="compactPercent" class="thresholdSlider" :min="50" :max="95" :step="1" aria-label="自动压缩阈值" />
+            <el-input-number v-model="compactPercent" class="thresholdInput" :min="50" :max="95" :step="1" controlsPosition="right" aria-label="自动压缩阈值百分比" />
+            <span class="unit" aria-hidden="true">%</span>
+          </div>
+        </div>
+        <div class="contextRow">
+          <div class="toolDescription">
+            <h4>工具输出上限</h4>
+            <p>超过就写入 .agent/artifacts，模型可用 read 回读。</p>
+          </div>
+          <div class="contextControls">
+            <el-input-number v-model="toolOutputMaxKb" class="thresholdInput" :min="10" :max="512" :step="1" controlsPosition="right" aria-label="工具输出上限（KB）" />
+            <span class="unit" aria-hidden="true">KB</span>
+          </div>
+        </div>
+        <div class="contextFooter">
+          <el-text v-if="contextDirty" type="info">有未保存的修改</el-text>
+          <el-button type="primary" :loading="savingContext" :disabled="!contextDirty" aria-label="保存上下文设置" @click="saveAgentContext">保存上下文设置</el-button>
+        </div>
+      </section>
+      <div class="developerRow">
+        <div class="toolDescription">
+          <h3>开放 Agent 全部权限</h3>
+          <p>开启后 Agent 可在项目内执行 shell 命令，并可只读访问项目外文件。默认关闭，仅在你信任当前项目时开启。</p>
+        </div>
+        <el-switch :modelValue="developerSettings.agentFullAccess" :loading="savingFullAccess" aria-label="开放 Agent 全部权限" title="开放 Agent 全部权限" @change="toggleAgentFullAccess" />
+      </div>
+      <el-alert
+        v-if="developerSettings.agentFullAccess"
+        class="fullAccessAlert"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="Agent 全部权限已开启"
+        description="Agent 可在项目内执行 shell 命令，并可只读访问项目外文件。调试完成后请及时关闭。" />
       <div v-if="!isRemoteConnection" class="developerRow">
         <div class="toolDescription">
           <h3>自定义更新源</h3>
@@ -126,13 +179,13 @@ import { computed, defineAsyncComponent, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useDeveloperStore } from "@/stores/developer";
 import { useHelloStore } from "@/stores/hello";
-import { saveSettings, settings } from "@/stores/settings";
+import { agentSettings, developerSettings, saveSettings, settings } from "@/stores/settings";
 import { desktopUpdateSnapshot } from "@/stores/desktopUpdate";
 import type { updateSnapshot } from "@toonflow/server/desktop";
 import saveFile from "@/lib/saveFile";
 import { isDesktop, isRemoteConnection } from "@/lib/platform";
 import { installPluginFile } from "../../installPluginFile";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import axios from "axios";
 import { IconCode, IconTerminal2, IconFileUpload, IconFileText, IconDownload, IconRefresh, IconEdit, IconTrash } from "@tabler/icons-vue";
 
@@ -152,6 +205,69 @@ const developerLocked = computed(() => !developerStore.developerConfirmed);
 const customUpdateUrl = ref(typeof settings.value.desktopUpdateCustomUrl === "string" ? settings.value.desktopUpdateCustomUrl : "");
 const savingUpdateUrl = ref(false);
 const updateUrlError = ref("");
+const autoCompact = ref(agentSettings.value.autoCompact);
+const compactPercent = ref(agentSettings.value.compactPercent);
+const toolOutputMaxKb = ref(Math.round(agentSettings.value.toolOutputMaxBytes / 1024));
+const savingContext = ref(false);
+const savingFullAccess = ref(false);
+const contextDirty = computed(() => autoCompact.value !== agentSettings.value.autoCompact
+  || compactPercent.value !== agentSettings.value.compactPercent
+  || toolOutputMaxKb.value !== Math.round(agentSettings.value.toolOutputMaxBytes / 1024));
+
+function objectRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function saveErrorMessage(error: unknown, fallback: string) {
+  return axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message || error.message
+    : error instanceof Error ? error.message : fallback;
+}
+
+async function saveAgentContext() {
+  if (savingContext.value) return;
+  const percent = Math.min(95, Math.max(50, Math.round(Number(compactPercent.value) || agentSettings.value.compactPercent)));
+  const maxKb = Math.min(512, Math.max(10, Math.round(Number(toolOutputMaxKb.value) || agentSettings.value.toolOutputMaxBytes / 1024)));
+  savingContext.value = true;
+  try {
+    await saveSettings(current => ({
+      agent: { ...objectRecord(current.agent), compactPercent: percent, autoCompact: autoCompact.value, toolOutputMaxBytes: maxKb * 1024 },
+    }));
+    compactPercent.value = percent;
+    toolOutputMaxKb.value = maxKb;
+    ElMessage.success("上下文设置已保存");
+  } catch (error) {
+    ElMessage.error(saveErrorMessage(error, "保存上下文设置失败"));
+  } finally {
+    savingContext.value = false;
+  }
+}
+
+async function toggleAgentFullAccess(value: string | number | boolean) {
+  if (savingFullAccess.value) return;
+  const enabled = value === true;
+  if (enabled) {
+    try {
+      await ElMessageBox.confirm(
+        "开启后 Agent 可在项目内执行 shell 命令，并可只读访问项目外文件，可能读取或修改重要数据。仅在你信任当前项目时开启。",
+        "开放 Agent 全部权限",
+        { type: "warning", confirmButtonText: "仍要开启", cancelButtonText: "取消" },
+      );
+    } catch {
+      return;
+    }
+  }
+  savingFullAccess.value = true;
+  try {
+    await saveSettings(current => ({
+      developer: { ...objectRecord(current.developer), agentFullAccess: enabled },
+    }));
+    ElMessage.success(enabled ? "已开放 Agent 全部权限" : "已关闭 Agent 全部权限");
+  } catch (error) {
+    ElMessage.error(saveErrorMessage(error, enabled ? "开放 Agent 全部权限失败" : "关闭 Agent 全部权限失败"));
+  } finally {
+    savingFullAccess.value = false;
+  }
+}
 
 async function openUpdateBox() {
   if (openingUpdateBox.value) return;
@@ -406,8 +522,52 @@ async function openDevTools() {
 
     .toolDescription {
       h3 { margin: 0 0 8px; font-size: 14px; color: var(--el-text-color-primary); }
+      h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--el-text-color-primary); }
       p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--el-text-color-secondary); }
     }
+
+    .contextSection {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 16px;
+      border-radius: var(--el-border-radius-base);
+      background: var(--el-fill-color-light);
+
+      .contextRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px 16px;
+
+        .toolDescription { flex: 1; min-width: min(100%, 220px); }
+        > .el-switch { flex-shrink: 0; }
+      }
+
+      .contextControls {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        min-width: min(100%, 260px);
+        max-width: 380px;
+
+        .thresholdSlider { flex: 1; min-width: 120px; }
+        .thresholdInput { flex-shrink: 0; width: 110px; }
+        .unit { flex-shrink: 0; color: var(--el-text-color-secondary); font-size: 12px; }
+      }
+
+      .contextFooter {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px;
+      }
+    }
+
+    .fullAccessAlert { margin: 0; }
 
     .pluginInstaller {
       display: flex;

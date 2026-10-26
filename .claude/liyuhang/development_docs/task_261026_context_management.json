@@ -1,0 +1,56 @@
+{
+  "task_id": "task_261026_context_management",
+  "created_at": "2026-10-26",
+  "owner": "liyuhang",
+  "goal": "补齐 Agent 上下文管理（压缩、microcompact、大输出落盘、手动压缩与阈值设置），并新增开发者选项「开放 Agent 全部权限」（项目内执行命令 + 项目外只读）",
+  "shared_contract": {
+    "preferences_module": "apps/server/src/agent/runtime/preferences.ts（已由 Lead 创建，勿改接口）",
+    "settings_keys": {
+      "settings.agent.compactPercent": "50-95，默认 80，超过该百分比自动压缩",
+      "settings.agent.autoCompact": "boolean，默认 true",
+      "settings.agent.toolOutputMaxBytes": "默认 20480",
+      "settings.agent.toolOutputPreviewBytes": "默认 4096",
+      "settings.developer.agentFullAccess": "boolean，默认 false"
+    },
+    "new_api": {
+      "POST /api/agent/compact": "{ directory, sessionFile } → AgentConversation"
+    },
+    "artifacts_dir": "<项目>/.agent/artifacts"
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "后端：工具输出落盘 + microcompact",
+      "owner": "team",
+      "files": ["apps/server/src/agent/runtime/requests.ts", "apps/server/src/agent/runtime/toolOutput.ts(新)"],
+      "status": "pending"
+    },
+    {
+      "id": "T2",
+      "subject": "后端：子 Agent 开压缩、手动压缩接口、压缩百分比接入",
+      "owner": "team",
+      "files": ["apps/server/src/agent/runtime/subAgent.ts", "apps/server/src/agent/runtime/resources.ts", "apps/server/src/agent/runtime/index.ts", "apps/server/src/routes/agent/compact.ts(新)", "apps/server/src/router.ts(生成)"],
+      "status": "pending"
+    },
+    {
+      "id": "T3",
+      "subject": "后端：开发者全权限（项目内执行命令 + 项目外只读）",
+      "owner": "team",
+      "files": ["apps/server/src/agent/tools/index.ts", "apps/server/src/agent/runtime/permissions.ts(新)"],
+      "status": "pending"
+    },
+    {
+      "id": "T4",
+      "subject": "前端：设置页压缩百分比/落盘阈值、开发者开关、会话手动压缩与用量提示",
+      "owner": "team",
+      "files": ["apps/web/src/components/settings/**", "apps/web/src/components/agent/**", "apps/web/src/stores/settings.ts"],
+      "status": "pending"
+    },
+    {
+      "id": "T5",
+      "subject": "验收：类型检查、构建、真实会话压缩与落盘、权限开关实测、代码审查",
+      "owner": "Lead",
+      "status": "pending"
+    }
+  ]
+}

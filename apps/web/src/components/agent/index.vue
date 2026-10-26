@@ -8,6 +8,8 @@
       :parentFile="selectedConversation?.parentFile"
       :subAgents="selectedConversation?.subAgents"
       :loading="loading || historyLoading"
+      :compactDisabled="compactDisabled"
+      :compactLoading="compactLoading"
       @open-sub-agent="selectConversation"
       @back="backToParent"
       @new-chat="newConversation"
@@ -15,6 +17,7 @@
       @select="selectConversation"
       @rename="renameConversation"
       @remove="removeConversation"
+      @compact="compactConversation"
       @close="visible = false">
       <template #actions><slot name="menuActions" /></template>
     </agentMenu>
@@ -31,12 +34,13 @@
       @forked="openForkedConversation($event.file, $event.name)"
       @rewound="applyRewoundConversation(item, $event)"
       @event="receiveAgentEvent"
+      @compact-state="applyCompactState(item, $event)"
       @sent="updateConversationName(item, $event)" />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from "vue";
+import { computed, onBeforeUnmount, reactive, ref, watch, type ComponentPublicInstance } from "vue";
 import axios from "axios";
 import { translate } from "@toonflow/i18n/vue";
 import { ElMessage } from "element-plus";
@@ -68,6 +72,23 @@ let requestId = 0;
 let nextConversationKey = 0;
 const conversationRefs = new Map<number, InstanceType<typeof conversation>>();
 const pendingEvents = new Map<number, AgentEvent[]>();
+type CompactState = { disabled: boolean; loading: boolean };
+// ACT: 生成/压缩状态由 conversation 内部维护，菜单只消费汇总后的禁用与加载状态。
+const compactStates = reactive<Record<number, CompactState>>({});
+const currentCompactState = computed(() => compactStates[conversationKey.value]);
+const compactDisabled = computed(() => loading.value || historyLoading.value || (currentCompactState.value?.disabled ?? true));
+const compactLoading = computed(() => currentCompactState.value?.loading ?? false);
+
+function applyCompactState(item: OpenConversation, state: CompactState) {
+  compactStates[item.key] = state;
+}
+
+function compactConversation() {
+  if (compactDisabled.value) return;
+  const item = selectedConversation.value;
+  if (!item) return;
+  void conversationRefs.get(item.key)?.compactContext();
+}
 
 function showConversation(session: AgentConversation | null, activate = true) {
   const existing = session && conversations.value.find(item => item.file === session.file);

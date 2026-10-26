@@ -1,8 +1,10 @@
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type { AssistantMessage, AssistantMessageEvent, ImageContent, Message, TextContent } from "@earendil-works/pi-ai";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { estimateTokens, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { createHash, randomUUID } from "node:crypto";
 import { getAgentImageReference, getOffloadedImageText, readAgentImage, saveAgentImage } from "@/agent/runtime/imageAttachments";
+import { offloadToolContent } from "@/agent/runtime/toolOutput";
+import { getAgentPreferences } from "@/agent/runtime/preferences";
 import type { AgentImageReference } from "@/agent/runtime/imageAttachments";
 import { getRequestFiles, type RequestFile } from "@/utils/ai/requestFiles";
 import { createFileTransport, FileRequestLimitError } from "@/utils/ai/files";
@@ -10,6 +12,55 @@ import conf from "@/utils/conf";
 
 function contentHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+const MICROCOMPACT_CONTEXT_RATIO = 0.5;
+const MICROCOMPACT_KEEP_TURNS = 3;
+const MICROCOMPACT_MIN_CHARS = 400;
+// 这些文本本身就是「指针」，再裁一次会让模型失去唯一的文件路径。
+const KEEP_POINTER_TEXT = /\[输出过大|\.agent\/artifacts\/|图片已移出本次模型上下文|\[工具结果已裁剪/;
+
+/**
+ * ACT: 上下文超过模型窗口一半时，把最近 3 个用户轮以外的旧工具结果文本压成一行指针。
+ * 裁剪边界按「用户轮」而不是「最近 N 条结果」固定，避免每轮滑动导致请求前缀变化、缓存失效。
+ * 只改本次请求的副本：会话文件、UI 历史、图片块都保持原样；关闭自动压缩时不启用。
+ */
+function microCompactMessages(messages: Message[], contextWindow: number) {
+  if (!Number.isFinite(contextWindow) || contextWindow <= 0) return messages;
+  if (!getAgentPreferences().autoCompact) return messages;
+  let boundary = 0;
+  let users = 0;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    if (messages[index].role !== "user") continue;
+    if (++users > MICROCOMPACT_KEEP_TURNS) { boundary = index + 1; break; }
+  }
+  if (!boundary) return messages;
+  const contextTokens = messages.reduce((total, message) => total + estimateTokens(message), 0);
+  if (contextTokens <= contextWindow * MICROCOMPACT_CONTEXT_RATIO) return messages;
+  let changed = false;
+  const compacted = messages.map((message, index) => {
+    if (index >= boundary || message.role !== "toolResult") return message;
+    const toolName = typeof message.toolName === "string" ? message.toolName.trim() : "";
+    if (!toolName) return message;
+    // 错误结果往往很短且是关键线索，保留原文。
+    if ((message as { isError?: boolean }).isError) return message;
+    const texts = message.content.filter((part): part is TextContent => part.type === "text");
+    if (!texts.length || texts.some(part => KEEP_POINTER_TEXT.test(part.text))) return message;
+    const chars = texts.reduce((total, part) => total + part.text.length, 0);
+    if (chars < MICROCOMPACT_MIN_CHARS) return message;
+    let markerAdded = false;
+    const content: (TextContent | ImageContent)[] = [];
+    for (const part of message.content) {
+      if (part.type !== "text") { content.push(part); continue; }
+      // 多条文本合并成一个指针，非文本部分保留原位置顺序。
+      if (markerAdded) continue;
+      markerAdded = true;
+      content.push({ type: "text", text: `[工具结果已裁剪：${toolName}，约 ${chars} 字符；需要时重新调用该工具，或用 read 分页读取相关文件]` });
+    }
+    changed = true;
+    return { ...message, content };
+  });
+  return changed ? compacted : messages;
 }
 
 type AgentRequestLimits = { responseMs: number; idleMs: number; hardMs: number };
@@ -107,7 +158,9 @@ export function configureAgentRequests(session: AgentSession, limits?: { maxRequ
       for (const [index, part] of (previous?.content ?? content).entries()) {
         result.push(part.type === "image" ? await saveAgentImage(cwd, part, `hook:${observationId}:${index}`, signal) : part);
       }
-      return { ...previous, content: result };
+      // ACT: 图片附件化完成后再处理文本，超长输出落盘并只留指针/预览；读取 artifacts 本身时跳过，避免读回来又被锁进预览。
+      const readingArtifact = call.toolCall.name === "read" && JSON.stringify(call.toolCall.arguments ?? {}).includes(`/${"artifacts"}/`);
+      return { ...previous, content: await offloadToolContent(cwd, call.toolCall.name, result, signal, { skip: readingArtifact }) };
     } catch (error) {
       if (!signal?.aborted) toolFailure = { error };
       throw error;
@@ -259,7 +312,9 @@ export function configureAgentRequests(session: AgentSession, limits?: { maxRequ
             return true;
           }
           const request = files.fetch;
-          const stream = await streamFunction(model, requestContext, {
+          // ACT: microcompact 只作用于发给模型的副本，避免改动会话文件与 UI 历史。
+          const requestMessages = microCompactMessages(requestContext.messages, model.contextWindow);
+          const stream = await streamFunction(model, { ...requestContext, messages: requestMessages }, {
             ...options,
             apiKey,
             onPayload: async (payload, requestModel) => {

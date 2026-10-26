@@ -114,6 +114,23 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+export const agentSettings = computed(() => {
+  const agent = record(settings.value.agent);
+  return {
+    compactPercent: typeof agent.compactPercent === "number" && Number.isFinite(agent.compactPercent)
+      ? Math.min(95, Math.max(50, Math.round(agent.compactPercent))) : 80,
+    autoCompact: agent.autoCompact !== false,
+    // ACT: 设置页按 KB 展示，服务端按字节读取；这里统一换算并限制在 10–512 KB。
+    toolOutputMaxBytes: typeof agent.toolOutputMaxBytes === "number" && Number.isFinite(agent.toolOutputMaxBytes)
+      ? Math.min(512 * 1024, Math.max(10 * 1024, Math.round(agent.toolOutputMaxBytes))) : 20 * 1024,
+  };
+});
+
+export const developerSettings = computed(() => {
+  const developer = record(settings.value.developer);
+  return { agentFullAccess: developer.agentFullAccess === true };
+});
+
 // ACT: 隐藏状态是旁路设置，不进供应商或模型对象；媒体供应商配置会原样传给插件运行时。
 export const modelsHidden = computed<ModelsHidden>(() => {
   const raw = record(settings.value.modelsHidden);

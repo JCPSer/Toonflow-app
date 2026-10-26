@@ -48,7 +48,7 @@ export function createA2aRouter() {
                 id: connection.state.canvasId ?? "a2a", tools: connection.state.tools,
                 call: (call, callSignal) => callControl(connection.id, call.name, call.args, callSignal ?? signal, cwd),
               } : undefined;
-              const tools = await createAgentTools(cwd, canvas);
+              const tools = await createAgentTools(cwd, canvas, undefined, true, false);
               current = { userId: request.userId, runner: await createTeamRunner({
                 name, cwd, tools, canvas, modelRuntime: runtime,
                 model: runtime.getModel(settings.providerId, settings.modelId), thinkingLevel: effectiveThinkingLevel,

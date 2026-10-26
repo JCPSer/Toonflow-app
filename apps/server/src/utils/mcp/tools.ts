@@ -68,7 +68,8 @@ const uiSchemas = {
   openDocument: z.strictObject({ path: z.string().max(4096).optional(), canvasPath: z.string().max(4096).optional(), nodeId: z.string().max(256).optional(), handleId: z.string().max(256).optional() }),
   writeDocument: z.strictObject({ text: z.string().max(10_000_000), expectedText: z.string().max(10_000_000) }),
   getSettings: z.strictObject({}),
-  updateSettings: z.strictObject({ patch: z.record(z.string(), z.json()).refine(patch => !["mcp", "stores"].some(key => Object.hasOwn(patch, key)), "不能通过 MCP 修改连接凭证或项目列表") }),
+  // ACT: developer.agentFullAccess 是破坏性权限开关，必须由本人在设置页二次确认，MCP 客户端不能代开。
+  updateSettings: z.strictObject({ patch: z.record(z.string(), z.json()).refine(patch => !["mcp", "stores", "developer"].some(key => Object.hasOwn(patch, key)), "不能通过 MCP 修改连接凭证、项目列表或开发者权限") }),
 };
 const uiDescriptions: Record<keyof typeof uiSchemas, string> = {
   openProject: "在目标 Toonflow 页面打开已有工作目录，并等待工作区就绪；操作前获取 getAppState 的 connectionId。",
@@ -124,7 +125,7 @@ export async function getMcpTools(): Promise<McpTool[]> {
   }
   const canvasStub: CanvasContext = { id: "mcp", tools: [], async call() { throw new Error("尚未绑定画布"); } };
   // ACT: 插件损坏时仍保留应用管理工具，允许读取错误并修复插件。
-  const definitions = await createAgentTools(dirname(conf.path), canvasStub, undefined, false).catch(error => {
+  const definitions = await createAgentTools(dirname(conf.path), canvasStub, undefined, false, false).catch(error => {
     pluginError = error instanceof Error ? error.message : String(error);
     return [];
   });
@@ -137,7 +138,7 @@ export async function getMcpTools(): Promise<McpTool[]> {
         id: connection.state.canvasId ?? "mcp", tools: connection.state.tools,
         call: (request, callSignal) => callControl(connection.id, request.name, request.args, callSignal ?? signal, directory),
       } : undefined;
-      const current = (await createAgentTools(directory!, canvas, undefined, false)).find(tool => tool.name === definition.name);
+      const current = (await createAgentTools(directory!, canvas, undefined, false, false)).find(tool => tool.name === definition.name);
       if (!current) throw new Error("工具已禁用，或所需 Toonflow 页面未连接，请重新读取工具列表");
       // ACT: 现有插件依赖 createTools 注入的宿主能力；MCP 没有 Pi 对话，访问会话能力时明确报错。
       const context = new Proxy({ cwd: directory, mode: "rpc", hasUI: false, model: undefined, signal }, {

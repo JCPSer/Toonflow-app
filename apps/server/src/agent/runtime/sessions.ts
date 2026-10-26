@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { basename, dirname, resolve } from "node:path";
 import { readFile, readdir, unlink } from "@toonflow/file";
-import { calculateContextTokens, estimateTokens, getLastAssistantUsage, parseSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
+import { calculateContextTokens, createAgentSession, estimateTokens, getLastAssistantUsage, parseSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, FileEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { AgentEvent, AgentMention, AgentSubAgent, AgentToolCall } from "@/agent/runtime/types";
 import { agentMentionsSchema } from "@/agent/runtime/mentions";
+import { createAgentModel } from "@/agent/runtime/model";
+import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
 import conf from "@/utils/conf";
 import { providerSchema, getModelLimits } from "@/utils/ai";
 import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
@@ -145,6 +147,86 @@ async function readSessionEntriesStrict(path: string, action: string, enforceSiz
   return entries;
 }
 
+/**
+ * 手动压缩当前会话。
+ *
+ * 方案取舍：SDK 只从公开入口导出了 compact()，prepareCompaction() 位于未公开的
+ * dist/core/compaction 深路径，直接引用会绑定内部文件布局。这里按 SDK 官方手动压缩入口
+ * 构造临时 AgentSession 调用 session.compact()：切点仍由 prepareCompaction 计算，
+ * 鉴权、摘要、appendCompaction 落盘和事件顺序都走 SDK 正式路径，结束后立即 dispose。
+ * 该会话不注册到 activeSessions，文件锁由本函数持有。
+ */
+export async function compactAgentSession(cwd: string, path: string, signal?: AbortSignal) {
+  if (getActiveAgentSession(path)) throw Object.assign(new Error("对话正在运行，请先停止后再压缩"), { status: 409 });
+  const release = lockWorkspaceFiles([path]);
+  try {
+    // ACT: 需要压缩的恰恰是超大历史，这里不设 32 MB 上限；只拒绝损坏行与非法结构。
+    const entries = await readSessionEntriesStrict(path, "压缩", false);
+    // ACT: 在内存副本上压缩，成功且摘要非空才写回，失败时磁盘文件保持原样。
+    // ACT: SDK 会直接把条目写进传入的数组，必须给副本，否则写回时会把新增条目再拼一次。
+    const history = SessionManager.inMemory(cwd, undefined, [...entries]);
+    // ACT: getEntries() 不含 header，用压缩前的实际条目数作基准，避免把 header 算进去导致取错新增项。
+    const baseEntries = history.getEntries().length;
+    const modelRef = history.buildSessionContext().model;
+    // ACT: 旧会话或手工编辑的文件里 assistant 可能缺 provider/model，此时解构出空对象也要拒绝，不能拿 undefined 去查供应商。
+    if (!modelRef?.provider || !modelRef.modelId) throw Object.assign(new Error("会话未记录模型，无法压缩"), { status: 400 });
+    const { runtime } = await createAgentModel(modelRef.provider, modelRef.modelId);
+    const model = runtime.getModel(modelRef.provider, modelRef.modelId);
+    if (!model) throw Object.assign(new Error("会话使用的模型不可用，请重新选择后再压缩"), { status: 400 });
+    const settings = createAgentSettings(model.contextWindow, { retry: true, maxOutputTokens: model.maxTokens });
+    const resources = await createAgentResources(cwd, [], settings);
+    const { session } = await createAgentSession({
+      cwd,
+      ...resources,
+      modelRuntime: runtime,
+      model,
+      sessionManager: history,
+      tools: [],
+    });
+    const abort = () => { try { session.abortCompaction(); } catch { /* 已结束 */ } };
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      await session.compact();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[agent.compact] failed:", message);
+      const status = (error as { status?: number; cause?: { status?: number } }).status ?? (error as { cause?: { status?: number } }).cause?.status;
+      // ACT: SDK 用这两句表示无需压缩；鉴权类错误（含供应商 401/403）归为客户端可修正的 400。
+      if (/Nothing to compact|Already compacted/i.test(message)) {
+        throw Object.assign(new Error("当前对话没有可压缩的内容"), { status: 400 });
+      }
+      if (status === 401 || status === 403 || /No API key found|Authentication failed|Unauthorized|Forbidden|invalid api key|No model selected/i.test(message)) {
+        throw Object.assign(new Error("会话使用的模型不可用，请检查模型配置与密钥"), { status: 400 });
+      }
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      session.dispose();
+    }
+    // ACT: 只回写本次新增的 compaction 条目，临时会话可能顺带追加的配置记录一律丢弃。
+    const appended = history.getEntries().slice(baseEntries).filter((entry) => entry.type === "compaction");
+    if (!appended.length) throw Object.assign(new Error("当前对话没有可压缩的内容"), { status: 400 });
+    if (appended.some((entry) => typeof entry.summary !== "string" || !entry.summary.trim())) {
+      throw Object.assign(new Error("上下文压缩失败：模型返回了空摘要，已放弃本次压缩"), { status: 400 });
+    }
+    const known = new Set(entries.map((entry) => entry.id));
+    if (appended.some((entry) => !known.has(entry.firstKeptEntryId))) {
+      throw Object.assign(new Error("上下文压缩失败：摘要指向的历史不存在，已放弃本次压缩"), { status: 400 });
+    }
+    // ACT: 只写回 compaction，但临时会话可能先追加了思考等级等状态记录；这些记录不落盘，
+    // 需要把 compaction 的父节点改挂到最后一个已存在的条目上，否则会留下悬空 parentId。
+    const lastId = entries.at(-1)?.id ?? null;
+    const toWrite = appended.map((entry) => (entry.parentId && known.has(entry.parentId) ? entry : { ...entry, parentId: lastId }));
+    await writeWorkspaceFile(path, [...entries, ...toWrite].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    // ACT: 压缩已经落盘；之后读取会话失败不应让接口报失败，避免前端以为没压缩而重复触发。
+    return await getAgentSession(cwd, path).catch(() => ({
+      file: basename(path), name: history.getSessionName() ?? "新对话", messages: [], stats: getAgentStats(history),
+    }) as unknown as Awaited<ReturnType<typeof getAgentSession>>);
+  } finally {
+    release();
+  }
+}
+
 const isUserEntry = (entry: SessionEntry) =>
   (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom" && entry.customType === "toonflowDeletedUser");
 
@@ -163,7 +245,8 @@ export async function deleteAgentMessage(cwd: string, path: string, options: { e
   const release = lockWorkspaceFiles([path]);
   try {
     let entries = await readSessionEntriesStrict(path, "删除消息", false);
-    const history = SessionManager.inMemory(cwd, undefined, entries);
+    // ACT: SDK 会直接把条目写进传入的数组，必须给副本，否则写回时会把新增条目再拼一次。
+    const history = SessionManager.inMemory(cwd, undefined, [...entries]);
     const branch = history.getBranch();
     let targets = branch.filter((entry) => options.entryIds?.includes(entry.id));
     if (options.replyTo) {
@@ -329,7 +412,8 @@ export async function rewindAgentSession(cwd: string, path: string, entryId: str
   const release = lockWorkspaceFiles([path]);
   try {
     const entries = await readSessionEntriesStrict(path, "回退");
-    const history = SessionManager.inMemory(cwd, undefined, entries);
+    // ACT: SDK 会直接把条目写进传入的数组，必须给副本，否则写回时会把新增条目再拼一次。
+    const history = SessionManager.inMemory(cwd, undefined, [...entries]);
     if (history.getBranch().some((entry) => entry.type === "custom" && entry.customType === "toonflowSubAgentInfo")) {
       throw Object.assign(new Error("子 Agent 会话不支持回退"), { status: 400 });
     }
@@ -412,7 +496,8 @@ export async function forkAgentSession(cwd: string, path: string, entryId: strin
   const release = lockWorkspaceFiles([path]);
   try {
     const entries = await readSessionEntriesStrict(path, "复制会话");
-    const history = SessionManager.inMemory(cwd, undefined, entries);
+    // ACT: SDK 会直接把条目写进传入的数组，必须给副本，否则写回时会把新增条目再拼一次。
+    const history = SessionManager.inMemory(cwd, undefined, [...entries]);
     if (history.getBranch().some((entry) => entry.type === "custom" && entry.customType === "toonflowSubAgentInfo")) {
       throw Object.assign(new Error("子 Agent 会话不支持复制"), { status: 400 });
     }

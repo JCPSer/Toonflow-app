@@ -32,6 +32,27 @@
       <el-icon class="is-loading" aria-hidden="true"><icon-loader-2 :size="14" /></el-icon>
       <span>等待模型响应… {{ silentSeconds }}s</span>
     </div>
+    <div
+      v-if="!initialSession?.parentFile && autoCompactEnabled && contextPercent >= compactThreshold && !compacting"
+      class="compactionStatus contextAlert"
+      :class="contextPercent >= 90 ? 'danger' : 'warning'"
+      role="alert">
+      <icon-alert-triangle :size="14" aria-hidden="true" />
+      <span>
+        <template v-if="contextPercent >= 90">上下文已使用 {{ contextDisplayPercent }}%，建议立即压缩</template>
+        <template v-else>上下文已使用 {{ contextDisplayPercent }}%，已达自动压缩阈值 {{ compactThreshold }}%</template>
+      </span>
+      <el-button
+        v-if="contextPercent >= 90 || contextPercent >= compactThreshold"
+        link
+        type="danger"
+        size="small"
+        :loading="manualCompacting"
+        :disabled="compactBlocked"
+        aria-label="立即压缩上下文"
+        title="立即压缩上下文"
+        @click="compactContext">立即压缩</el-button>
+    </div>
     <messageInput
       ref="input"
       v-model:selectedModel="selectedModel"
@@ -57,13 +78,13 @@
 import { locale, translate } from "@toonflow/i18n/vue";
 import { computed, inject, onBeforeUnmount, reactive, ref, watch } from "vue";
 import axios from "axios";
-import { IconLoader2 } from "@tabler/icons-vue";
+import { IconAlertTriangle, IconLoader2 } from "@tabler/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { getReadableFileExtension, getReadableFileMimeType } from "@toonflow/server/documentFormats";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { writeClipboardText } from "@/lib/clipboard";
 import anonymousData from "@/lib/anonymousData";
-import { modelChoices } from "@/stores/settings";
+import { agentSettings, modelChoices } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type { AgentAttachment, AgentConversation, AgentMessage } from "./types";
 import type { AgentEvent } from "@toonflow/server/agent/types";
@@ -80,6 +101,7 @@ const emit = defineEmits<{
   rewound: [conversation: AgentConversation];
   sent: [prompt: string];
   event: [event: AgentEvent];
+  compactState: [state: { disabled: boolean; loading: boolean }];
 }>();
 const workspaceStore = useWorkspaceStore();
 const directory = workspaceStore.project?.directory;
@@ -91,6 +113,7 @@ const stats = ref(props.initialSession?.stats);
 const contextUsage = ref(props.initialSession?.contextUsage);
 const busy = ref(false);
 const compacting = ref(false);
+const manualCompacting = ref(false);
 const retryNotice = ref<string>();
 const silentSeconds = ref(0);
 let silenceTimer: ReturnType<typeof setInterval> | undefined;
@@ -102,6 +125,9 @@ const restoringAttachment = ref(false);
 const input = ref<InstanceType<typeof messageInput>>();
 const voiceActive = ref(false);
 const locked = computed(() => props.disabled || busy.value || deletingId.value !== undefined || restoringAttachment.value || voiceActive.value || sessionAction.value !== undefined);
+const compactBlocked = computed(() => locked.value || remoteRunning.value || compacting.value || !props.sessionFile);
+const compactState = computed(() => ({ disabled: compactBlocked.value, loading: manualCompacting.value }));
+watch(compactState, state => emit("compactState", state), { immediate: true });
 const editingId = ref<string>();
 let controller: AbortController | undefined;
 const pendingMessage = props.initialSession?.parentFile ? undefined : workspaceStore.pendingAgentMessage;
@@ -110,6 +136,16 @@ const selectedModel = ref(pendingMessage?.model ?? (props.initialSession?.provid
 const reasoningEffort = ref(pendingMessage?.reasoningEffort ?? props.initialSession?.thinkingLevel ?? "");
 const selectedModelChoice = computed(() => modelChoices.value.find(item => item.value === selectedModel.value));
 const contextWindow = computed(() => contextUsage.value?.contextWindow ?? selectedModelChoice.value?.contextWindow ?? 262144);
+const contextPercent = computed(() => {
+  const usage = contextUsage.value;
+  if (!usage) return 0;
+  if (typeof usage.percent === "number" && Number.isFinite(usage.percent)) return Math.min(100, Math.max(0, usage.percent));
+  return usage.tokens != null && usage.contextWindow > 0 ? Math.min(100, Math.max(0, usage.tokens / usage.contextWindow * 100)) : 0;
+});
+const contextDisplayPercent = computed(() => Math.round(contextPercent.value));
+// ACT: 提示阈值跟随设置页，关闭自动压缩后不再提示「接近自动压缩」，避免文案与真实行为不一致。
+const compactThreshold = computed(() => agentSettings.value.compactPercent);
+const autoCompactEnabled = computed(() => agentSettings.value.autoCompact);
 function applyEvent(event: AgentEvent) {
   switch (event.type) {
     case "subAgent":
@@ -163,7 +199,7 @@ function stopSilenceWatch() {
   retryNotice.value = undefined;
 }
 
-defineExpose({ receiveEvent });
+defineExpose({ receiveEvent, compactContext });
 
 function submitMessage() {
   return sendMessage(editingId.value ? messages.value.find(item => item.id === editingId.value) : undefined);
@@ -244,6 +280,32 @@ async function rewindMessage(item: AgentMessage) {
       : error instanceof Error ? error.message : "回退失败");
   } finally {
     sessionAction.value = undefined;
+  }
+}
+
+// ACT: 手动压缩直接替换会话历史，正在生成或压缩时禁止操作，避免与服务端写文件冲突。
+async function compactContext() {
+  if (compactBlocked.value || manualCompacting.value || sessionUnavailable()) return;
+  const sessionFile = props.sessionFile;
+  if (!sessionFile) return;
+  manualCompacting.value = true;
+  compacting.value = true;
+  try {
+    const { data } = await axios.post<{ code: number; data: AgentConversation; message?: string }>("/api/agent/compact", {
+      directory, sessionFile,
+    }, { headers: { "x-toonflow-workspace": "1" } });
+    if (data.code !== 200) throw new Error(data.message || "压缩上下文失败");
+    messages.value = data.data.messages.map(message => ({ ...message }));
+    stats.value = data.data.stats;
+    contextUsage.value = data.data.contextUsage;
+    editingId.value = undefined;
+    ElMessage.success("上下文已压缩");
+  } catch (error) {
+    ElMessage.error(axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message || "压缩上下文失败"
+      : error instanceof Error ? error.message : "压缩上下文失败");
+  } finally {
+    manualCompacting.value = false;
+    compacting.value = false;
   }
 }
 
@@ -490,6 +552,14 @@ onBeforeUnmount(() => {
     margin: 0 12px 8px;
     color: var(--el-color-warning);
     font-size: 12px;
+  }
+
+  .contextAlert {
+    &.warning { color: var(--el-color-warning); }
+    &.danger { color: var(--el-color-danger); }
+
+    > span { min-width: 0; }
+    .el-button { flex-shrink: 0; margin-left: 4px; padding: 0; }
   }
 }
 </style>

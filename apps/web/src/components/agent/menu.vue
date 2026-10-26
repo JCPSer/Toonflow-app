@@ -75,6 +75,16 @@
           </div>
         </div>
       </el-popover>
+      <el-button
+        v-if="!parentFile"
+        text
+        circle
+        :icon="IconArrowsMinimize"
+        :loading="compactLoading"
+        :disabled="compactDisabled || !sessionFile"
+        aria-label="压缩上下文"
+        title="压缩上下文"
+        @click="emit('compact')" />
       <el-button text circle :loading="configLoading" :icon="IconAdjustmentsHorizontal" aria-label="媒体生成控制" title="媒体生成控制" @click="openMediaConfig" />
       <slot name="actions" />
       <el-button text circle aria-label="关闭对话" title="关闭" @click="emit('close')"><icon-x :size="16" /></el-button>
@@ -95,7 +105,7 @@ import {
   IconMessagePlus, IconHistory,
   IconX, IconPencil, IconTrash,
   IconMessageCircle, IconCheck, IconAdjustmentsHorizontal,
-  IconArrowLeft, IconUsersGroup,
+  IconArrowLeft, IconUsersGroup, IconArrowsMinimize,
 } from "@tabler/icons-vue";
 
 const props = defineProps<{
@@ -105,8 +115,10 @@ const props = defineProps<{
   loading: boolean;
   subAgents?: AgentSubAgent[];
   parentFile?: string;
+  compactDisabled?: boolean;
+  compactLoading?: boolean;
 }>();
-const emit = defineEmits<{ newChat: []; history: []; select: [file: string]; rename: [file: string, name: string]; remove: [file: string]; close: []; openSubAgent: [file: string]; back: [] }>();
+const emit = defineEmits<{ newChat: []; history: []; select: [file: string]; rename: [file: string, name: string]; remove: [file: string]; close: []; openSubAgent: [file: string]; back: []; compact: [] }>();
 const historyVisible = ref(false);
 const subAgentsVisible = ref(false);
 const editingName = ref(false);

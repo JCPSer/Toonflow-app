@@ -10,7 +10,7 @@ import type { AgentEvent, AgentMention, AgentToolCall } from "@/agent/runtime/ty
 import { agentMentionsSchema, mentionPrompt, snapshotMentions, validateMentionTokens } from "@/agent/runtime/mentions";
 import { readAiReferences, referenceContent } from "@/utils/ai";
 import { createAgentTools } from "@/agent/tools";
-import { createAgentResources } from "@/agent/runtime/resources";
+import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
 import { createAgentModel, getAgentModelConfiguration } from "@/agent/runtime/model";
 import { configureAgentRequests } from "@/agent/runtime/requests";
 import { getAgentImageReference, getOffloadedImageText, readAgentImage } from "@/agent/runtime/imageAttachments";
@@ -101,7 +101,7 @@ export async function run(
     send({ type: "accepted" });
     return;
   }
-  const { provider, runtime, effectiveThinkingLevel } = await createAgentModel(providerId, modelId, thinkingLevel);
+  const { provider, runtime, effectiveThinkingLevel, model: configuredModel } = await createAgentModel(providerId, modelId, thinkingLevel);
   if (sessionPath) {
     const file = await stat(sessionPath).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") throw Object.assign(new Error("会话不存在，请重新打开对话"), { status: 404 });
@@ -155,7 +155,8 @@ export async function run(
         cwd, parentFile: file, name, task, providerId, modelId, thinkingLevel, canvas, signal: taskSignal, send, onProgress,
       }),
     }));
-    const resources = await createAgentResources(cwd, tools, undefined, child
+    // ACT: 压缩阈值依赖模型窗口，必须先把模型配置带到设置里。
+    const resources = await createAgentResources(cwd, tools, createAgentSettings(configuredModel.contextWindow, { maxOutputTokens: configuredModel.maxOutputTokens }), child
       ? `## 子 Agent 职责\n你正在执行委派任务：${JSON.stringify({ name: child.name, task: child.task })}。遵守当前工作区规则与授权，用户可以进入此子会话补充要求。重要进展与最终结论使用 report 上报父 Agent。`
       : "");
     const resendEntry = resendFrom ? history.getBranch().find((item) => item.id === resendFrom) : undefined;

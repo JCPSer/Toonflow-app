@@ -3,15 +3,29 @@ import { readFile } from "@toonflow/file";
 import { join } from "node:path";
 import { DefaultResourceLoader, SettingsManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildSystemPrompt } from "@/agent/runtime/prompt";
+import { autoCompactStrategy, getAgentPreferences } from "@/agent/runtime/preferences";
 import { loadAgentSkills } from "@/agent/skills";
 import { resolveWorkspacePath } from "@/utils/workspace/files";
 import { isMemoryEnabled, readDocument } from "@/utils/personalization";
 import conf from "@/utils/conf";
 import { getRuntimePlatform } from "@/lib/platform";
 
-// ACT: 重试由 requests.ts 的空闲看门狗触发，次数上限压到 2，避免长时间静默等待。
-export function createAgentSettings() {
-  return SettingsManager.inMemory({ retry: { enabled: true, maxRetries: 2, baseDelayMs: 2000 } });
+/**
+ * 会话设置。主会话按用户偏好与模型窗口决定压缩阈值；子会话复用同一套压缩配置但关闭重试。
+ * 没有窗口信息时沿用 SDK 默认预留量，保持旧调用点行为不变。
+ */
+export function createAgentSettings(contextWindow?: number, options: { retry?: boolean; maxOutputTokens?: number } = {}) {
+  const window = typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0 ? contextWindow : 0;
+  const { autoCompact } = getAgentPreferences();
+  // ACT: 预留量必须覆盖模型最大输出，否则高百分比下「输入 + 输出」仍会超出窗口。
+  const strategy = autoCompactStrategy(window, options.maxOutputTokens ?? 0);
+  return SettingsManager.inMemory({
+    compaction: { enabled: autoCompact && strategy.enabled, reserveTokens: strategy.reserveTokens, keepRecentTokens: strategy.keepRecentTokens },
+    // ACT: 重试由 requests.ts 的空闲看门狗触发，次数上限压到 2，避免长时间静默等待。
+    retry: options.retry === false
+      ? { enabled: false, provider: { maxRetries: 0 } }
+      : { enabled: true, maxRetries: 2, baseDelayMs: 2000 },
+  });
 }
 
 export async function createAgentResources(cwd: string, tools: ToolDefinition[], settings = createAgentSettings(), instructions = "") {

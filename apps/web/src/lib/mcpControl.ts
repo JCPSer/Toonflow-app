@@ -99,7 +99,9 @@ export function useMcpControl() {
           else if (request.name === "updateSettings") {
             const patch = request.args.patch;
             if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error("设置 patch 必须是对象");
-            if (Object.hasOwn(patch, "mcp") || Object.hasOwn(patch, "stores")) throw new Error("MCP 不允许修改连接配置或持久化 Store");
+            if (Object.hasOwn(patch, "mcp") || Object.hasOwn(patch, "stores") || Object.hasOwn(patch, "developer")) {
+              throw new Error("MCP 不允许修改连接配置、持久化 Store 或开发者权限");
+            }
             JSON.stringify(patch, (_key, value) => {
               if (value === "[REDACTED]") throw new Error("不能将脱敏占位符保存为设置，请填写实际值");
               return value;

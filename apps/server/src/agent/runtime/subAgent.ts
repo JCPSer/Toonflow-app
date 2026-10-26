@@ -1,8 +1,8 @@
 import type { Usage } from "@earendil-works/pi-ai";
-import { createAgentSession, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, CreateAgentSessionOptions, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ToolCall } from "@toonflow/tools-scaffold/runtime";
-import { createAgentResources } from "@/agent/runtime/resources";
+import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
 import { configureAgentRequests } from "@/agent/runtime/requests";
 
 export type SubAgentModel = Pick<CreateAgentSessionOptions, "modelRuntime" | "model" | "thinkingLevel">;
@@ -65,10 +65,8 @@ export async function runSubAgent(options: SubAgentModel & {
         }
       },
     }));
-    const resources = await createAgentResources(cwd, activeTools, SettingsManager.inMemory({
-      compaction: { enabled: false },
-      retry: { enabled: false, provider: { maxRetries: 0 } },
-    }), instructions);
+    // ACT: 子会话与主会话共用压缩策略，窗口缺失时按 128K 估计；重试仍由父流程控制。
+    const resources = await createAgentResources(cwd, activeTools, createAgentSettings(modelOptions.model?.contextWindow ?? 128000, { retry: false, maxOutputTokens: modelOptions.model?.maxTokens }), instructions);
     signal.throwIfAborted();
     ({ session } = await createAgentSession({
       ...modelOptions, ...resources, cwd,
@@ -105,6 +103,8 @@ export async function runSubAgent(options: SubAgentModel & {
         await session.abort();
         for (const entry of session.sessionManager.getEntries().slice(previousEntries)) {
           if (entry.type === "message" && (entry.message.role === "assistant" || entry.message.role === "toolResult") && entry.message.usage) addUsage(usage, entry.message.usage);
+          // ACT: 子 Agent 开启压缩后，摘要调用的用量记在 compaction/branch_summary 条目上，漏掉会少算成本。
+          else if ((entry.type === "compaction" || entry.type === "branch_summary") && entry.usage) addUsage(usage, entry.usage);
         }
       } finally { session.dispose(); }
     }
