@@ -101,6 +101,20 @@ const model = computed({ get: () => data.value.model ?? "", set: (value: string)
 const models = ref<NodeAiModel[]>([]);
 const modelsLoading = ref(false);
 const generating = ref(false);
+// ACT: delta 先进缓冲、按固定时间片写回 outputs，避免每个 token 都触发节点与画布重绘。
+let streamBuffer = "";
+let streamReceived = false;
+let streamClosed = false;
+let streamFlushTimer: ReturnType<typeof setTimeout> | undefined;
+function flushStream() {
+  if (streamFlushTimer !== undefined) { clearTimeout(streamFlushTimer); streamFlushTimer = undefined; }
+  if (streamReceived) outputs.value.text.value = streamBuffer;
+}
+function scheduleStreamFlush() {
+  if (streamFlushTimer !== undefined) return;
+  // ACT: 长文解析更贵，按长度自适应降频；时间片恒定，不随 delta 频率变化。
+  streamFlushTimer = setTimeout(flushStream, streamBuffer.length > 20000 ? 400 : 200);
+}
 const stopping = ref(false);
 const stopRequested = ref(false);
 // ACT: controller 与 runId 只服务当前这一次生成，放进 ref 会无谓触发渲染。
@@ -139,8 +153,8 @@ nodeEvent.on("save", async (reason) => {
   await textLoading;
   if (!textReady.value) throw new Error("文本尚未加载，无法保存");
   if (reason === "reload" && generating.value) throw new Error("文本正在生成，请完成后再刷新节点");
-  // 普通编辑已由 watcher 入队；生成中补存当前片段，不因画布保存重复写未改动的文本。
-  if (generating.value) saveText(outputs.value.text.value);
+  // 普通编辑已由 watcher 入队；生成中补存已收到的片段，不因画布保存重复写未改动的文本。
+  if (generating.value && streamReceived) saveText(streamBuffer);
   let pending: Promise<void>;
   do {
     pending = textSaving;
@@ -248,7 +262,9 @@ async function generateText() {
   activeRunId = runId;
   stopRequested.value = false;
   generating.value = true;
-  let text = "";
+  streamBuffer = "";
+  streamReceived = false;
+  streamClosed = false;
   try {
     if (refList.value.some(item => item.value === undefined)) throw new Error("引用节点暂无内容，请先补充引用内容");
     const references = refList.value
@@ -262,20 +278,29 @@ async function generateText() {
       runId,
       signal: controller.signal,
       onEvent(event) {
-        if (event.type === "text") outputs.value.text.value = text += event.delta;
+        // ACT: generate 结束/中止后仍可能有迟到回调，run 已关闭的一律忽略。
+        if (event.type !== "text" || streamClosed) return;
+        streamReceived = true;
+        streamBuffer += event.delta;
+        scheduleStreamFlush();
       },
     });
-    // 中止后保留停止瞬间累计的文本，不用完整结果覆盖。
-    if (!controller.signal.aborted) outputs.value.text.value = result.text;
+    // 中止后保留停止瞬间累计的文本，不用完整结果覆盖；成功但正文为空时同样保留已收到的片段。
+    if (!controller.signal.aborted && result.text) { streamBuffer = result.text; streamReceived = true; }
   } catch (error) {
     // 用户主动停止（含服务端先行中止）不弹错。
     if (!stopRequested.value && !controller.signal.aborted && error instanceof Error && error.name !== "AbortError") ElMessage.error(error.message);
   } finally {
     // 节点卸载/切画布等隐式中断不是用户点的停止，需补发通知避免上游请求继续跑。
     if (controller.signal.aborted && !stopRequested.value) void notifyGenerateStop(runId);
+    // ACT: 一个 delta 都没收到就失败时不能覆盖原正文，否则会把磁盘内容清空。
+    streamClosed = true;
+    flushStream();
     // 卸载会取消请求并停止 watcher，生成收尾必须自行保存已收到的正文。
-    try { await saveText(outputs.value.text.value); }
-    catch (error) { ElMessage.error(error instanceof Error ? error.message : "文本保存失败"); }
+    if (streamReceived) {
+      try { await saveText(outputs.value.text.value); }
+      catch (error) { ElMessage.error(error instanceof Error ? error.message : "文本保存失败"); }
+    }
     generating.value = false;
     stopping.value = false;
     stopRequested.value = false;
@@ -313,6 +338,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 onMounted(() => window.addEventListener("keydown", handleWindowKeydown));
 onScopeDispose(() => {
   window.removeEventListener("keydown", handleWindowKeydown);
+  if (streamFlushTimer !== undefined) { clearTimeout(streamFlushTimer); streamFlushTimer = undefined; }
   // 卸载时主动 abort 本地 controller，让 finally 能识别隐式中断并补发 stop。
   generationController?.abort();
 });

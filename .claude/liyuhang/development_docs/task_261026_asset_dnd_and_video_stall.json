@@ -1,0 +1,30 @@
+{
+  "task_id": "task_261026_asset_dnd_and_video_stall",
+  "created_at": "2026-10-26",
+  "owner": "liyuhang",
+  "goal": "素材库「上一级」卡片支持拖拽移入父目录；修复视频预览 + Agent 流式输出时画布卡死",
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "素材库拖拽到「上一级」",
+      "type": "feature",
+      "status": "done",
+      "deliverable": "拖拽文件/目录到 .. 卡片即移动到父目录；与普通目录卡片行为一致",
+      "docs": [
+        "1_requirements_matrix",
+        "2_requirements_solutions"
+      ]
+    },
+    {
+      "id": "T2",
+      "subject": "视频预览 + Agent 流式输出导致画布卡死",
+      "type": "bug",
+      "status": "done",
+      "deliverable": "定位高频重渲染来源，消除卡死；视频播放与画布刷新解耦",
+      "docs": [
+        "4_bugs_fix"
+      ],
+      "note": "文本流式节流与视频单播已实现；真实模型下的长文帧率待复测"
+    }
+  ]
+}

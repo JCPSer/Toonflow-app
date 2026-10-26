@@ -48,6 +48,8 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>,
   const rootsFailed = ref(false);
   const query = ref("");
   const treeVersion = ref(0);
+  // ACT: 上传只改目录内容不改结构，树不重建；目录「N 项」用增量补丁保持实时。
+  const countExtra = ref<Record<string, number>>({});
   const selection = ref<Set<string>>(new Set());
   const lastSelectedPath = ref<string>();
   const missingEntries = ref<AssetEntry[]>([]);
@@ -63,6 +65,11 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>,
   let syncTimer: ReturnType<typeof setTimeout> | undefined;
   let syncDeadline = 0;
   let treeRefreshAt = 0;
+  let treeTrailingTimer: ReturnType<typeof setTimeout> | undefined;
+  // ACT: 上传这类「只增文件」的操作在完成后的一小段时间内跳过树重建；只对上传目标目录生效，别的目录改动照常。
+  let treeSuppressedUntil = 0;
+  const suppressDirs = new Set<string>();
+  const pendingDirs = new Set<string>();
 
   /** 合并展示用；空态优先用更具体的 list 错误。 */
   const displayError = computed(() => error.value || rootsError.value);
@@ -179,15 +186,30 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>,
     syncTimer = undefined;
     syncDeadline = 0;
     // 树只在目录结构可能变化时段性重建（2s 节流）；文件级改动只刷列表，避免每次上传都闪一下。
-    if (Date.now() - treeRefreshAt > 2000) {
-      treeRefreshAt = Date.now();
+    const now = Date.now();
+    const elapsed = now - treeRefreshAt;
+    // ACT: 只有「全部事件都落在此次上传的目标目录」时才跳过树重建；其它目录的结构改动照常重建。
+    // ACT: 上传会在目标目录和库根（索引/根 mtime）各产生一次事件，祖先目录同样视为「本次上传引起」。
+    const withinUploadTarget = (dir: string) => suppressDirs.has(dir)
+      || [...suppressDirs].some((target) => !dir || target.startsWith(`${dir}/`));
+    const uploadOnly = now < treeSuppressedUntil && pendingDirs.size > 0
+      && [...pendingDirs].every(withinUploadTarget);
+    if (uploadOnly) {
+      // 上传引起的文件级变化：树结构未变，不做任何重建。
+    } else if (elapsed > 2000) {
       refreshTree();
+    } else if (!treeTrailingTimer) {
+      // ACT: 节流命中的事件不能直接丢弃，窗口结束时补一次，保证「最多延迟 2s」而不是永不更新。
+      treeTrailingTimer = setTimeout(() => { treeTrailingTimer = undefined; refreshTree(); }, 2000 - elapsed);
     }
+    if (now >= treeSuppressedUntil) suppressDirs.clear();
+    pendingDirs.clear();
     void loadList(true, { silent: true });
   }
 
   /** 外部改动只做静默刷新：不清空列表、不闪烁；500ms 合并，连续事件最多推迟 2s。 */
-  function scheduleSilentRefresh() {
+  function scheduleSilentRefresh(dirs: string[] = []) {
+    for (const dir of dirs) pendingDirs.add(dir);
     const now = Date.now();
     if (!syncDeadline) syncDeadline = now + 2000;
     if (now >= syncDeadline) {
@@ -211,7 +233,7 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>,
           return;
         }
         if (event.type === "change") {
-          if (event.dirs.some(affectsCurrentDirectory)) scheduleSilentRefresh();
+          if (event.dirs.some(affectsCurrentDirectory)) scheduleSilentRefresh(event.dirs);
           return;
         }
         if (event.type === "gone") {
@@ -328,14 +350,32 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>,
     if (!loading.value && !loadingMore.value && nextCursor.value) void loadList(false);
   }
 
-  async function refresh() {
+  async function refresh(options: { tree?: boolean; silent?: boolean; suppressTree?: boolean; suppressPaths?: string[] } = {}) {
     if (rootsFailed.value) await loadRoots();
-    refreshTree();
-    await loadList(true);
+    if (options.tree !== false) refreshTree();
+    // ACT: 内容类变更（上传）不重建树，压住随后由文件系统事件触发的重建与补刷。
+    else if (options.suppressTree) {
+      treeSuppressedUntil = Date.now() + 2500;
+      suppressDirs.clear();
+      for (const dir of options.suppressPaths ?? [state.value.path]) suppressDirs.add(dir);
+      if (treeTrailingTimer) { clearTimeout(treeTrailingTimer); treeTrailingTimer = undefined; }
+    }
+    await loadList(true, { silent: options.silent });
   }
 
   function refreshTree() {
+    // ACT: 主动重建要吸收挂起的补刷，否则补刷到点会再重建一次，正是要消除的闪烁。
+    if (treeTrailingTimer) { clearTimeout(treeTrailingTimer); treeTrailingTimer = undefined; }
     treeVersion.value++;
+    treeRefreshAt = Date.now();
+  }
+
+  // ACT: 有些入口（收藏/元数据）直接 treeVersion++，统一在这里清增量，避免计数越叠越多。
+  watch(treeVersion, () => { countExtra.value = {}; });
+
+  function bumpCount(path: string, added: number) {
+    if (!path || !added) return;
+    countExtra.value = { ...countExtra.value, [path]: (countExtra.value[path] ?? 0) + added };
   }
 
   function navigate(path: string) {
@@ -469,6 +509,7 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>,
     disposed = true;
     listRequest++;
     if (searchTimer) clearTimeout(searchTimer);
+    if (treeTrailingTimer) { clearTimeout(treeTrailingTimer); treeTrailingTimer = undefined; }
     stopChanges();
   });
 
@@ -520,6 +561,8 @@ export function useAssetLibrary(directory: MaybeRefOrGetter<string | undefined>,
     refresh,
     refreshTree,
     treeVersion,
+    countExtra,
+    bumpCount,
     navigate,
     goUp,
     setLibrary,

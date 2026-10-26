@@ -194,6 +194,7 @@ import { Background } from "@vue-flow/background";
 import { useCanvasTools } from "./useCanvasTools";
 import type { CanvasContext } from "@toonflow/tool-canvas/runtime";
 import { loadNodeComponent } from "./loadNodeComponent";
+import { pauseMediaIn } from "@/lib/mediaPlayback";
 import { useCanvasHistory } from "./useCanvasHistory";
 import { copyNodeToClipboard, copyNodesToClipboard, nodeClipboardCommand, readClipboardNodes } from "./nodeClipboard";
 import { readClipboardFiles, readClipboardText, writeClipboardImage } from "@/lib/clipboard";
@@ -879,11 +880,13 @@ watch(
 
 // ACT: 切换显示面板不会卸载画布；仅清理交互，不中断本轮工具调用。
 // 素材库面板的可见性归全局 store，切换画布/文档时不再强制关闭。
-watch(() => props.active, () => {
+watch(() => props.active, (active) => {
   edgeDisconnect.value = undefined;
   dragCopy = undefined;
   pointerPosition = undefined;
   resetCanvasKeys();
+  // ACT: 后台画布仍保留节点与播放器；切走时暂停本画布内的音视频，避免多路解码。
+  if (!active && canvasElement.value) pauseMediaIn(canvasElement.value, { audio: false });
 }, { flush: "sync" });
 
 function flushCanvasSave(action?: () => Promise<void>): Promise<void> {

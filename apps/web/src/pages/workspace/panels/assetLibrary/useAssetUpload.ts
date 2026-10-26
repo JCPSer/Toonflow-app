@@ -27,20 +27,28 @@ function candidateName(name: string, index: number) {
   return `${stem} (${index + 1})${suffix}`;
 }
 
+export type UploadSummary = { targetPath: string; added: number };
+
 export function useAssetUpload(options: {
   selector: () => AssetSelector;
-  onComplete: () => void | Promise<void>;
+  onComplete: (uploads: UploadSummary[]) => void | Promise<void>;
 }) {
   const items = ref<UploadItem[]>([]);
   const active = ref(0);
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  // ACT: 上传只新增文件、不改目录结构，汇总「目标目录 + 成功数量」供调用方做计数补丁。
+  let completed = new Map<string, number>();
 
   const pendingCount = computed(() => items.value.filter(item => item.status === "queued" || item.status === "uploading").length);
   const hasItems = computed(() => items.value.length > 0);
 
   function scheduleRefresh() {
     if (refreshTimer) clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => { void options.onComplete(); }, 250);
+    refreshTimer = setTimeout(() => {
+      const uploads = [...completed].map(([targetPath, added]) => ({ targetPath, added }));
+      completed = new Map();
+      void options.onComplete(uploads);
+    }, 250);
   }
 
   function pump() {
@@ -65,6 +73,7 @@ export function useAssetUpload(options: {
           });
           item.progress = 100;
           item.status = "done";
+          completed.set(item.targetPath, (completed.get(item.targetPath) ?? 0) + 1);
           scheduleRefresh();
           return;
         } catch (error) {

@@ -63,7 +63,7 @@
           <p class="description">在对方“设置 → 设备互联”中开启共享。<br />局域网连接时，请使用同一 Wi-Fi。</p>
         </div>
         <div class="scannerView">
-          <video v-show="scanning" ref="video" autoplay muted playsinline aria-label="扫码摄像头预览" />
+          <video v-show="scanning" ref="video" autoplay muted playsinline data-concurrent="on" aria-label="扫码摄像头预览" />
           <svg class="scannerFrame" viewBox="0 0 200 200" fill="none" aria-hidden="true"><path d="M1 25V1H25M175 1H199V25M199 175V199H175M25 199H1V175" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
           <div v-if="!scanning" class="scannerHint">
             <icon-qrcode :size="40" aria-hidden="true" />

@@ -45,12 +45,16 @@
         <article
           v-if="currentPath"
           class="assetCard upCard"
+          :class="{ dropTarget: dropActivePath === UP_DROP_KEY }"
           role="option"
           aria-selected="false"
           :aria-label="translate('返回上一级')"
           :title="translate('返回上一级')"
           tabindex="-1"
-          @click.stop="emit('navigate', parentPath)">
+          @click.stop="emit('navigate', parentPath)"
+          @dragover="onUpDragOver"
+          @dragleave="onUpDragLeave"
+          @drop="onUpDrop">
           <span class="assetVisual">
             <icon-arrow-up :size="42" stroke="1.25" aria-hidden="true" />
           </span>
@@ -261,57 +265,89 @@ function canAccept(entry: AssetEntry) {
   return entry.type === "directory";
 }
 
-function canDropHere(targetPath: string) {
+function canDropOn(targetPath: string) {
   const payload = activeAssetDrag.value;
   if (!payload) return false;
   return canDropInto(payload, { library: props.library, path: targetPath }, "directory");
 }
 
-function onCardDragOver(event: DragEvent, entry: AssetEntry) {
-  if (!canAccept(entry)) return;
+// ACT: 「上一级」高亮只用于本视图比较，真实落点路径始终是 parentPath。
+// ACT: 用 NUL 前缀，真实路径不可能包含 NUL，避免与名为 "__up__" 的目录撞高亮。
+const UP_DROP_KEY = "\u0000up";
+
+/** 目录落点的公共逻辑：普通目录卡片与「上一级」卡片共用，目标路径不同。 */
+function highlightDropTarget(event: DragEvent, targetPath: string, key: string) {
   if (!hasInternalDrag(event) && !hasFileDrag(event)) return;
-  if (hasInternalDrag(event) && !canDropHere(entry.path)) {
+  if (hasInternalDrag(event) && !canDropOn(targetPath)) {
     dropActivePath.value = undefined;
     return;
   }
   event.preventDefault();
   event.stopPropagation();
-  dropActivePath.value = entry.path;
+  dropActivePath.value = key;
   if (event.dataTransfer) event.dataTransfer.dropEffect = hasInternalDrag(event) ? "move" : "copy";
 }
 
-function onCardDragLeave(event: DragEvent, entry: AssetEntry) {
-  if (dropActivePath.value !== entry.path) return;
+function leaveDropTarget(event: DragEvent, key: string) {
+  if (dropActivePath.value !== key) return;
   const related = event.relatedTarget;
   if (related instanceof Node && (event.currentTarget as HTMLElement).contains(related)) return;
   dropActivePath.value = undefined;
 }
 
-function onCardDrop(event: DragEvent, entry: AssetEntry) {
-  if (!canAccept(entry)) return;
+function commitDropTarget(event: DragEvent, targetPath: string) {
   dropActivePath.value = undefined;
   if (hasInternalDrag(event)) {
     event.preventDefault();
     event.stopPropagation();
     const payload = readInternalDrag(event);
     clearAssetDrag();
-    if (payload && payload.library !== props.library) {
-      emit("error", translate("请用收藏复制到另一个素材库，素材库之间不支持直接移动"));
-      return;
-    }
-    if (payload && canDropInto(payload, { library: props.library, path: entry.path }, "directory")) emit("move", payload, entry.path);
+    // ACT: 异库在 dragover 阶段就不放行，drop 不会派发；这里只做防御性判断，静默忽略。
+    if (payload && payload.library === props.library
+      && canDropInto(payload, { library: props.library, path: targetPath }, "directory")) emit("move", payload, targetPath);
     return;
   }
   if (hasFileDrag(event)) {
     event.preventDefault();
     event.stopPropagation();
-    emit("upload-drop", Array.from(event.dataTransfer?.files ?? []), entry.path);
+    emit("upload-drop", Array.from(event.dataTransfer?.files ?? []), targetPath);
   }
+}
+
+function onCardDragOver(event: DragEvent, entry: AssetEntry) {
+  if (!canAccept(entry)) return;
+  highlightDropTarget(event, entry.path, entry.path);
+}
+
+function onCardDragLeave(event: DragEvent, entry: AssetEntry) {
+  if (!canAccept(entry)) return;
+  leaveDropTarget(event, entry.path);
+}
+
+function onCardDrop(event: DragEvent, entry: AssetEntry) {
+  if (!canAccept(entry)) return;
+  commitDropTarget(event, entry.path);
+}
+
+// ACT: 只接管库内拖动；系统文件拖到「..」继续冒泡到空白区，按当前目录上传。
+function onUpDragOver(event: DragEvent) {
+  if (!hasInternalDrag(event)) return;
+  highlightDropTarget(event, parentPath.value, UP_DROP_KEY);
+}
+
+function onUpDragLeave(event: DragEvent) {
+  if (!hasInternalDrag(event)) return;
+  leaveDropTarget(event, UP_DROP_KEY);
+}
+
+function onUpDrop(event: DragEvent) {
+  if (!hasInternalDrag(event)) return;
+  commitDropTarget(event, parentPath.value);
 }
 
 function onBlankDragOver(event: DragEvent) {
   if (!hasInternalDrag(event) && !hasFileDrag(event)) return;
-  if (hasInternalDrag(event) && !canDropHere(props.currentPath)) {
+  if (hasInternalDrag(event) && !canDropOn(props.currentPath)) {
     dropActivePath.value = undefined;
     return;
   }
@@ -467,6 +503,8 @@ function onScroll(event: Event) {
 
       &.upCard {
         opacity: 0.75;
+
+        &.dropTarget { opacity: 1; }
 
         .assetVisual { color: var(--el-text-color-secondary); }
         .assetName { color: var(--el-text-color-secondary); font-weight: normal; }

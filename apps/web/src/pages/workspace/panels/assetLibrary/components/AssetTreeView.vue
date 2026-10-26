@@ -38,7 +38,7 @@
           <component :is="node.expanded && !node.isLeaf ? IconFolderOpen : IconFolder" class="folderIcon" :size="16" aria-hidden="true" />
           <span class="nodeName">{{ data.name }}</span>
           <icon-star-filled v-if="data.favorite && !data.root" class="star" :size="12" :title="translate('已收藏')" aria-hidden="true" />
-          <span v-if="typeof data.childCount === 'number' && !data.root" class="childCount">{{ data.childCount }}</span>
+          <span v-if="typeof data.childCount === 'number' && !data.root" class="childCount">{{ displayChildCount(data) }}</span>
         </span>
       </template>
     </el-tree>
@@ -64,7 +64,9 @@ const props = withDefaults(defineProps<{
   currentPath: string;
   expandedKeys: string[];
   refreshKey?: number;
-}>(), { refreshKey: 0, projects: undefined, activeDirectory: "" });
+  /** 上传等「只增内容」操作按目录累加的条目数，树不重建也能让「N 项」保持实时。 */
+  countExtra?: Record<string, number>;
+}>(), { refreshKey: 0, projects: undefined, activeDirectory: "", countExtra: () => ({}) });
 const emit = defineEmits<{
   navigate: [path: string];
   "select-library": [library: AssetLibraryKind, path?: string];
@@ -76,6 +78,12 @@ const emit = defineEmits<{
 }>();
 
 const treeRef = ref<TreeInstance>();
+
+function displayChildCount(data: { id?: string; childCount?: number }) {
+  // ACT: 用节点身份（library:path / library:directory:path）取增量，避免同名目录跨库串计数。
+  const extra = data.id ? (props.countExtra[data.id] ?? 0) : 0;
+  return (data.childCount ?? 0) + extra;
+}
 const dropTargetKey = ref<string>();
 const treeProps = {
   label: "name",

@@ -62,7 +62,7 @@
       show-icon
       :title="libraryError">
       <template #default>
-        <el-button text size="small" @click="refresh">{{ translate("重试") }}</el-button>
+        <el-button text size="small" @click="refresh()">{{ translate("重试") }}</el-button>
       </template>
     </el-alert>
 
@@ -76,6 +76,7 @@
         :current-path="currentPath"
         :expanded-keys="expandedKeys"
         :refresh-key="treeVersion"
+        :count-extra="countExtra"
         @navigate="navigate"
         @select-library="setLibrary"
         @select-project="onSelectProject"
@@ -225,7 +226,7 @@ function onSelectProject(payload: { directory: string; path: string }) {
 }
 const {
   entries, loading, loadingMore, nextCursor, displayError: libraryError, query, library, view, sort, order,
-  currentPath, selection, selectedEntries, expandedKeys, treeVersion, projectFallback, projectFallbackPath,
+  currentPath, selection, selectedEntries, expandedKeys, treeVersion, countExtra, bumpCount, projectFallback, projectFallbackPath,
   projectAvailable, emptyKind, searchScopeLabel, selector, init, refresh, navigate, goUp, setLibrary, setView,
   setSort, toggleOrder, submitSearch, clearSearch, selectEntry, selectAll, clearSelection, setExpanded, loadMore,
   missingTotal, forgetMissing,
@@ -251,7 +252,26 @@ const queryModel = computed<string>({ get: () => query.value, set: value => { qu
 const hasMore = computed(() => !!nextCursor.value);
 const canWrite = computed(() => library.value === "global" || projectAvailable.value);
 
-const upload = useAssetUpload({ selector, onComplete: refresh });
+// ACT: 上传只新增文件、不改目录结构：树不重建，列表静默刷新，目录计数用增量补丁保持实时。
+// 树节点身份是「库:项目目录:相对路径」（分组模式）或「库:相对路径」，计数补丁必须用同一把 key。
+const groupedTree = computed(() => !!props.projects?.length);
+function countKey(path: string) {
+  return groupedTree.value && library.value === "project" && props.directory
+    ? `${library.value}:${props.directory}:${path}`
+    : `${library.value}:${path}`;
+}
+const upload = useAssetUpload({
+  selector,
+  onComplete: (uploads) => {
+    for (const item of uploads) bumpCount(countKey(item.targetPath), item.added);
+    return refresh({
+      tree: false,
+      silent: true,
+      suppressTree: true,
+      suppressPaths: uploads.map(item => item.targetPath),
+    });
+  },
+});
 let uploadTarget = "";
 let fileDragDepth = 0;
 const fileDragActive = ref(false);
