@@ -28,6 +28,8 @@
       :sessionFile="item.file"
       :disabled="loading || !initialized"
       @session="setSessionFile(item, $event)"
+      @forked="openForkedConversation($event.file, $event.name)"
+      @rewound="applyRewoundConversation(item, $event)"
       @event="receiveAgentEvent"
       @sent="updateConversationName(item, $event)" />
   </section>
@@ -145,6 +147,29 @@ function setSessionFile(item: OpenConversation, file: string) {
   }
 }
 
+// ACT: 复制出的会话是新文件，必须等历史列表刷新完再切，否则 selectConversation 会因 historyLoading 直接返回。
+async function openForkedConversation(file: string, forkedName: string) {
+  if (!workspaceStore.project?.directory) return;
+  const refreshed = await loadHistory();
+  if (!refreshed) return ElMessage.warning("会话已复制，请从历史对话打开");
+  if (!history.value.some(entry => entry.file === file)) {
+    history.value.unshift({ file, name: forkedName, modified: new Date().toISOString(), messageCount: 0 });
+  }
+  await selectConversation(file);
+}
+
+// ACT: 回退会丢弃子 Agent 卡片并可能改名，菜单与标签页必须跟着服务端结果一起刷新。
+function applyRewoundConversation(item: OpenConversation, session: AgentConversation) {
+  item.name = session.name;
+  item.subAgents = session.subAgents ?? [];
+  item.session = { ...session, messages: item.session?.messages ?? session.messages };
+  const entry = history.value.find(entry => entry.file === session.file);
+  if (entry) {
+    entry.name = session.name;
+    entry.messageCount = session.messages.filter(message => message.role === "user").length;
+  }
+}
+
 async function newConversation() {
   if (loading.value || historyLoading.value) return;
   const directory = workspaceStore.project?.directory;
@@ -180,7 +205,7 @@ async function readConversation(directory: string, file: string) {
 
 async function loadHistory(openLatest = false) {
   const directory = workspaceStore.project?.directory;
-  if (!directory || loading.value || historyLoading.value) return;
+  if (!directory || loading.value || historyLoading.value) return false;
   const currentRequest = ++requestId;
   historyLoading.value = true;
   loading.value = openLatest;
@@ -189,18 +214,20 @@ async function loadHistory(openLatest = false) {
       params: { directory }, headers: { "x-toonflow-workspace": "1" },
     });
     if (data.code !== 200) throw new Error(data.message || "读取历史对话失败");
-    if (currentRequest !== requestId) return;
+    if (currentRequest !== requestId) return false;
     history.value = data.data;
     // 首条回复结束前会话可能尚未落盘，仍允许从历史菜单切回。
     for (const item of conversations.value) if (item.file) setSessionFile(item, item.file);
     if (openLatest) {
       const session = !workspaceStore.pendingAgentMessage && data.data[0] ? await readConversation(directory, data.data[0].file) : null;
-      if (currentRequest !== requestId) return;
+      if (currentRequest !== requestId) return false;
       showConversation(session);
       initialized.value = true;
     }
+    return true;
   } catch (error) {
     if (currentRequest === requestId) ElMessage.error(error instanceof Error ? error.message : "读取历史对话失败");
+    return false;
   } finally {
     if (currentRequest === requestId) {
       historyLoading.value = false;

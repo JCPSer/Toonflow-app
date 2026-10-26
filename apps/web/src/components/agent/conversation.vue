@@ -12,10 +12,13 @@
       :editingId="editingId"
       :deletingId="deletingId"
       :voiceActive="voiceActive"
+      :subAgent="!!initialSession?.parentFile"
       @fillPrompt="input?.fillPrompt($event)"
       @copy="copyMessage"
       @edit="input?.editMessage($event)"
       @delete="deleteMessage"
+      @rewind="rewindMessage"
+      @fork="forkMessage"
       @cancelEdit="input?.cancelEdit()" />
     <div v-if="compacting" class="compactionStatus" role="status">
       <el-icon class="is-loading" aria-hidden="true"><icon-loader-2 :size="14" /></el-icon>
@@ -55,7 +58,7 @@ import { locale, translate } from "@toonflow/i18n/vue";
 import { computed, inject, onBeforeUnmount, reactive, ref, watch } from "vue";
 import axios from "axios";
 import { IconLoader2 } from "@tabler/icons-vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { getReadableFileExtension, getReadableFileMimeType } from "@toonflow/server/documentFormats";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { writeClipboardText } from "@/lib/clipboard";
@@ -71,7 +74,13 @@ import messageList from "./conversation/messageList.vue";
 import messageInput from "./conversation/messageInput.vue";
 
 const props = defineProps<{ active: boolean; initialSession: AgentConversation | null; sessionFile?: string; disabled: boolean }>();
-const emit = defineEmits<{ session: [file: string]; sent: [prompt: string]; event: [event: AgentEvent] }>();
+const emit = defineEmits<{
+  session: [file: string];
+  forked: [payload: { file: string; name: string }];
+  rewound: [conversation: AgentConversation];
+  sent: [prompt: string];
+  event: [event: AgentEvent];
+}>();
 const workspaceStore = useWorkspaceStore();
 const directory = workspaceStore.project?.directory;
 const createCanvasContext = inject<(() => CanvasContext | undefined) | undefined>("canvas", undefined);
@@ -87,10 +96,12 @@ const silentSeconds = ref(0);
 let silenceTimer: ReturnType<typeof setInterval> | undefined;
 let lastEventAt = 0;
 const deletingId = ref<string>();
+// ACT: 回退/复制正在改写会话文件，期间必须挡住发送与其它消息操作，否则会撞上文件锁。
+const sessionAction = ref<"rewind" | "fork">();
 const restoringAttachment = ref(false);
 const input = ref<InstanceType<typeof messageInput>>();
 const voiceActive = ref(false);
-const locked = computed(() => props.disabled || busy.value || deletingId.value !== undefined || restoringAttachment.value || voiceActive.value);
+const locked = computed(() => props.disabled || busy.value || deletingId.value !== undefined || restoringAttachment.value || voiceActive.value || sessionAction.value !== undefined);
 const editingId = ref<string>();
 let controller: AbortController | undefined;
 const pendingMessage = props.initialSession?.parentFile ? undefined : workspaceStore.pendingAgentMessage;
@@ -191,6 +202,68 @@ async function deleteMessage(item: AgentMessage) {
     ElMessage.error(message || (error instanceof Error ? error.message : "删除消息失败"));
   } finally {
     deletingId.value = undefined;
+  }
+}
+
+function sessionUnavailable() {
+  if (!directory || !props.sessionFile) {
+    ElMessage.warning("请重新打开对话后再操作");
+    return true;
+  }
+  return false;
+}
+
+// ACT: 回退会物理删除这条之后的所有对话，先确认再执行；工作区文件、画布和附件不回滚。
+async function rewindMessage(item: AgentMessage) {
+  if (locked.value || remoteRunning.value || item.streaming || item.report || !item.entryId || sessionUnavailable()) return;
+  try {
+    await ElMessageBox.confirm(
+      "回退到这条消息之前？它之后的对话会被永久删除，不会回滚工作区文件、画布和附件。",
+      "回退对话",
+      { type: "warning", confirmButtonText: "回退", cancelButtonText: "取消" },
+    );
+  } catch {
+    return;
+  }
+  const sessionFile = props.sessionFile;
+  if (!sessionFile) return;
+  sessionAction.value = "rewind";
+  try {
+    const { data } = await axios.post<{ code: number; data: AgentConversation; message?: string }>("/api/agent/rewind", {
+      directory, sessionFile, entryId: item.entryId,
+    }, { headers: { "x-toonflow-workspace": "1" } });
+    if (data.code !== 200) throw new Error(data.message || "回退失败");
+    messages.value = data.data.messages.map(message => ({ ...message }));
+    stats.value = data.data.stats;
+    contextUsage.value = data.data.contextUsage;
+    editingId.value = undefined;
+    emit("rewound", data.data);
+    await input.value?.fillRewind(item.content, item.attachments, item.mentions);
+  } catch (error) {
+    ElMessage.error(axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message || "回退失败"
+      : error instanceof Error ? error.message : "回退失败");
+  } finally {
+    sessionAction.value = undefined;
+  }
+}
+
+async function forkMessage(item: AgentMessage) {
+  if (locked.value || remoteRunning.value || item.streaming || item.report || !item.entryId || sessionUnavailable()) return;
+  const sessionFile = props.sessionFile;
+  if (!sessionFile) return;
+  sessionAction.value = "fork";
+  try {
+    const { data } = await axios.post<{ code: number; data: { file: string; name: string; conversation: AgentConversation }; message?: string }>("/api/agent/fork", {
+      directory, sessionFile, entryId: item.entryId,
+    }, { headers: { "x-toonflow-workspace": "1" } });
+    if (data.code !== 200) throw new Error(data.message || "复制会话失败");
+    emit("forked", { file: data.data.file, name: data.data.name });
+    ElMessage.success(`已复制为新会话「${data.data.name}」`);
+  } catch (error) {
+    ElMessage.error(axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message || "复制会话失败"
+      : error instanceof Error ? error.message : "复制会话失败");
+  } finally {
+    sessionAction.value = undefined;
   }
 }
 

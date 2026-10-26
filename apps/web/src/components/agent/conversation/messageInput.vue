@@ -263,6 +263,20 @@ async function fillPrompt(prompt: string, attachments?: AgentAttachment[]) {
   if (sender === instance) instance.focus("last");
 }
 
+// ACT: 回退要连提及和附件一起还原；不能复用 fillPrompt，它只填纯文本，mention token 会变成原文。
+async function fillRewind(content: string, attachments?: AgentAttachment[], mentions?: AgentMessage["mentions"]) {
+  const instance = sender;
+  if (!instance || locked.value) return;
+  editingId.value = undefined;
+  draftMentions.value = [...(mentions ?? [])];
+  draftAttachments.value = [...(attachments ?? [])];
+  mentionMenuRef.value?.closeMenu();
+  const model: AnyTagProps[][] = content.split("\n").map(line => mentionParts(line, mentions).map(part => part.mention
+    ? { type: "Mention", id: part.mention.id, name: mentionName(part.mention) } : { type: "Write", text: part.text }));
+  await instance.reset({ clearHistory: false, chatNode: model });
+  if (sender === instance) instance.focus("last");
+}
+
 async function editMessage(item: AgentMessage) {
   const instance = sender;
   if (!instance || locked.value || props.remoteRunning || item.role !== "user") return;
@@ -515,7 +529,7 @@ async function clearDraft() {
   await sender?.reset();
 }
 
-defineExpose({ getDraft, clearDraft, fillPrompt, editMessage, cancelEdit, restoreEditingDraft, insertMentions });
+defineExpose({ getDraft, clearDraft, fillPrompt, fillRewind, editMessage, cancelEdit, restoreEditingDraft, insertMentions });
 </script>
 
 <style lang="scss">

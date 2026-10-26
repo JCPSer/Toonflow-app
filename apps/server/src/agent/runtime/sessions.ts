@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { basename, dirname, resolve } from "node:path";
-import { readFile, readdir } from "@toonflow/file";
+import { readFile, readdir, unlink } from "@toonflow/file";
 import { calculateContextTokens, estimateTokens, getLastAssistantUsage, parseSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, FileEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { AgentEvent, AgentMention, AgentSubAgent, AgentToolCall } from "@/agent/runtime/types";
@@ -116,37 +116,55 @@ export async function reportToParent(cwd: string, parentFile: string, file: stri
   return details.id;
 }
 
+// ACT: 回退/复制/删除都要重写或复制 JSONL 树，必须拒绝损坏行，不能沿用 SDK 会跳过坏行的读取器。
+const sessionEntrySchema = z.object({ type: z.string(), id: z.string().min(1), parentId: z.string().nullable(), timestamp: z.string() });
+const maxSessionFileBytes = 32 * 1024 * 1024;
+
+async function readSessionEntriesStrict(path: string, action: string, enforceSize = true): Promise<FileEntry[]> {
+  let entries: FileEntry[];
+  try {
+    const text = await readFile(path, "utf8");
+    // ACT: 只有回退/复制限制体积；删除消息恰好是清理超大会话的入口，不受限制。
+    if (enforceSize && Buffer.byteLength(text, "utf8") > maxSessionFileBytes) {
+      throw Object.assign(new Error(`会话文件超过 32 MB，无法${action}`), { status: 413 });
+    }
+    entries = text.split("\n").filter((line) => line.trim()).map((line) => JSON.parse(line));
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw Object.assign(new Error(`会话文件损坏，无法${action}`), { status: 400 });
+  }
+  if (entries[0]?.type !== "session") throw Object.assign(new Error("会话文件无效"), { status: 400 });
+  const knownIds = new Set<string>();
+  for (const entry of entries.slice(1)) {
+    const parsed = sessionEntrySchema.safeParse(entry);
+    if (!parsed.success || knownIds.has(parsed.data.id) || (parsed.data.parentId !== null && !knownIds.has(parsed.data.parentId))) {
+      throw Object.assign(new Error(`会话记录结构无效，无法${action}`), { status: 400 });
+    }
+    knownIds.add(parsed.data.id);
+  }
+  return entries;
+}
+
+const isUserEntry = (entry: SessionEntry) =>
+  (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom" && entry.customType === "toonflowDeletedUser");
+
+function newEntryId(used: Set<string>) {
+  for (let index = 0; index < 100; index++) {
+    const id = crypto.randomUUID().slice(0, 8);
+    if (!used.has(id)) return id;
+  }
+  return crypto.randomUUID();
+}
+
 export async function deleteAgentMessage(cwd: string, path: string, options: { entryIds?: string[]; replyTo?: string }) {
   if (Boolean(options.entryIds) === Boolean(options.replyTo)) {
     throw Object.assign(new Error("请选择要删除的消息"), { status: 400 });
   }
   const release = lockWorkspaceFiles([path]);
   try {
-    // ACT: 删除会重写 JSONL，必须拒绝损坏行，不能沿用 SDK 会跳过损坏行的读取器。
-    let entries: FileEntry[];
-    try {
-      entries = (await readFile(path, "utf8"))
-        .split("\n")
-        .filter((line) => line.trim())
-        .map((line) => JSON.parse(line));
-    } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
-      throw Object.assign(new Error("会话文件损坏，无法删除消息"), { status: 400 });
-    }
-    if (entries[0]?.type !== "session") throw Object.assign(new Error("会话文件无效"), { status: 400 });
-    const entrySchema = z.object({ type: z.string(), id: z.string().min(1), parentId: z.string().nullable(), timestamp: z.string() });
-    const knownIds = new Set<string>();
-    for (const entry of entries.slice(1)) {
-      const parsed = entrySchema.safeParse(entry);
-      if (!parsed.success || knownIds.has(parsed.data.id) || (parsed.data.parentId !== null && !knownIds.has(parsed.data.parentId))) {
-        throw Object.assign(new Error("会话记录结构无效，无法删除消息"), { status: 400 });
-      }
-      knownIds.add(parsed.data.id);
-    }
+    let entries = await readSessionEntriesStrict(path, "删除消息", false);
     const history = SessionManager.inMemory(cwd, undefined, entries);
     const branch = history.getBranch();
-    const isUserEntry = (entry: SessionEntry) =>
-      (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom" && entry.customType === "toonflowDeletedUser");
     let targets = branch.filter((entry) => options.entryIds?.includes(entry.id));
     if (options.replyTo) {
       const index = branch.findIndex((entry) => entry.id === options.replyTo && isUserEntry(entry));
@@ -210,6 +228,221 @@ export async function deleteAgentMessage(cwd: string, path: string, options: { e
     ];
     await writeWorkspaceFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
     return await getAgentSession(cwd, path);
+  } finally {
+    release();
+  }
+}
+
+/**
+ * 收集回退要丢弃的条目：锚点整棵子树（跨分支级联）+ 引用被删内容的派生记录。
+ * 返回的 id 集合一定是"后代闭包"，因此保留下来的条目 parentId 仍然有效。
+ */
+function collectRewindRemovals(history: SessionManager, anchor: SessionEntry) {
+  const removed = new Set<string>([anchor.id]);
+  const toolCalls = new Set<string>();
+  for (const entry of history.getEntries()) {
+    const removedByParent = Boolean(entry.parentId && removed.has(entry.parentId));
+    const removedBySummary = entry.type === "branch_summary" && removed.has(entry.fromId);
+    if (removedByParent || removedBySummary) {
+      removed.add(entry.id);
+    } else if (entry.type === "message" && entry.message.role === "toolResult" && toolCalls.has(entry.message.toolCallId)) {
+      removed.add(entry.id);
+    } else if (entry.type === "custom" && (entry.customType === "toonflowAttachments" || entry.customType === "toonflowUserMessage")
+      && removed.has((entry.data as { messageId?: string } | undefined)?.messageId ?? "")) {
+      removed.add(entry.id);
+    } else if (entry.type === "label" && removed.has(entry.targetId)) {
+      removed.add(entry.id);
+    } else {
+      continue;
+    }
+    if (entry.type === "message" && entry.message.role === "assistant") {
+      for (const part of entry.message.content) if (part.type === "toolCall") toolCalls.add(part.id);
+    }
+  }
+  return removed;
+}
+
+const sessionFileNamePattern = /^[\w-]+\.jsonl$/;
+
+/** 条目里引用的子 Agent 会话文件（只接受合法文件名，避免把任意路径带进删除流程）。 */
+function subAgentFilesOf(entries: SessionEntry[]) {
+  const files = new Set<string>();
+  for (const entry of entries) {
+    const file = entry.type === "custom" && entry.customType === "toonflowSubAgent"
+      ? (entry.data as { file?: unknown } | undefined)?.file
+      : entry.type === "custom_message" && entry.customType === "subAgentReport"
+        ? (entry.details as { file?: unknown } | undefined)?.file
+        : undefined;
+    if (typeof file === "string" && sessionFileNamePattern.test(file)) files.add(file);
+  }
+  return files;
+}
+
+function parseSessionLines(text: string) {
+  const entries: SessionEntry[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    try { entries.push(JSON.parse(line)); } catch { /* 容忍坏行，仅用于读取子会话引用 */ }
+  }
+  return entries;
+}
+
+/** 子 Agent 会话可能单独开着；操作父会话前必须确认没有子会话在跑。 */
+async function assertNoActiveSubAgents(cwd: string, entries: SessionEntry[]) {
+  const { path: directory } = await resolveWorkspacePath(cwd, ".agent/sessions", true);
+  for (const file of subAgentFilesOf(entries)) {
+    const target = await resolveWorkspacePath(directory, file, true);
+    if (getActiveAgentSession(target.path)) throw Object.assign(new Error("子 Agent 正在运行，请先停止后再操作"), { status: 409 });
+  }
+}
+
+/**
+ * 递归删除被回退掉的子 Agent 会话文件。
+ * ACT: 只删 header.parentSession 指向本会话的文件，避免误删 fork 复制的共享子会话或其他会话文件；
+ * 正在运行或已不存在的直接跳过，删除失败不阻断已提交的回退。
+ */
+async function removeSessionFiles(cwd: string, parentFile: string, files: Iterable<string>) {
+  const { path: directory } = await resolveWorkspacePath(cwd, ".agent/sessions", true);
+  const visited = new Set<string>();
+  const queue = [...files];
+  while (queue.length) {
+    const file = queue.shift()!;
+    if (visited.has(file) || file === parentFile || !sessionFileNamePattern.test(file)) continue;
+    visited.add(file);
+    const target = await resolveWorkspacePath(directory, file, true);
+    if (getActiveAgentSession(target.path)) continue;
+    const text = await readFile(target.path, "utf8").catch(() => undefined);
+    if (text === undefined) continue;
+    const entries = parseSessionLines(text);
+    const header = entries[0] as { type?: string; parentSession?: unknown } | undefined;
+    if (header?.type !== "session" || basename(String(header.parentSession ?? "")) !== parentFile) continue;
+    for (const child of subAgentFilesOf(entries)) queue.push(child);
+    await unlink(target.path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") console.warn(`回退时删除子会话失败：${target.path}`, error);
+    });
+  }
+}
+
+/** 回退：以用户消息为界，物理删除该条及其后的全部内容，并让叶指针回到上一轮末尾。 */
+export async function rewindAgentSession(cwd: string, path: string, entryId: string) {
+  if (getActiveAgentSession(path)) throw Object.assign(new Error("对话正在运行，请先停止后再回退"), { status: 409 });
+  const release = lockWorkspaceFiles([path]);
+  try {
+    const entries = await readSessionEntriesStrict(path, "回退");
+    const history = SessionManager.inMemory(cwd, undefined, entries);
+    if (history.getBranch().some((entry) => entry.type === "custom" && entry.customType === "toonflowSubAgentInfo")) {
+      throw Object.assign(new Error("子 Agent 会话不支持回退"), { status: 400 });
+    }
+    // 锚点必须是真实用户消息：墓碑用户界面上不可选，也不该成为回退起点。
+    const anchor = history.getBranch().find((entry) =>
+      entry.id === entryId && entry.type === "message" && entry.message.role === "user");
+    if (!anchor) throw Object.assign(new Error("消息不在当前对话中，请重新打开对话"), { status: 400 });
+    await assertNoActiveSubAgents(cwd, entries.slice(1) as SessionEntry[]);
+    const removed = collectRewindRemovals(history, anchor);
+    const body = entries.slice(1) as SessionEntry[];
+    const kept = body.filter((entry) => !removed.has(entry.id));
+    const keptIds = new Set(kept.map((entry) => entry.id));
+    // ACT: 压缩记录指向被删条目会让上下文静默丢掉整段历史，宁可丢弃该记录重新压缩。
+    const next = kept.filter((entry) =>
+      (entry.type !== "compaction" || keptIds.has(entry.firstKeptEntryId))
+      && (entry.type !== "branch_summary" || keptIds.has(entry.fromId)));
+    const nextIds = new Set(next.map((entry) => entry.id));
+    // ACT: 被丢弃的 compaction 可能正是保留条目的父级，丢弃后要重接到最近的存活祖先，否则整段历史会断链。
+    const byId = new Map(body.map((entry) => [entry.id, entry]));
+    const nearestSurviving = (id: string | null) => {
+      let current = id;
+      for (let guard = 0; current && !nextIds.has(current) && guard < body.length; guard++) current = byId.get(current)?.parentId ?? null;
+      return current && nextIds.has(current) ? current : null;
+    };
+    for (const entry of next) if (entry.parentId && !nextIds.has(entry.parentId)) entry.parentId = nearestSurviving(entry.parentId);
+    const subAgentFiles = subAgentFilesOf(body.filter((entry) => removed.has(entry.id)));
+    for (const file of subAgentFilesOf(next)) subAgentFiles.delete(file);
+    // ACT: 叶指针不落盘，SDK 以文件最后一行作为当前分支末尾；显式追加空标记把叶固定回锚点父级。
+    const used = new Set(nextIds);
+    next.push({
+      type: "custom", id: newEntryId(used), parentId: nearestSurviving(anchor.parentId), timestamp: new Date().toISOString(),
+      customType: "toonflowRewind", data: { from: anchor.id },
+    } as SessionEntry);
+    await writeWorkspaceFile(path, [entries[0], ...next].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    // 回退已经落盘，子会话清理失败不应把成功的回退报成失败。
+    await removeSessionFiles(cwd, basename(path), subAgentFiles).catch((error) => console.warn("回退后清理子会话失败", error));
+    return await getAgentSession(cwd, path);
+  } finally {
+    release();
+  }
+}
+
+/**
+ * 递归复制子 Agent 会话文件：新 header 指向新父会话，条目里的文件引用改写到副本。
+ * 返回 源文件名 → 新文件名 的映射。
+ */
+async function cloneSubAgentFiles(cwd: string, directory: string, parentFile: string, files: Iterable<string>, renamed: Map<string, string>) {
+  for (const file of files) {
+    if (renamed.has(file) || !sessionFileNamePattern.test(file)) continue;
+    const source = await resolveWorkspacePath(directory, file, true);
+    const entries = await readSessionEntriesStrict(source.path, "复制会话").catch(() => undefined);
+    if (!entries) continue;
+    const id = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    const fileName = `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
+    renamed.set(file, fileName);
+    const header = { type: "session", version: (entries[0] as { version?: number }).version ?? 3, id, timestamp, cwd, parentSession: parentFile };
+    const body = entries.slice(1) as SessionEntry[];
+    await cloneSubAgentFiles(cwd, directory, fileName, subAgentFilesOf(body), renamed);
+    for (const entry of body) rewriteSubAgentRefs(entry, parentFile, renamed);
+    const target = await resolveWorkspacePath(directory, fileName, true);
+    await writeWorkspaceFile(target.path, [header, ...body].map((entry) => JSON.stringify(entry)).join("\n") + "\n", true);
+  }
+}
+
+/** 把条目里指向源会话的子 Agent 文件/父文件改写为副本，避免 fork 的会话污染源会话。 */
+function rewriteSubAgentRefs(entry: SessionEntry, parentFile: string, renamed: Map<string, string>) {
+  const rewrite = (target: Record<string, unknown> | undefined) => {
+    if (!target) return;
+    if (typeof target.parentFile === "string") target.parentFile = parentFile;
+    if (typeof target.file === "string" && renamed.has(target.file)) target.file = renamed.get(target.file);
+  };
+  if (entry.type === "custom" && entry.customType === "toonflowSubAgent") rewrite(entry.data as Record<string, unknown>);
+  if (entry.type === "custom_message" && entry.customType === "subAgentReport") rewrite(entry.details as Record<string, unknown> | undefined);
+}
+
+/** 复制为新会话：截取当前分支到该条消息所在轮结束，写新文件并返回。 */
+export async function forkAgentSession(cwd: string, path: string, entryId: string) {
+  if (getActiveAgentSession(path)) throw Object.assign(new Error("对话正在运行，请先停止后再复制"), { status: 409 });
+  const release = lockWorkspaceFiles([path]);
+  try {
+    const entries = await readSessionEntriesStrict(path, "复制会话");
+    const history = SessionManager.inMemory(cwd, undefined, entries);
+    if (history.getBranch().some((entry) => entry.type === "custom" && entry.customType === "toonflowSubAgentInfo")) {
+      throw Object.assign(new Error("子 Agent 会话不支持复制"), { status: 400 });
+    }
+    await assertNoActiveSubAgents(cwd, entries.slice(1) as SessionEntry[]);
+    const branch = history.getBranch();
+    // 锚点可以是用户消息（右侧）或 agent 回复（左侧），都以所在轮的结尾为截止点。
+    const start = branch.findIndex((entry) => entry.id === entryId
+      && ((entry.type === "message" && (entry.message.role === "user" || entry.message.role === "assistant"))
+        || (entry.type === "custom" && entry.customType === "toonflowDeletedUser")));
+    if (start < 0) throw Object.assign(new Error("消息不在当前对话中，请重新打开对话"), { status: 400 });
+    // 本轮结束于下一条用户消息之前；没有下一轮则到分支末尾。
+    const nextUser = branch.findIndex((entry, index) => index > start && isUserEntry(entry));
+    const copied = branch.slice(0, nextUser < 0 ? undefined : nextUser) as SessionEntry[];
+    const { path: directory } = await resolveWorkspacePath(cwd, ".agent/sessions", true);
+    const id = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    const fileName = `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
+    // ACT: 子 Agent 会话必须深拷贝并改指向，否则副本里的上报会写回源会话，回退副本还可能删掉源子会话。
+    const renamed = new Map<string, string>();
+    await cloneSubAgentFiles(cwd, directory, fileName, subAgentFilesOf(copied), renamed);
+    for (const entry of copied) rewriteSubAgentRefs(entry, fileName, renamed);
+    const header = { type: "session", version: (entries[0] as { version?: number }).version ?? 3, id, timestamp, cwd };
+    // ACT: 普通纯文本会话没有 session_info，名称取展示名兜底；反复复制不应叠加「副本」后缀。
+    const sourceName = (await getAgentSession(cwd, path)).name || "新对话";
+    const name = `${sourceName.replace(/(?: · 副本(?:\s\d+)?)+$/u, "").slice(0, 72)} · 副本`;
+    const used = new Set(copied.map((entry) => entry.id));
+    const sessionInfo = { type: "session_info", id: newEntryId(used), parentId: copied.at(-1)?.id ?? null, timestamp, name };
+    const target = await resolveWorkspacePath(directory, fileName, true);
+    await writeWorkspaceFile(target.path, [header, ...copied, sessionInfo].map((entry) => JSON.stringify(entry)).join("\n") + "\n", true);
+    return { file: basename(target.path), name, conversation: await getAgentSession(cwd, target.path) };
   } finally {
     release();
   }

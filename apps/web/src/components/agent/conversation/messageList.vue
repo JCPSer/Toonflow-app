@@ -67,8 +67,10 @@
             <template v-else>
               <el-button v-if="item.content" class="messageAction" text circle aria-label="复制消息" title="复制消息" @click="emit('copy', mentionPlainText(item.content, item.mentions))"><icon-copy :size="14" /></el-button>
               <template v-if="item.role === 'user'">
+                <el-button v-if="!subAgent" class="messageAction" text circle :disabled="locked || remoteRunning || !item.entryId" aria-label="回退到这里" title="回退到这里：丢弃这条消息之后的所有对话" @click="emit('rewind', item)"><icon-arrow-back-up :size="14" /></el-button>
                 <el-button class="messageAction" text circle :disabled="locked || remoteRunning" aria-label="编辑消息" title="编辑消息" @click="emit('edit', item)"><icon-pencil :size="14" /></el-button>
               </template>
+              <el-button v-else-if="item.role === 'assistant' && !item.report && !subAgent" class="messageAction" text circle :disabled="locked || remoteRunning || !item.entryId" aria-label="复制为新会话" title="复制为新会话：截到这轮结束另存一份对话" @click="emit('fork', item)"><icon-git-fork :size="14" /></el-button>
               <el-button v-if="!item.report" class="messageAction" text circle :loading="deletingId === item.id" :disabled="locked || remoteRunning" aria-label="删除消息" title="删除消息" @click="emit('delete', item)"><icon-trash v-if="deletingId !== item.id" :size="14" /></el-button>
             </template>
           </div>
@@ -83,7 +85,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vue";
 import { defaultRangeExtractor, measureElement, observeElementRect, useVirtualizer } from "@tanstack/vue-virtual";
-import { IconArrowDown, IconArrowUpRight, IconAtom, IconChevronDown, IconChevronRight, IconCopy, IconMovie, IconPencil, IconPhoto, IconTrash, IconUsersGroup, IconVector, IconX } from "@tabler/icons-vue";
+import { IconArrowBackUp, IconArrowDown, IconArrowUpRight, IconAtom, IconChevronDown, IconChevronRight, IconCopy, IconGitFork, IconMovie, IconPencil, IconPhoto, IconTrash, IconUsersGroup, IconVector, IconX } from "@tabler/icons-vue";
 import logoUrl from "@toonflow/assets/logo.svg";
 import browserPanel from "@toonflow/tool-browser/panel";
 import { isBrowserTool } from "@toonflow/tool-browser/client";
@@ -99,8 +101,8 @@ import type { AgentMessage } from "../types";
 import "tdesign-vue-next/es/style/index.css";
 import "@tdesign-vue-next/chat/es/style/index.css";
 
-const props = defineProps<{ messages: AgentMessage[]; directory?: string; active: boolean; disabled: boolean; locked: boolean; busy: boolean; remoteRunning: boolean; compacting: boolean; editingId?: string; deletingId?: string; voiceActive: boolean }>();
-const emit = defineEmits<{ fillPrompt: [prompt: string]; copy: [content: string]; edit: [message: AgentMessage]; delete: [message: AgentMessage]; cancelEdit: [] }>();
+const props = defineProps<{ messages: AgentMessage[]; directory?: string; active: boolean; disabled: boolean; locked: boolean; busy: boolean; remoteRunning: boolean; compacting: boolean; editingId?: string; deletingId?: string; voiceActive: boolean; subAgent?: boolean }>();
+const emit = defineEmits<{ fillPrompt: [prompt: string]; copy: [content: string]; edit: [message: AgentMessage]; delete: [message: AgentMessage]; rewind: [message: AgentMessage]; fork: [message: AgentMessage]; cancelEdit: [] }>();
 const browserMessages = computed(() => {
   const groups = new Map<string, { id: string; tools: AgentToolCall[] }>();
   let turnId: string | undefined;
