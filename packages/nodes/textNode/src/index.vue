@@ -1,8 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
-    :bottomVisible="node.selected || generating"
-    :bottomPinned="generating"
+    :bottomVisible="node.selected"
     :topVisible="node.selected"
     topWidth="max-content"
     :downloadUrl="downloadUrl"
@@ -387,6 +386,12 @@ nodeTools.register({
     overflow: auto;
     overflow-wrap: anywhere;
     user-select: none;
+
+    // ACT: 长文只布局可视区附近的段落，滚动时再展开，避免每个条目都参与画布的合成与布局。
+    .textNodeMarkdown > * {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 120px;
+    }
   }
 
   .editButton {

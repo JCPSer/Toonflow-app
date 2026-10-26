@@ -25,6 +25,16 @@
         "4_bugs_fix"
       ],
       "note": "文本流式节流与视频单播已实现；真实模型下的长文帧率待复测"
+    },
+    {
+      "id": "T3",
+      "subject": "文本节点输入区隐显 + 画布性能排查",
+      "type": "bug",
+      "status": "done",
+      "deliverable": "输入区随选中显隐；停靠面板去无效模糊；长文预览惰性布局；帧率实测数据",
+      "docs": [
+        "4_bugs_fix/bug_analysis-2026-10-26-17-10-workspace-perf.md"
+      ]
     }
   ]
 }

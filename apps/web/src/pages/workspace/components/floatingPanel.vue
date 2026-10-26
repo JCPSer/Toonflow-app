@@ -355,6 +355,8 @@ onBeforeUnmount(() => {
     border-radius: 0;
     background: var(--el-bg-color-overlay);
     box-shadow: none;
+    // ACT: 停靠态底色不透明，模糊只会让画布内容每帧重新合成，纯浪费。
+    backdrop-filter: none;
   }
 
   &.dock-left.docked {
