@@ -2,7 +2,7 @@
   "id": "ai-providers",
   "name": "模型供应商适配",
   "layer": "domain",
-  "responsibility": "语言与媒体模型供应商适配：模型目录、调用、价格与计费",
+  "responsibility": "语言与媒体模型供应商适配：模型目录、调用与计费",
   "files": [
     "packages/providers/**"
   ],
@@ -13,37 +13,46 @@
       "kind": "config"
     },
     {
+      "file": "packages/providers/src/media/compshare.ts",
+      "symbol": "default",
+      "kind": "function"
+    },
+    {
+      "file": "packages/providers/src/media/tfRouter.ts",
+      "symbol": "default",
+      "kind": "function"
+    },
+    {
+      "file": "packages/providers/src/media/apiMart.ts",
+      "symbol": "default",
+      "kind": "function"
+    },
+    {
       "file": "packages/providers/types.d.ts",
       "symbol": "ProviderDefinition",
       "kind": "interface"
-    },
-    {
-      "file": "packages/providers/src/media/compshare.ts",
-      "symbol": "default",
-      "kind": "config"
     }
   ],
-  "health": {
-    "score": 68,
-    "coupling": "low",
-    "complexity": "high",
-    "churn": "high",
-    "decay_flags": [
-      "god_file",
-      "large_module"
-    ],
-    "review_note": "8 文件 3,009 行；compshare.ts 单文件 1,839 行集中模型目录、价格、生成、轮询与计费，近 3 个月 16 次提交、39 次文件变更，供应商接口一变就落在同一文件。建议按 models/price/generate/poll 拆分并抽公共提交-轮询 SDK，ProviderDefinition 只保留差异。",
-    "concerns": [
-      {
-        "id": "c-ai-providers-1",
-        "severity": "critical",
-        "finding": "compshare.ts 单文件 1,839 行同时实现模型清单、价格、生成、任务轮询与计费，任何供应商接口变更都落在同一文件。",
-        "suggestion": "按 models/price/generate/poll 拆分并在 ProviderDefinition 组合，公共提交-轮询逻辑下沉为 SDK。"
-      }
-    ]
-  },
   "dependencies": [
     "media-toolkit"
   ],
-  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+  "health": {
+    "score": 66,
+    "coupling": "low",
+    "complexity": "high",
+    "churn": "low",
+    "decay_flags": [
+      "god_file"
+    ],
+    "review_note": "8 文件 / 3,009 行；供应商契约清晰、出边仅 ffmpeg 类型，但 compshare.ts 单文件 1,839 行，占模块 61%，鉴权、媒体协议、任务轮询与错误映射混在一起。建议按协议拆分并让入口只保留供应商注册与能力声明。",
+    "concerns": [
+      {
+        "id": "c-ai-providers-1",
+        "severity": "high",
+        "finding": "compshare.ts 单文件 1,839 行（占模块 61%），同时实现鉴权、图片/视频/音频协议、任务轮询、base64 转换与错误映射。",
+        "suggestion": "按 image/video/audio/task 拆成四个适配文件，入口只保留供应商注册、能力声明与计费映射。"
+      }
+    ]
+  },
+  "last_analyzed_at": "2026-10-26T21:12:00+08:00"
 }

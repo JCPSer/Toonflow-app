@@ -2,20 +2,20 @@
   "module": "desktop-shell",
   "edges": [
     {
-      "id": "e25",
+      "id": "e26",
       "from": "desktop-shell",
       "to": "server-api",
       "type": "call",
-      "strength": "strong",
-      "label": "内嵌 createApp / sidecar / remoteConnection"
+      "label": "14 处 createApp/remoteConnection/i18n 装配",
+      "strength": "strong"
     },
     {
-      "id": "e26",
+      "id": "e27",
       "from": "desktop-shell",
       "to": "shared-foundation",
       "type": "import",
-      "strength": "strong",
-      "label": "file/i18n/startup"
+      "label": "26 处 file/i18n/startup 启动",
+      "strength": "strong"
     }
   ]
 }

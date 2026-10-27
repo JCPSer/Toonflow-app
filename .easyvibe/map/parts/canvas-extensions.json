@@ -2,7 +2,7 @@
   "id": "canvas-extensions",
   "name": "画布扩展插件",
   "layer": "presentation",
-  "responsibility": "画布扩展插件（文本/图片/媒体/Markdown/节点）及注册脚手架",
+  "responsibility": "画布扩展插件（文档/图片/媒体/Markdown/节点）与注册脚手架",
   "files": [
     "packages/ext/**",
     "packages/extScaffold/**"
@@ -14,36 +14,41 @@
       "kind": "function"
     },
     {
-      "file": "packages/ext/md/src/index.ts",
-      "symbol": "default",
-      "kind": "config"
+      "file": "packages/ext/md/src/index.vue",
+      "symbol": "mdExtension",
+      "kind": "function"
     },
     {
-      "file": "packages/ext/canvasNode/src/index.vue",
-      "symbol": "canvasNodeExtension",
-      "kind": "class"
+      "file": "packages/ext/comfyMonitor/src/index.vue",
+      "symbol": "comfyMonitor",
+      "kind": "function"
+    },
+    {
+      "file": "packages/extScaffold/create.ts",
+      "symbol": "create-ext",
+      "kind": "cli"
     }
   ],
+  "dependencies": [
+    "shared-foundation"
+  ],
   "health": {
-    "score": 82,
+    "score": 79,
     "coupling": "low",
     "complexity": "medium",
     "churn": "low",
     "decay_flags": [
-      "duplicated_code"
+      "large_component"
     ],
-    "review_note": "26 文件 1,963 行，扩展统一通过 defineExt 注册；md 扩展 847 行，且 markdownExtensions.ts 与 textNode 的实现逐行重复。近 3 个月仅 2 次提交。建议抽共享 markdown 渲染包，扩展只保留宿主差异。",
+    "review_note": "30 文件 / 2,523 行，6 个扩展包共享 defineExt，出边 1、入边 1，边界干净。md 扩展 index.vue 847 行，同时实现富文本/原文切换、图片粘贴、快捷键、渲染与持久化。建议拆出编辑、渲染、附件三层，插件入口只做 defineExt 注册。",
     "concerns": [
       {
         "id": "c-canvas-extensions-1",
         "severity": "high",
-        "finding": "packages/ext/md 与 packages/nodes/textNode 各存一份 markdownExtensions.ts（各 122 行，内容相同）和近似重复的 markdownContent.ts，渲染行为改动需双份同步。",
-        "suggestion": "抽 @toonflow/markdown 共享包，两处改为依赖同一实现，扩展只保留宿主差异。"
+        "finding": "md 扩展 index.vue 847 行（占模块 34%），同时实现富文本/原文切换、图片粘贴、快捷键、渲染与持久化。",
+        "suggestion": "拆出编辑、渲染、附件三个组件，插件入口只做 defineExt 注册与资源声明。"
       }
     ]
   },
-  "dependencies": [
-    "shared-foundation"
-  ],
-  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+  "last_analyzed_at": "2026-10-26T21:12:00+08:00"
 }

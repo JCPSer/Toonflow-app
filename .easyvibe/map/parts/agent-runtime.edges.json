@@ -6,25 +6,25 @@
       "from": "agent-runtime",
       "to": "agent-tools",
       "type": "import",
-      "strength": "strong",
-      "label": "tools-scaffold 运行时与工具上下文"
+      "label": "16 处 tools-scaffold 运行时与工具上下文",
+      "strength": "strong"
     },
     {
       "id": "e6",
       "from": "agent-runtime",
-      "to": "server-api",
+      "to": "shared-foundation",
       "type": "import",
-      "strength": "strong",
-      "label": "conf/workspace/ai/teams 应用能力",
-      "direction_violation": true
+      "label": "14 处 file/i18n",
+      "strength": "normal"
     },
     {
       "id": "e7",
       "from": "agent-runtime",
-      "to": "shared-foundation",
+      "to": "server-api",
       "type": "import",
-      "strength": "normal",
-      "label": "file 会话文件"
+      "label": "71 处 @/modules(50)·@/lib(20)·@/utils(1) 应用能力",
+      "strength": "strong",
+      "direction_violation": true
     }
   ]
 }

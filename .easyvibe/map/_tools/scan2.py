@@ -18,8 +18,8 @@ MODULES = [
     {"id": "workflow-nodes", "layer": "presentation", "files": ["packages/nodes/**", "packages/nodeShared/**", "packages/nodeScaffold/**"]},
     {"id": "canvas-extensions", "layer": "presentation", "files": ["packages/ext/**", "packages/extScaffold/**"]},
     {"id": "web-console", "layer": "presentation", "files": ["apps/web/**", "postcss.config.ts"]},
-    {"id": "server-api", "layer": "application", "files": ["apps/server/src/app.ts", "apps/server/src/index.ts", "apps/server/src/core.ts", "apps/server/src/router.ts", "apps/server/src/utils.ts", "apps/server/src/remoteConnection.ts", "apps/server/src/lib/**", "apps/server/src/routes/**", "apps/server/src/types/**", "apps/server/src/utils/**", "apps/server/scripts/**"]},
-    {"id": "desktop-shell", "layer": "host-shell", "files": ["apps/desktop/**", "apps/updateServer/**", "packages/startup/**", "compat/macIntel/**", "electrobun.config.ts", "hutch.config.ts"]},
+    {"id": "server-api", "layer": "application", "files": ["apps/server/src/app.ts", "apps/server/src/index.ts", "apps/server/src/core.ts", "apps/server/src/router.ts", "apps/server/src/utils.ts", "apps/server/src/lib/**", "apps/server/src/modules/**", "apps/server/src/routes/**", "apps/server/src/types/**", "apps/server/scripts/**"]},
+    {"id": "desktop-shell", "layer": "host-shell", "files": ["apps/desktop/**", "apps/updateServer/**", "packages/startup/**", "compat/macIntel/**", "electrobun.config.ts", "hutch.config.ts", "scripts/bundle-desktop.ts"]},
     {"id": "mobile-shell", "layer": "host-shell", "files": ["apps/mobile/**", "compat/ohos/**"]},
 ]
 

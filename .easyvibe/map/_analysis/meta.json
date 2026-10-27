@@ -1,0 +1,8 @@
+{
+  "repo": "Toonflow-app",
+  "generator": "easyvibe-architect/claude-sonnet-4-6",
+  "description": "Toonflow AI 短剧漫剧创作平台：Vue 工作区 + Express 服务 + Agent 运行时，插件化节点/工具/扩展与素材库，桌面与移动端原生壳及更新分发。",
+  "languages": ["TypeScript", "Vue", "C#", "C++", "Kotlin", "ArkTS", "Java", "Objective-C"],
+  "loc": 97878,
+  "map_freshness": "fresh"
+}

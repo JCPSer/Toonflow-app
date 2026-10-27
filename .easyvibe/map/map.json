@@ -2,27 +2,31 @@
   "version": "1.0",
   "meta": {
     "repo": "Toonflow-app",
-    "generated_at": "2026-10-24T16:36:04+08:00",
-    "generator": "easyvibe-architect/claude-opus-4-6",
-    "description": "Toonflow AI 短剧漫剧创作平台：Vue 工作区 + Express 服务 + Agent 运行时，插件化节点/工具/扩展，桌面与移动端原生壳与更新分发。",
+    "generated_at": "2026-10-27T08:01:50+08:00",
+    "generator": "easyvibe-architect/claude-sonnet-4-6",
+    "description": "Toonflow AI 短剧漫剧创作平台：Vue 工作区 + Express 服务 + Agent 运行时，插件化节点/工具/扩展与素材库，桌面与移动端原生壳与更新分发。",
     "languages": [
       "TypeScript",
       "Vue",
-      "JavaScript",
-      "Java",
-      "C++",
       "C#",
-      "ArkTS"
+      "C++",
+      "ArkTS",
+      "Java",
+      "Objective-C"
     ],
-    "loc": 84319,
+    "loc": 98243,
     "map_freshness": "fresh",
     "stats": {
-      "files_total": 625,
-      "files_covered": 625,
+      "files_total": 706,
+      "files_covered": 706,
       "coverage_ratio": 1.0,
-      "edges_derived": 29,
+      "edges_derived": 31,
       "edges_inferred": 0,
       "retried_modules": 0
+    },
+    "provenance": {
+      "head_short": "1861cd0",
+      "generated_at": "2026-10-27T08:01:50+08:00"
     }
   },
   "layers": [
@@ -36,13 +40,13 @@
       "id": "presentation",
       "name": "交互呈现层",
       "order": 1,
-      "description": "Vue 工作区、画布节点与扩展插件：节点图编辑、文档面板、对话与设置界面"
+      "description": "Vue 工作区、9 个画布节点与 6 个扩展插件：节点图编辑、素材/文档面板、对话与设置界面"
     },
     {
       "id": "application",
       "name": "应用服务层",
       "order": 2,
-      "description": "Express 应用边界、单接口路由、媒体/插件/MCP/工作区业务编排与进程组合根"
+      "description": "Express 边界、161 个单接口路由与素材/媒体/插件/MCP/工作区业务编排与进程组合根"
     },
     {
       "id": "domain",
@@ -54,33 +58,29 @@
       "id": "foundation",
       "name": "基础能力层",
       "order": 4,
-      "description": "文件访问、国际化、图标与音视频/语音基础能力，零业务依赖，被所有上层复用"
+      "description": "文件原子访问、21 语国际化、模型图标与 FFmpeg/语音基础能力，零业务依赖，被所有上层复用"
     }
   ],
   "modules": [
     {
       "id": "desktop-shell",
-      "name": "桌面壳与更新分发",
+      "name": "桌面宿主壳",
       "layer": "host-shell",
-      "responsibility": "Electrobun 桌面壳、原生安装/更新程序、兼容层与更新分发",
+      "responsibility": "Electrobun 桌面壳、原生安装/更新程序与更新分发",
       "files": [
         "apps/desktop/**",
         "apps/updateServer/**",
         "packages/startup/**",
         "compat/macIntel/**",
         "electrobun.config.ts",
-        "hutch.config.ts"
+        "hutch.config.ts",
+        "scripts/bundle-desktop.ts"
       ],
       "key_entries": [
         {
           "file": "apps/desktop/src/index.ts",
-          "symbol": "main",
+          "symbol": "start",
           "kind": "cli"
-        },
-        {
-          "file": "apps/desktop/src/protocol.ts",
-          "symbol": "parseInstallUrl",
-          "kind": "function"
         },
         {
           "file": "apps/desktop/src/update/windowsUpdater.ts",
@@ -96,33 +96,46 @@
           "file": "packages/startup/src/index.ts",
           "symbol": "showNativeSplash",
           "kind": "function"
+        },
+        {
+          "file": "scripts/bundle-desktop.ts",
+          "symbol": "bundle-desktop",
+          "kind": "cli"
         }
       ],
-      "health": {
-        "score": 78,
-        "coupling": "low",
-        "complexity": "medium",
-        "churn": "high",
-        "decay_flags": [],
-        "review_note": "37 文件 4,269 行；Electrobun 壳、NSIS/原生辅助程序、startup 启动画面、macIntel 兼容层与 updateServer 同属交付链路；运行期只依赖 server-api 与 file/i18n，近 3 个月 37 次提交、121 次文件变更。建议把 apps/desktop/src/index.ts 拆为 window/protocol/installer/updater 四段装配，并让更新清单/签名校验集中在 updateServer。",
-        "concerns": [
-          {
-            "id": "c-desktop-shell-1",
-            "severity": "high",
-            "finding": "apps/desktop/src/index.ts（372 行）单文件同时处理窗口创建、协议注册、插件安装队列、启动画面与更新启动，桌面入口难以分平台测试。",
-            "suggestion": "拆为 window/protocol/installer/updater 模块，index.ts 只做装配与事件转发，平台分支收敛到各自模块。"
-          }
-        ]
-      },
       "dependencies": [
         "server-api",
         "shared-foundation"
       ],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "health": {
+        "score": 76,
+        "coupling": "medium",
+        "complexity": "medium",
+        "churn": "medium",
+        "decay_flags": [
+          "multi_runtime_duplication"
+        ],
+        "review_note": "39 文件 / 4,707 行，出边 2、入边 2；窗口生命周期、sidecar 启动、更新门控与协议分发集中在 index.ts（615 行），Windows 更新由 updateHelper.cs（657 行）、windowsUpdater.ts（378 行）与 installer.nsi（298 行）三处状态机共同实现。建议抽单一更新步骤协议，三端只做平台适配。",
+        "concerns": [
+          {
+            "id": "c-desktop-shell-1",
+            "severity": "high",
+            "finding": "Windows 更新流程由 updateHelper.cs（657 行）、windowsUpdater.ts（378 行）与 installer.nsi（298 行）三处状态机共同实现，需人工保持步骤与错误码同步。",
+            "suggestion": "抽出单一更新步骤/状态协议文件，C#、TS 与 NSIS 仅做平台适配与展示。"
+          },
+          {
+            "id": "c-desktop-shell-2",
+            "severity": "high",
+            "finding": "src/index.ts 615 行集中窗口生命周期、关闭闸门、更新门控、菜单、协议分发与 sidecar 启动，是壳层全部运行逻辑的单点。",
+            "suggestion": "拆 window/lifecycle/menu/protocol 模块，start() 只做装配与启动顺序编排。"
+          }
+        ]
+      },
+      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
     },
     {
       "id": "mobile-shell",
-      "name": "移动端宿主",
+      "name": "移动宿主壳",
       "layer": "host-shell",
       "responsibility": "Android WebView 宿主、OHOS 运行时与移动构建兼容层",
       "files": [
@@ -144,36 +157,50 @@
           "file": "compat/ohos/runtime.ts",
           "symbol": "createTranspiler",
           "kind": "function"
+        },
+        {
+          "file": "compat/ohos/browserCompatibility.ts",
+          "symbol": "installBrowserCompatibility",
+          "kind": "function"
         }
       ],
-      "health": {
-        "score": 74,
-        "coupling": "low",
-        "complexity": "high",
-        "churn": "low",
-        "decay_flags": [],
-        "review_note": "20 文件 3,502 行；Android WebView 宿主、OHOS 运行与原生桥接同属移动壳，mobileActivity.java 1,004 行承载 WebView、权限、文件导出与生命周期。近 3 个月 6 次提交、35 次文件变更。建议按 webview/bridge/export 拆类，并让 OHOS 运行时通过显式桥接协议与 Android 对齐。",
-        "concerns": [
-          {
-            "id": "c-mobile-shell-1",
-            "severity": "high",
-            "finding": "mobileActivity.java 单文件 1,004 行同时管理 WebView、权限、文件导出与生命周期，任何宿主能力调整都集中在这一文件。",
-            "suggestion": "按 webview/bridge/export 拆类，Activity 只保留装配与生命周期转发。"
-          }
-        ]
-      },
       "dependencies": [
+        "desktop-shell",
         "server-api",
         "shared-foundation",
         "web-console"
       ],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "health": {
+        "score": 72,
+        "coupling": "medium",
+        "complexity": "high",
+        "churn": "low",
+        "decay_flags": [
+          "god_file"
+        ],
+        "review_note": "20 文件 / 3,502 行，出边 4、入边 0；Android 与 OHOS 两套宿主共存。mobileActivity.java 1,004 行集中 WebView 初始化、权限申请、文件选择、媒体采集与 URL 拦截；OHOS 兼容层通过跨包 node_modules 路径 require babel/typescript。建议拆 God Activity，并把兼容层独立为显式声明依赖的 workspace 包。",
+        "concerns": [
+          {
+            "id": "c-mobile-shell-1",
+            "severity": "high",
+            "finding": "mobileActivity.java 1,004 行集中 WebView 初始化、权限申请、文件选择、媒体采集与 URL 拦截，Activity 难以单测与复用。",
+            "suggestion": "拆 WebViewHost、MediaPermission、FileChooser 三类，Activity 只保留生命周期编排。"
+          },
+          {
+            "id": "c-mobile-shell-2",
+            "severity": "high",
+            "finding": "compat/ohos/runtime.ts 通过 require ../../apps/server/node_modules/@babel/parser 与 ../../packages/extScaffold/node_modules/typescript 解析依赖，绑定他包 node_modules 布局。",
+            "suggestion": "把 OHOS 兼容层独立为 workspace 包并显式声明 babel/typescript 依赖，由构建脚本注入。"
+          }
+        ]
+      },
+      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
     },
     {
       "id": "workflow-nodes",
       "name": "画布节点插件",
       "layer": "presentation",
-      "responsibility": "短剧画布节点插件与共享节点 UI/运行时脚手架",
+      "responsibility": "短剧画布节点插件与节点 UI/运行时脚手架",
       "files": [
         "packages/nodes/**",
         "packages/nodeShared/**",
@@ -188,7 +215,7 @@
         {
           "file": "packages/nodeScaffold/src/nodeSkeleton.vue",
           "symbol": "nodeSkeleton",
-          "kind": "class"
+          "kind": "function"
         },
         {
           "file": "packages/nodeShared/src/useNodeGeneration.ts",
@@ -198,46 +225,45 @@
         {
           "file": "packages/nodes/director3dNode/src/index.vue",
           "symbol": "director3dNode",
-          "kind": "class"
+          "kind": "function"
         }
       ],
-      "health": {
-        "score": 72,
-        "coupling": "medium",
-        "complexity": "high",
-        "churn": "high",
-        "decay_flags": [
-          "build_duplication",
-          "large_module"
-        ],
-        "review_note": "93 文件 16,146 行，9 个节点包各自维护 vite.config.ts 与构建脚本；nodeSkeleton.vue 786 行为全部节点提供 UI 基座，近 3 个月 16 次提交、171 次文件变更。建议把重复构建配置收敛为共享 preset，并把骨架拆成布局/状态/操作三段、版本化接口。",
-        "concerns": [
-          {
-            "id": "c-workflow-nodes-1",
-            "severity": "high",
-            "finding": "9 个节点包各自复制 vite.config.ts 与 build.ts，新增节点靠脚手架复制，构建配置已出现多份近似实现。",
-            "suggestion": "抽 @toonflow/nodes-build preset，节点只保留 package.json 与入口，构建差异用参数表达。"
-          },
-          {
-            "id": "c-workflow-nodes-2",
-            "severity": "high",
-            "finding": "nodeSkeleton.vue（786 行）是所有节点共用的 UI 基座，一处改动会同时影响全部节点插件。",
-            "suggestion": "拆分骨架为布局/状态/操作三段并发布版本化接口，节点按需组合，避免基座变更引发全量回归。"
-          }
-        ]
-      },
       "dependencies": [
         "agent-tools",
         "media-toolkit",
         "shared-foundation"
       ],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "health": {
+        "score": 70,
+        "coupling": "medium",
+        "complexity": "high",
+        "churn": "medium",
+        "decay_flags": [
+          "large_module"
+        ],
+        "review_note": "94 文件 / 17,171 行，9 个节点包共享 nodeScaffold；出边 3、入边仅 web。nodeSkeleton.vue 854 行、sceneEditor.vue 833 行、imagePanoramaPreview.vue 599 行集中了布局、交互与场景生命周期。建议按布局/工具栏/场景拆组件，并由 nodeScaffold 统一节点 manifest 的生成与构建期校验。",
+        "concerns": [
+          {
+            "id": "c-workflow-nodes-1",
+            "severity": "high",
+            "finding": "nodeSkeleton.vue 854 行、sceneEditor.vue 833 行、imagePanoramaPreview.vue 599 行，单文件同时承担布局、工具栏、交互与 3D 场景生命周期。",
+            "suggestion": "按布局、工具栏、场景生命周期拆组件，交互逻辑移入 composable，节点入口只保留装配。"
+          },
+          {
+            "id": "c-workflow-nodes-2",
+            "severity": "high",
+            "finding": "9 个节点包的元数据与构建产物格式依赖 nodeScaffold 注释隐式约定，缺少统一 manifest schema 与跨包校验，新增节点容易漏字段。",
+            "suggestion": "由 nodeScaffold 生成统一的节点 manifest 类型，并在构建脚本中做 schema 校验。"
+          }
+        ]
+      },
+      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
     },
     {
       "id": "canvas-extensions",
       "name": "画布扩展插件",
       "layer": "presentation",
-      "responsibility": "画布扩展插件（文本/图片/媒体/Markdown/节点）及注册脚手架",
+      "responsibility": "画布扩展插件（文档/图片/媒体/Markdown/节点）与注册脚手架",
       "files": [
         "packages/ext/**",
         "packages/extScaffold/**"
@@ -249,44 +275,49 @@
           "kind": "function"
         },
         {
-          "file": "packages/ext/md/src/index.ts",
-          "symbol": "default",
-          "kind": "config"
+          "file": "packages/ext/md/src/index.vue",
+          "symbol": "mdExtension",
+          "kind": "function"
         },
         {
-          "file": "packages/ext/canvasNode/src/index.vue",
-          "symbol": "canvasNodeExtension",
-          "kind": "class"
+          "file": "packages/ext/comfyMonitor/src/index.vue",
+          "symbol": "comfyMonitor",
+          "kind": "function"
+        },
+        {
+          "file": "packages/extScaffold/create.ts",
+          "symbol": "create-ext",
+          "kind": "cli"
         }
       ],
+      "dependencies": [
+        "shared-foundation"
+      ],
       "health": {
-        "score": 82,
+        "score": 79,
         "coupling": "low",
         "complexity": "medium",
         "churn": "low",
         "decay_flags": [
-          "duplicated_code"
+          "large_component"
         ],
-        "review_note": "26 文件 1,963 行，扩展统一通过 defineExt 注册；md 扩展 847 行，且 markdownExtensions.ts 与 textNode 的实现逐行重复。近 3 个月仅 2 次提交。建议抽共享 markdown 渲染包，扩展只保留宿主差异。",
+        "review_note": "30 文件 / 2,523 行，6 个扩展包共享 defineExt，出边 1、入边 1，边界干净。md 扩展 index.vue 847 行，同时实现富文本/原文切换、图片粘贴、快捷键、渲染与持久化。建议拆出编辑、渲染、附件三层，插件入口只做 defineExt 注册。",
         "concerns": [
           {
             "id": "c-canvas-extensions-1",
             "severity": "high",
-            "finding": "packages/ext/md 与 packages/nodes/textNode 各存一份 markdownExtensions.ts（各 122 行，内容相同）和近似重复的 markdownContent.ts，渲染行为改动需双份同步。",
-            "suggestion": "抽 @toonflow/markdown 共享包，两处改为依赖同一实现，扩展只保留宿主差异。"
+            "finding": "md 扩展 index.vue 847 行（占模块 34%），同时实现富文本/原文切换、图片粘贴、快捷键、渲染与持久化。",
+            "suggestion": "拆出编辑、渲染、附件三个组件，插件入口只做 defineExt 注册与资源声明。"
           }
         ]
       },
-      "dependencies": [
-        "shared-foundation"
-      ],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
     },
     {
       "id": "web-console",
       "name": "Vue 工作台",
       "layer": "presentation",
-      "responsibility": "Vue 工作区界面：节点画布、文档面板、对话、设置与本地状态",
+      "responsibility": "Vue 工作台：画布、素材库、文档、对话与设置界面",
       "files": [
         "apps/web/**",
         "postcss.config.ts"
@@ -294,7 +325,7 @@
       "key_entries": [
         {
           "file": "apps/web/src/main.ts",
-          "symbol": "bootstrap",
+          "symbol": "notifyDesktopReady",
           "kind": "function"
         },
         {
@@ -308,47 +339,21 @@
           "kind": "function"
         },
         {
-          "file": "apps/web/src/pages/workspace/panels/canvas/index.vue",
-          "symbol": "canvasPanel",
-          "kind": "class"
+          "file": "apps/web/src/stores/sessionState.ts",
+          "symbol": "useSessionStateStore",
+          "kind": "function"
         },
         {
-          "file": "apps/web/src/components/agent/conversation/messageInput.vue",
-          "symbol": "messageInput",
-          "kind": "class"
+          "file": "apps/web/src/lib/workspaceFiles.ts",
+          "symbol": "useWorkspaceFiles",
+          "kind": "function"
+        },
+        {
+          "file": "apps/web/src/pages/workspace/panels/canvas/index.vue",
+          "symbol": "canvasPanel",
+          "kind": "function"
         }
       ],
-      "health": {
-        "score": 62,
-        "coupling": "high",
-        "complexity": "high",
-        "churn": "high",
-        "decay_flags": [
-          "large_module",
-          "coupling_high"
-        ],
-        "review_note": "147 文件 35,114 行，是最大呈现模块；canvas/index.vue 1,250 行、pluginMarket/index.vue 1,145 行、home/index.vue 1,016 行；30 处编译期 import 节点/工具/扩展包，68 处引用 server 契约与 API。近 3 个月 43 次提交、459 次文件变更。建议把画布/设置/首页拆子模块、插件 UI 改为注册表动态加载、共享类型下沉 contracts 包。",
-        "concerns": [
-          {
-            "id": "c-web-console-1",
-            "severity": "high",
-            "finding": "画布、首页与插件市场单个 .vue 均超 1,000 行，视图、拖拽状态与接口调用混在同一 SFC。",
-            "suggestion": "抽出 composable/store 与纯渲染子组件，按面板拆分目录，单文件控制在可评审范围。"
-          },
-          {
-            "id": "c-web-console-2",
-            "severity": "high",
-            "finding": "30 处编译期 import 节点/工具/扩展包（node-text、tool-canvas、ext-scaffold 等），插件 UI 被静态编入 web bundle，插件市场安装的扩展无法作用于界面。",
-            "suggestion": "改为插件注册表加动态 import 插件入口，构建期只保留 scaffold 类型与受信内置插件。"
-          },
-          {
-            "id": "c-web-console-3",
-            "severity": "high",
-            "finding": "68 处直接引用 @toonflow/server 的运行时/类型文件与 /api 接口，前后端契约没有独立包。",
-            "suggestion": "把 agent types、documentFormats、nodeMenu 等契约抽到独立 contracts 包，web 不再引用 server 源码。"
-          }
-        ]
-      },
       "dependencies": [
         "agent-runtime",
         "agent-tools",
@@ -359,24 +364,48 @@
         "shared-foundation",
         "workflow-nodes"
       ],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "health": {
+        "score": 58,
+        "coupling": "high",
+        "complexity": "high",
+        "churn": "high",
+        "decay_flags": [
+          "large_module",
+          "coupling_high"
+        ],
+        "review_note": "176 文件 / 42,491 行，出边 8、入边 1；8 个 Pinia store 与 130 处 /api 字面量、7 个 @toonflow/server 源码契约、17 个插件/骨架运行时子路径在编译期固化。canvas/index.vue 1,545 行、pluginMarket 1,145 行、canvasMenu 1,063 行、home 1,053 行、fileTree 986 行。建议先抽 contracts 包收敛路由常量与类型，再把巨型页面拆为容器 + 面板 + composable。",
+        "concerns": [
+          {
+            "id": "c-web-console-1",
+            "severity": "critical",
+            "finding": "web 源码含 130 处 /api 字面量、7 个 @toonflow/server 源码契约与 17 个插件/骨架运行时子路径，前后端与插件契约在编译期固化。",
+            "suggestion": "抽 contracts 包集中路由常量与请求/响应类型，插件 UI 改注册表动态加载。"
+          },
+          {
+            "id": "c-web-console-2",
+            "severity": "high",
+            "finding": "canvas/index.vue 1,545 行、pluginMarket 1,145 行、canvasMenu 1,063 行、home 1,053 行、fileTree 986 行，8 个 Pinia store 与页面状态交织。",
+            "suggestion": "按画布/设置/首页拆子域，巨型组件拆容器 + 面板 + composable，状态按子域拆分 store。"
+          }
+        ]
+      },
+      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
     },
     {
       "id": "server-api",
-      "name": "服务边界与业务编排",
+      "name": "服务边界与编排",
       "layer": "application",
-      "responsibility": "Express 路由边界、媒体/插件/MCP/工作区业务编排与应用装配",
+      "responsibility": "Express 组合根、161 个单接口路由与 7 个应用子模块的装配与编排",
       "files": [
         "apps/server/src/app.ts",
         "apps/server/src/index.ts",
         "apps/server/src/core.ts",
         "apps/server/src/router.ts",
         "apps/server/src/utils.ts",
-        "apps/server/src/remoteConnection.ts",
         "apps/server/src/lib/**",
+        "apps/server/src/modules/**",
         "apps/server/src/routes/**",
         "apps/server/src/types/**",
-        "apps/server/src/utils/**",
         "apps/server/scripts/**"
       ],
       "key_entries": [
@@ -391,67 +420,72 @@
           "kind": "function"
         },
         {
-          "file": "apps/server/src/remoteConnection.ts",
+          "file": "apps/server/src/modules/localRuntime/remoteConnection.ts",
           "symbol": "createRemoteConnection",
           "kind": "function"
         },
         {
-          "file": "apps/server/src/routes/exec/index.ts",
-          "symbol": "POST /api/exec",
-          "kind": "route"
+          "file": "apps/server/src/modules/platformCore/index.ts",
+          "symbol": "corsGuard",
+          "kind": "function"
         },
         {
-          "file": "apps/server/src/routes/settings/get.ts",
-          "symbol": "GET /api/settings/get",
+          "file": "apps/server/src/modules/assetLibrary/index.ts",
+          "symbol": "warmup",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/routes/assets/list.ts",
+          "symbol": "GET /api/assets/list",
           "kind": "route"
         }
       ],
-      "health": {
-        "score": 54,
-        "coupling": "critical",
-        "complexity": "high",
-        "churn": "high",
-        "decay_flags": [
-          "god_module",
-          "circular_dep",
-          "coupling_high"
-        ],
-        "review_note": "204 文件 11,106 行、138 个单接口路由，同时承载 HTTP 边界、媒体生成/计费、插件安装、MCP、工作区与新增的本机命令执行；出边 5、入边 4。近 3 个月 31 次提交、429 次文件变更。建议先按 media/plugins/workspace/exec 拆子模块，把 agent 依赖的基础能力端口化，routes 只做校验与编排。",
-        "concerns": [
-          {
-            "id": "c-server-api-1",
-            "severity": "critical",
-            "finding": "204 文件的模块同时承载 138 个路由、媒体生成/计费、插件安装、MCP 与工作区能力，god module 使任何改动都要全量回归。",
-            "suggestion": "按 routes/media/plugins/workspace 拆成独立模块，保留 app.ts 作为唯一组合根。"
-          },
-          {
-            "id": "c-server-api-2",
-            "severity": "critical",
-            "finding": "server-api 与 agent-runtime 双向引用（server→agent 25 处、agent→server 66 处），应用层与领域层的依赖方向被打破。",
-            "suggestion": "把 agent 需要的配置、工作区、模型能力抽成 foundation 端口，utils.ts 不再聚合导出 agent，由 app.ts 负责装配。"
-          },
-          {
-            "id": "c-server-api-3",
-            "severity": "high",
-            "finding": "/api/exec 允许本机页面执行任意 shell 命令，权限只依赖本机来源、应用请求头与工作区路径校验，缺少命令审批、审计与更细的资源配额。",
-            "suggestion": "把命令执行下沉为独立 exec 服务，增加显式用户确认与审计日志，并暴露按工作区的并发/时长配额。"
-          }
-        ]
-      },
       "dependencies": [
         "agent-runtime",
         "agent-tools",
         "ai-providers",
+        "desktop-shell",
         "media-toolkit",
         "shared-foundation"
       ],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "health": {
+        "score": 72,
+        "coupling": "high",
+        "complexity": "high",
+        "churn": "high",
+        "decay_flags": [
+          "circular_dep",
+          "coupling_high"
+        ],
+        "review_note": "已按素材库/媒体生成/插件市场/MCP/本机运行时/Agent 接入/平台核心拆出 7 个子模块，246 文件 / 14,584 行（bootstrap 9 + 域模块 66 + lib 9 + types/desktop 1 + routes 161），app.ts 收敛为 78 行组合根，单模块 god module 形态消除。仍剩两类结构债：① 与 agent-runtime 双向引用（agent→应用 71 处、应用→agent 24 处）未端口化；② 子模块间 53 条直引对方域文件（36 个文件）绕过入口，仅 4 条经入口。建议以 AgentHost 端口切断 agent→@/utils·@/lib，再按域把深引收敛到入口或 ModuleContext。",
+        "concerns": [
+          {
+            "id": "c-server-api-2",
+            "severity": "critical",
+            "finding": "agent-runtime 对应用层有 71 处 import（@/modules 50、@/lib 20、@/utils 1），应用层又反向 import agent 24 处，环仍在最热的会话链路上；utils.ts 以 37 个出口聚合、被 145 个文件引用。",
+            "suggestion": "定义 AgentHost 端口（配置/工作区/模型/团队）由 app.ts 注入，utils.ts 不再聚合 agent 能力。"
+          },
+          {
+            "id": "c-server-api-4",
+            "severity": "high",
+            "finding": "7 个子模块之间 57 条 import 中 53 条直接引用对方域文件（36 个文件），仅 4 条经模块入口；契约 dependencies 无运行时消费者，漂移只能靠人工与地图复核。",
+            "suggestion": "按域逐条收敛到入口或 ModuleContext，并把深引清单冻结在子图中，新增需登记复核。"
+          },
+          {
+            "id": "c-server-api-3",
+            "severity": "high",
+            "finding": "启动入口 apps/server/src/index.ts 直接 import electrobun.config 读取 app.version，使应用层反向依赖宿主壳配置；移动端 server.ts 也复制了同一读法。",
+            "suggestion": "把版本号改为启动参数或平台能力端口注入，服务端代码不直接 import 宿主壳配置。"
+          }
+        ]
+      },
+      "last_analyzed_at": "2026-10-27T08:01:50+08:00"
     },
     {
       "id": "ai-providers",
       "name": "模型供应商适配",
       "layer": "domain",
-      "responsibility": "语言与媒体模型供应商适配：模型目录、调用、价格与计费",
+      "responsibility": "语言与媒体模型供应商适配：模型目录、调用与计费",
       "files": [
         "packages/providers/**"
       ],
@@ -462,45 +496,54 @@
           "kind": "config"
         },
         {
+          "file": "packages/providers/src/media/compshare.ts",
+          "symbol": "default",
+          "kind": "function"
+        },
+        {
+          "file": "packages/providers/src/media/tfRouter.ts",
+          "symbol": "default",
+          "kind": "function"
+        },
+        {
+          "file": "packages/providers/src/media/apiMart.ts",
+          "symbol": "default",
+          "kind": "function"
+        },
+        {
           "file": "packages/providers/types.d.ts",
           "symbol": "ProviderDefinition",
           "kind": "interface"
-        },
-        {
-          "file": "packages/providers/src/media/compshare.ts",
-          "symbol": "default",
-          "kind": "config"
         }
       ],
-      "health": {
-        "score": 68,
-        "coupling": "low",
-        "complexity": "high",
-        "churn": "high",
-        "decay_flags": [
-          "god_file",
-          "large_module"
-        ],
-        "review_note": "8 文件 3,009 行；compshare.ts 单文件 1,839 行集中模型目录、价格、生成、轮询与计费，近 3 个月 16 次提交、39 次文件变更，供应商接口一变就落在同一文件。建议按 models/price/generate/poll 拆分并抽公共提交-轮询 SDK，ProviderDefinition 只保留差异。",
-        "concerns": [
-          {
-            "id": "c-ai-providers-1",
-            "severity": "critical",
-            "finding": "compshare.ts 单文件 1,839 行同时实现模型清单、价格、生成、任务轮询与计费，任何供应商接口变更都落在同一文件。",
-            "suggestion": "按 models/price/generate/poll 拆分并在 ProviderDefinition 组合，公共提交-轮询逻辑下沉为 SDK。"
-          }
-        ]
-      },
       "dependencies": [
         "media-toolkit"
       ],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "health": {
+        "score": 66,
+        "coupling": "low",
+        "complexity": "high",
+        "churn": "low",
+        "decay_flags": [
+          "god_file"
+        ],
+        "review_note": "8 文件 / 3,009 行；供应商契约清晰、出边仅 ffmpeg 类型，但 compshare.ts 单文件 1,839 行，占模块 61%，鉴权、媒体协议、任务轮询与错误映射混在一起。建议按协议拆分并让入口只保留供应商注册与能力声明。",
+        "concerns": [
+          {
+            "id": "c-ai-providers-1",
+            "severity": "high",
+            "finding": "compshare.ts 单文件 1,839 行（占模块 61%），同时实现鉴权、图片/视频/音频协议、任务轮询、base64 转换与错误映射。",
+            "suggestion": "按 image/video/audio/task 拆成四个适配文件，入口只保留供应商注册、能力声明与计费映射。"
+          }
+        ]
+      },
+      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
     },
     {
       "id": "agent-tools",
-      "name": "Agent 工具与 MCP",
+      "name": "Agent 工具插件",
       "layer": "domain",
-      "responsibility": "Agent 工具插件与 MCP 服务：浏览器、画布、资产、检索与技能操作",
+      "responsibility": "Agent 工具插件与 MCP 服务：浏览器、画布、素材、检索",
       "files": [
         "packages/tools/**",
         "packages/toolScaffold/**",
@@ -513,9 +556,9 @@
           "kind": "config"
         },
         {
-          "file": "packages/tools/browser/src/index.ts",
-          "symbol": "default",
-          "kind": "config"
+          "file": "packages/tools/browser/src/host.ts",
+          "symbol": "createBrowserRuntime",
+          "kind": "function"
         },
         {
           "file": "packages/tools/canvas/src/runtime.ts",
@@ -525,36 +568,36 @@
         {
           "file": "packages/mcp/src/index.ts",
           "symbol": "createMcpRouter",
-          "kind": "function"
+          "kind": "route"
         }
       ],
-      "health": {
-        "score": 78,
-        "coupling": "medium",
-        "complexity": "medium",
-        "churn": "medium",
-        "decay_flags": [],
-        "review_note": "37 文件 3,579 行；工具以 .tool.js 产物由 server 装载，MCP 复用同一批工具定义，browser 工具自带 CDP 宿主与 Vue 面板。近 3 个月 13 次提交、66 次文件变更。建议为工具清单加契约测试，并把 browser 的 protocol/host/panel 拆成显式出口。",
-        "concerns": [
-          {
-            "id": "c-agent-tools-1",
-            "severity": "high",
-            "finding": "browser 工具在 host.ts（717 行）内自建浏览器会话、CDP 协议与元素引用解析，协议、宿主与面板同包演进，升级 Puppeteer 时需多处同步。",
-            "suggestion": "抽出 browser-protocol/client 包并锁定宿主版本，面板只依赖协议客户端，宿主实现可独立替换。"
-          }
-        ]
-      },
       "dependencies": [
         "media-toolkit",
         "shared-foundation"
       ],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "health": {
+        "score": 77,
+        "coupling": "medium",
+        "complexity": "medium",
+        "churn": "low",
+        "decay_flags": [],
+        "review_note": "37 文件 / 3,592 行，10 个工具包共享 toolScaffold 契约，出边 2、入边 5，边界清楚。浏览器工具长成模块内最大单体：host.ts 717 行 + browserPanel.vue 616 行，建议把 WebView/CDP 生命周期收进独立 runtime 包，工具壳只保留定义与面板。",
+        "concerns": [
+          {
+            "id": "c-agent-tools-1",
+            "severity": "high",
+            "finding": "浏览器工具 host.ts 717 行 + browserPanel.vue 616 行，直接管理 WebView/CDP 生命周期，其余 9 个工具包多数不足 200 行。",
+            "suggestion": "把浏览器进程与协议封装为独立 runtime 包，browser 工具只保留工具定义、配置 schema 与面板入口。"
+          }
+        ]
+      },
+      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
     },
     {
       "id": "agent-runtime",
       "name": "Agent 运行时",
       "layer": "domain",
-      "responsibility": "Agent 会话主循环、模型选择、子代理、团队、技能与 A2A 协作编排",
+      "responsibility": "Agent 会话主循环、子代理、团队、技能与 A2A 编排",
       "files": [
         "apps/server/src/agent/**",
         "packages/teamScaffold/**",
@@ -569,57 +612,67 @@
         },
         {
           "file": "apps/server/src/agent/runtime/sessions.ts",
-          "symbol": "createAgentConversation",
+          "symbol": "registerAgentSession",
           "kind": "function"
         },
         {
           "file": "apps/server/src/agent/a2a/index.ts",
           "symbol": "createA2aRouter",
-          "kind": "function"
+          "kind": "route"
         },
         {
           "file": "apps/server/src/agent/teams/index.ts",
           "symbol": "createTeamRunner",
           "kind": "function"
+        },
+        {
+          "file": "apps/server/src/agent/skills/index.ts",
+          "symbol": "loadAgentSkills",
+          "kind": "function"
         }
       ],
-      "health": {
-        "score": 64,
-        "coupling": "medium",
-        "complexity": "high",
-        "churn": "high",
-        "decay_flags": [
-          "circular_dep",
-          "responsibility_overlap"
-        ],
-        "review_note": "30 文件 3,492 行；承担主循环、会话注册、模型选择、子代理、团队、技能与 A2A；66 处 import 指回 server-api 的 utils/lib，server-api 又反向导出 agent。近 3 个月 16 次提交、94 次文件变更。建议定义 AgentHost 端口注入 conf/workspace/ai/teams，并拆出 session registry 与 runner。",
-        "concerns": [
-          {
-            "id": "c-agent-runtime-1",
-            "severity": "critical",
-            "finding": "Agent 运行时直接 import @/utils/conf、workspace/files、ai、teams 等应用层实现（66 处），server-api 的 utils.ts 与 app.ts 又反向导出 agent，形成模块环。",
-            "suggestion": "定义 AgentHost 端口（配置/工作区/模型/团队）并在 createApp 注入，runtime 仅依赖端口与 agent 内部类型。"
-          },
-          {
-            "id": "c-agent-runtime-2",
-            "severity": "high",
-            "finding": "runtime/index.ts（462 行）与 sessions.ts（467 行）同时持有主循环、会话注册表与事件追踪，状态与编排混在单文件。",
-            "suggestion": "拆出 session registry 与 runner，事件流改为显式接口，便于按会话隔离与单测。"
-          }
-        ]
-      },
       "dependencies": [
         "agent-tools",
         "server-api",
         "shared-foundation"
       ],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "health": {
+        "score": 62,
+        "coupling": "medium",
+        "complexity": "high",
+        "churn": "medium",
+        "decay_flags": [
+          "circular_dep"
+        ],
+        "review_note": "33 文件 / 4,395 行；agent→server 73 处、server→agent 28 处构成环，runtime/index.ts 的 run() 同时承担附件校验、会话锁、模型装配、工具装配与事件转发；sessions.ts 785 行把活跃会话放在进程级 Map。建议先抽 AgentHost 端口切断对 server 源码的静态依赖，再拆 run() 与会话存储。",
+        "concerns": [
+          {
+            "id": "c-agent-runtime-1",
+            "severity": "critical",
+            "finding": "与 server-api 双向 import（agent→server 73 处、server→agent 28 处），run() 直接依赖 @/utils/workspace、@/utils/ai 与 @/lib/i18n，环落在每条 Agent 请求路径。",
+            "suggestion": "抽 AgentHost 端口，把 workspace/ai/conf 访问改为注入，切断 runtime 对 server 源码的静态依赖。"
+          },
+          {
+            "id": "c-agent-runtime-2",
+            "severity": "high",
+            "finding": "runtime/index.ts、sessions.ts、requests.ts 合计约 1,700 行，run() 同时承担附件校验、会话锁、模型装配、工具装配、事件转发与取消。",
+            "suggestion": "把工具装配、模型配置、事件转发拆为独立模块，run() 只保留一次会话的编排流程。"
+          },
+          {
+            "id": "c-agent-runtime-3",
+            "severity": "high",
+            "finding": "活跃会话存放在进程级 Map（sessions.ts），代码注释已注明多进程部署需要共享会话所有权，进程重启即丢失运行态。",
+            "suggestion": "把活跃会话封装为可替换的 SessionStore，先提供文件或共享存储实现，再替换内存 Map。"
+          }
+        ]
+      },
+      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
     },
     {
       "id": "shared-foundation",
       "name": "共享基础",
       "layer": "foundation",
-      "responsibility": "文件原子读写、21 语国际化、模型图标与品牌资产",
+      "responsibility": "文件原子读写、21 语国际化与模型图标的零业务基础件",
       "files": [
         "packages/file/**",
         "packages/i18n/**",
@@ -633,8 +686,18 @@
           "kind": "function"
         },
         {
+          "file": "packages/file/src/access.ts",
+          "symbol": "withFileAccess",
+          "kind": "function"
+        },
+        {
           "file": "packages/i18n/src/index.ts",
           "symbol": "translate",
+          "kind": "function"
+        },
+        {
+          "file": "packages/i18n/src/transform.ts",
+          "symbol": "transformSource",
           "kind": "function"
         },
         {
@@ -643,30 +706,30 @@
           "kind": "function"
         }
       ],
+      "dependencies": [],
       "health": {
         "score": 84,
         "coupling": "high",
-        "complexity": "low",
-        "churn": "medium",
+        "complexity": "medium",
+        "churn": "low",
         "decay_flags": [],
-        "review_note": "15 文件 1,077 行，出边 0、入边 9，是最干净的基础叶子；file 统一原子写与独占重命名，i18n 通过构建期 transform 抽取文案。近 3 个月 8 次提交、21 次文件变更。建议把 transform.ts 的消息键映射纳入 CI 校验并补回归用例，避免 21 种语言包键漂移。",
+        "review_note": "15 文件 / 1,077 行，出边为 0、被 9 个模块引用，是干净的基础叶子；file 以原子写与路径访问队列托底全库磁盘操作。建议为 i18n/transform.ts（299 行）的源码改写加消息键存在性校验与类型声明，并把品牌图片资产与代码包解耦。",
         "concerns": [
           {
             "id": "c-shared-foundation-1",
             "severity": "high",
-            "finding": "i18n 在构建期由 transform.ts（299 行）改写源码提取文案，消息键与 messageSources.json 只靠全量构建校验，键漂移在类型层无法发现。",
-            "suggestion": "为消息键生成类型声明并在 CI 执行键存在性检查，把 transform 映射表纳入受控清单与回归测试。"
+            "finding": "i18n 的 transform.ts（299 行）在构建期改写源码抽取文案，消息键与 21 个语言包之间没有生成类型，键漂移只能等完整构建或运行时才暴露。",
+            "suggestion": "由 i18n 包生成消息键联合类型并在构建脚本中做键存在性校验，把 transform 映射表纳入受控清单。"
           }
         ]
       },
-      "dependencies": [],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
     },
     {
       "id": "media-toolkit",
       "name": "音视频基础能力",
       "layer": "foundation",
-      "responsibility": "FFmpeg 二进制管理与音视频转码、浏览器语音识别封装",
+      "responsibility": "FFmpeg 二进制管理与音视频处理、浏览器语音识别封装",
       "files": [
         "packages/ffmpeg/**",
         "packages/asr/**"
@@ -679,7 +742,12 @@
         },
         {
           "file": "packages/ffmpeg/src/index.ts",
-          "symbol": "getToolStatus",
+          "symbol": "installFfmpeg",
+          "kind": "function"
+        },
+        {
+          "file": "packages/ffmpeg/src/remote.ts",
+          "symbol": "executeRemoteFfmpeg",
           "kind": "function"
         },
         {
@@ -688,26 +756,26 @@
           "kind": "function"
         }
       ],
+      "dependencies": [
+        "shared-foundation"
+      ],
       "health": {
         "score": 82,
         "coupling": "medium",
         "complexity": "medium",
-        "churn": "medium",
+        "churn": "low",
         "decay_flags": [],
-        "review_note": "8 文件 1,062 行；FFmpeg 运行时按 catalog 下载/校验并回退系统 PATH，ASR 仅浏览器端封装。近 3 个月 9 次提交、21 次文件变更。建议在 /api/ffmpeg/status 暴露实际二进制版本与来源，并固定下载源 checksum，降低“同机不同编码器”的排障成本。",
+        "review_note": "8 文件 / 1,062 行，出边 1、入边 5；FFmpeg 下载源集中声明并校验 sha256，安装走临时目录整体替换，浏览器/远程执行共用 browserTypes 白名单。建议把 ASR 能力探测从 UA 版本判断改为特性探测，避免宿主内核升级后静默失效。",
         "concerns": [
           {
             "id": "c-media-toolkit-1",
             "severity": "high",
-            "finding": "FFmpeg 按 catalog.ts 下载二进制并回退系统 PATH，不同机器的编码器版本与来源不一致，问题只在具体转码任务失败时暴露。",
-            "suggestion": "固定目标版本与 checksum，在 /api/ffmpeg/status 暴露实际版本、来源与校验结果，并让下载失败降级为显式错误。"
+            "finding": "ASR 以 UA 中的 Chromium 主版本号 ≥135 判断音频轨道识别能力，Electron/WebView 或非 Chrome 内核会被直接判为不支持，且注释承认这是临时门槛。",
+            "suggestion": "改为探测 SpeechRecognition 与 AudioContext 的特性组合，并把不支持原因作为可展示的能力缺失返回。"
           }
         ]
       },
-      "dependencies": [
-        "shared-foundation"
-      ],
-      "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
     }
   ],
   "edges": [
@@ -716,264 +784,279 @@
       "from": "media-toolkit",
       "to": "shared-foundation",
       "type": "import",
-      "strength": "normal",
-      "label": "file/i18n 基础调用"
+      "label": "7 处 i18n/file 基础调用",
+      "strength": "normal"
     },
     {
       "id": "e2",
       "from": "ai-providers",
       "to": "media-toolkit",
       "type": "import",
-      "strength": "weak",
-      "label": "ffmpeg 类型与转码"
+      "label": "2 处 ffmpeg 类型契约",
+      "strength": "weak"
     },
     {
       "id": "e3",
       "from": "agent-tools",
       "to": "shared-foundation",
       "type": "import",
-      "strength": "normal",
-      "label": "file/i18n"
+      "label": "9 处 file/i18n 基础调用",
+      "strength": "normal"
     },
     {
       "id": "e4",
       "from": "agent-tools",
       "to": "media-toolkit",
       "type": "import",
-      "strength": "normal",
-      "label": "ffmpeg/asr 运行时"
+      "label": "5 处 asr/ffmpeg 客户端",
+      "strength": "normal"
     },
     {
       "id": "e5",
       "from": "agent-runtime",
       "to": "agent-tools",
       "type": "import",
-      "strength": "strong",
-      "label": "tools-scaffold 运行时与工具上下文"
+      "label": "16 处 tools-scaffold 运行时与工具上下文",
+      "strength": "strong"
     },
     {
       "id": "e6",
       "from": "agent-runtime",
-      "to": "server-api",
+      "to": "shared-foundation",
       "type": "import",
-      "strength": "strong",
-      "label": "conf/workspace/ai/teams 应用能力",
-      "direction_violation": true
+      "label": "14 处 file/i18n",
+      "strength": "normal"
     },
     {
       "id": "e7",
       "from": "agent-runtime",
-      "to": "shared-foundation",
+      "to": "server-api",
       "type": "import",
-      "strength": "normal",
-      "label": "file 会话文件"
+      "label": "71 处 @/modules(50)·@/lib(20)·@/utils(1) 应用能力",
+      "strength": "strong",
+      "direction_violation": true
     },
     {
       "id": "e8",
       "from": "server-api",
       "to": "shared-foundation",
       "type": "import",
-      "strength": "strong",
-      "label": "file/i18n/模型图标"
+      "label": "91 处 file/i18n/模型图标/assets",
+      "strength": "strong"
     },
     {
       "id": "e9",
       "from": "server-api",
       "to": "agent-runtime",
       "type": "import",
-      "strength": "strong",
-      "label": "agent.run / a2a / teams"
+      "label": "24 处 agent 会话与 teams 契约",
+      "strength": "strong"
     },
     {
       "id": "e10",
       "from": "server-api",
       "to": "agent-tools",
       "type": "import",
-      "strength": "strong",
-      "label": "MCP 与工具运行时"
+      "label": "25 处 MCP 与工具运行时",
+      "strength": "strong"
     },
     {
       "id": "e11",
       "from": "server-api",
       "to": "ai-providers",
       "type": "import",
-      "strength": "normal",
-      "label": "供应商清单与模型目录"
+      "label": "9 处供应商清单与模型目录",
+      "strength": "normal"
     },
     {
       "id": "e12",
       "from": "server-api",
       "to": "media-toolkit",
       "type": "import",
-      "strength": "normal",
-      "label": "ffmpeg 执行"
+      "label": "4 处 ffmpeg 执行",
+      "strength": "normal"
     },
     {
       "id": "e13",
-      "from": "workflow-nodes",
-      "to": "agent-tools",
-      "type": "import",
+      "from": "server-api",
+      "to": "desktop-shell",
+      "type": "config",
+      "label": "启动读取 electrobun.config 的 app.version",
       "strength": "weak",
-      "label": "tools-scaffold 类型"
+      "direction_violation": true
     },
     {
       "id": "e14",
       "from": "workflow-nodes",
-      "to": "media-toolkit",
+      "to": "agent-tools",
       "type": "import",
-      "strength": "normal",
-      "label": "ffmpeg/asr"
+      "label": "3 处 tools-scaffold 类型",
+      "strength": "weak"
     },
     {
       "id": "e15",
       "from": "workflow-nodes",
-      "to": "shared-foundation",
+      "to": "media-toolkit",
       "type": "import",
-      "strength": "weak",
-      "label": "file/i18n"
+      "label": "7 处 ffmpeg/asr",
+      "strength": "normal"
     },
     {
       "id": "e16",
-      "from": "canvas-extensions",
+      "from": "workflow-nodes",
       "to": "shared-foundation",
       "type": "import",
-      "strength": "weak",
-      "label": "file/i18n"
+      "label": "1 处 file 构建脚手架",
+      "strength": "weak"
     },
     {
       "id": "e17",
-      "from": "web-console",
-      "to": "server-api",
-      "type": "api",
-      "strength": "strong",
-      "label": "REST /api 与 server 契约类型"
+      "from": "canvas-extensions",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "3 处 i18n/file",
+      "strength": "weak"
     },
     {
       "id": "e18",
       "from": "web-console",
-      "to": "agent-runtime",
-      "type": "import",
-      "strength": "strong",
-      "label": "agent 会话类型"
+      "to": "server-api",
+      "type": "api",
+      "label": "30 文件 38 处 @toonflow/server 契约与 130 处 /api 字面调用",
+      "strength": "strong"
     },
     {
       "id": "e19",
       "from": "web-console",
-      "to": "agent-tools",
+      "to": "agent-runtime",
       "type": "import",
-      "strength": "strong",
-      "label": "工具面板与运行时"
+      "label": "18 处 agent 类型与 mentionSources",
+      "strength": "normal"
     },
     {
       "id": "e20",
       "from": "web-console",
-      "to": "ai-providers",
+      "to": "agent-tools",
       "type": "import",
-      "strength": "strong",
-      "label": "供应商清单与模板"
+      "label": "16 处工具面板与运行时",
+      "strength": "strong"
     },
     {
       "id": "e21",
       "from": "web-console",
-      "to": "workflow-nodes",
+      "to": "ai-providers",
       "type": "import",
-      "strength": "strong",
-      "label": "节点 UI 与运行时"
+      "label": "15 处供应商清单与模板",
+      "strength": "normal"
     },
     {
       "id": "e22",
       "from": "web-console",
-      "to": "shared-foundation",
+      "to": "workflow-nodes",
       "type": "import",
-      "strength": "strong",
-      "label": "i18n/assets/模型图标"
+      "label": "32 处节点 UI 与运行时",
+      "strength": "strong"
     },
     {
       "id": "e23",
       "from": "web-console",
-      "to": "canvas-extensions",
+      "to": "shared-foundation",
       "type": "import",
-      "strength": "weak",
-      "label": "ext-scaffold 运行时"
+      "label": "70 处 i18n/assets/模型图标",
+      "strength": "strong"
     },
     {
       "id": "e24",
       "from": "web-console",
-      "to": "media-toolkit",
+      "to": "canvas-extensions",
       "type": "import",
-      "strength": "weak",
-      "label": "asr 语音输入"
+      "label": "4 处 ext-scaffold 运行时",
+      "strength": "weak"
     },
     {
       "id": "e25",
-      "from": "desktop-shell",
-      "to": "server-api",
-      "type": "call",
-      "strength": "strong",
-      "label": "内嵌 createApp / sidecar / remoteConnection"
+      "from": "web-console",
+      "to": "media-toolkit",
+      "type": "import",
+      "label": "2 处 asr 语音输入",
+      "strength": "weak"
     },
     {
       "id": "e26",
       "from": "desktop-shell",
-      "to": "shared-foundation",
-      "type": "import",
-      "strength": "strong",
-      "label": "file/i18n/startup"
+      "to": "server-api",
+      "type": "call",
+      "label": "14 处 createApp/remoteConnection/i18n 装配",
+      "strength": "strong"
     },
     {
       "id": "e27",
-      "from": "mobile-shell",
-      "to": "server-api",
-      "type": "call",
-      "strength": "normal",
-      "label": "内嵌 createApp 与 remoteConnection"
+      "from": "desktop-shell",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "26 处 file/i18n/startup 启动",
+      "strength": "strong"
     },
     {
       "id": "e28",
       "from": "mobile-shell",
-      "to": "shared-foundation",
-      "type": "import",
-      "strength": "normal",
-      "label": "file"
+      "to": "server-api",
+      "type": "call",
+      "label": "5 处 createApp/remoteConnection/i18n",
+      "strength": "normal"
     },
     {
       "id": "e29",
       "from": "mobile-shell",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "14 处 file 读写",
+      "strength": "normal"
+    },
+    {
+      "id": "e30",
+      "from": "mobile-shell",
       "to": "web-console",
       "type": "import",
-      "strength": "weak",
-      "label": "browserCapabilities 探针"
+      "label": "1 处 browserCapabilities 探针",
+      "strength": "weak"
+    },
+    {
+      "id": "e31",
+      "from": "mobile-shell",
+      "to": "desktop-shell",
+      "type": "config",
+      "label": "启动读取 electrobun.config 的 app.version",
+      "strength": "weak"
     }
   ],
   "health": {
-    "score": 60,
+    "score": 68,
     "coupling": "high",
     "complexity": "high",
     "churn": "high",
     "decay_flags": [
       "circular_dep",
-      "layer_violation",
-      "god_module",
-      "responsibility_overlap"
+      "layer_violation"
     ],
-    "review_note": "五层（宿主 → 呈现 → 应用 → 领域 → 基础）大体成立：web 只向下取插件与共享契约，server-api 统一装配，foundation 是无出边的叶子。但结构性问题独立于模块均分：1）server-api 与 agent-runtime 双向引用（server→agent 25 处、agent→server 66 处），29 条边中 1 条逆向，环落在最热的 Agent 链路上；2）server-api 以 204 文件承载 138 个路由与媒体/插件/MCP/工作区/命令执行多域逻辑，是全局唯一 god module；3）呈现层把 node/tool/ext 运行时包在编译期静态引入 30 处，插件体系在 UI 侧实际不可动态扩展。建议按“端口化 AgentHost → 拆 server 子域 → 契约包下沉 → 插件注册表”的顺序治理。",
+    "review_note": "五层（宿主 → 呈现 → 应用 → 领域 → 基础）大体成立：web 只向下取插件与共享契约，应用层统一装配，foundation 是无出边的叶子。2026-10-27 重算后 server-api 已由 246 文件单模块拆为 7 个子模块 + 组合根，god module 关注点关闭；剩余结构性问题：1）应用层与 agent-runtime 双向引用（agent→应用 71 处、应用→agent 24 处），环仍落在最热的 Agent 链路上；2）应用层内部 53 条跨子模块深引绕过入口，契约无运行时守卫；3）呈现层把 node/tool/ext 运行时包在编译期静态引入 30 处。建议按「AgentHost 端口 → 子域深引收敛 → 契约包下沉与插件注册表」顺序治理。",
     "concerns": [
       {
         "id": "c-arch-1",
         "severity": "critical",
-        "finding": "server-api 与 agent-runtime 双向 import（server→agent 25 处、agent→server 66 处）构成环，且环位于每条 Agent 请求的必经路径，任何一侧改动都会牵动另一侧。",
-        "suggestion": "先抽 AgentHost 端口切断 agent→utils/lib，再让 app.ts 单向装配 agent 与各服务器子域。"
+        "finding": "agent-runtime 与应用层双向 import（agent→应用 71 处、应用→agent 24 处）构成环，且环位于每条 Agent 请求的必经路径，任何一侧改动都会牵动另一侧。",
+        "suggestion": "先抽 AgentHost 端口切断 agent→@/utils·@/lib，再让 app.ts 单向装配 agent 与各应用子模块。"
       },
       {
-        "id": "c-arch-2",
-        "severity": "critical",
-        "finding": "server-api 一个模块 204 文件、138 个路由，同时承担媒体生成、插件安装、MCP、工作区、桌面桥接与命令执行，全库 29 条边中 9 条与它相连。",
-        "suggestion": "按媒体生成、插件市场、工作区、命令执行拆出四个应用子模块，app.ts 只保留组合根。"
+        "id": "c-arch-4",
+        "severity": "high",
+        "finding": "应用层 7 个子模块的边界由目录与文档承担：57 条跨子模块 import 中 53 条直引对方域文件，入口只承载 4 条，边界漂移没有运行时或脚本守卫。",
+        "suggestion": "把冻结的深引清单写入子图并纳入评审模板，新增深引必须登记，逐步以 ModuleContext 替换。"
       },
       {
         "id": "c-arch-3",
         "severity": "high",
-        "finding": "web 在编译期 import 插件运行时包 30 处、引用 server 源码/接口 68 处，插件与前后端契约都被静态编入主包，安装式插件无法影响 UI。",
+        "finding": "web 在编译期 import 插件运行时包 30 处、引用 server 源码/接口 38 处，插件与前后端契约都被静态编入主包，安装式插件无法影响 UI。",
         "suggestion": "抽出 contracts 包并把插件 UI 改为注册表 + 动态入口，web 只依赖契约。"
       }
     ]

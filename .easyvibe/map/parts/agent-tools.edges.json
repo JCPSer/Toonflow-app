@@ -6,16 +6,16 @@
       "from": "agent-tools",
       "to": "shared-foundation",
       "type": "import",
-      "strength": "normal",
-      "label": "file/i18n"
+      "label": "9 处 file/i18n 基础调用",
+      "strength": "normal"
     },
     {
       "id": "e4",
       "from": "agent-tools",
       "to": "media-toolkit",
       "type": "import",
-      "strength": "normal",
-      "label": "ffmpeg/asr 运行时"
+      "label": "5 处 asr/ffmpeg 客户端",
+      "strength": "normal"
     }
   ]
 }

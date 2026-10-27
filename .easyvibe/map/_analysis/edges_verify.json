@@ -1,0 +1,50 @@
+{
+  "edges_total": 31,
+  "direction_violations": [
+    {
+      "id": "e7",
+      "from": "agent-runtime",
+      "to": "server-api",
+      "type": "import"
+    },
+    {
+      "id": "e13",
+      "from": "server-api",
+      "to": "desktop-shell",
+      "type": "config"
+    }
+  ],
+  "dropped_build_time": [
+    {
+      "pair": "agent-tools -> web-console",
+      "evidence": "packages/toolScaffold/index.ts imports ../../postcss.config.ts",
+      "reason": "构建期读取共享 PostCSS 配置，非运行期依赖"
+    },
+    {
+      "pair": "workflow-nodes -> web-console",
+      "evidence": "packages/nodeScaffold/index.ts imports ../../postcss.config.ts",
+      "reason": "构建期读取共享 PostCSS 配置，非运行期依赖"
+    },
+    {
+      "pair": "web-console -> desktop-shell",
+      "evidence": "apps/web/vite.config.ts imports ../../electrobun.config.ts",
+      "reason": "构建期读取 app.version 注入 define，非运行期依赖"
+    },
+    {
+      "pair": "mobile-shell -> canvas-extensions",
+      "evidence": "compat/ohos/runtime.ts requires ../../packages/extScaffold/node_modules/typescript",
+      "reason": "实际依赖 typescript 包，非 canvas-extensions 代码"
+    }
+  ],
+  "kept_config_runtime": [
+    {
+      "pair": "server-api -> desktop-shell",
+      "evidence": "apps/server/src/index.ts imports electrobun.config app.version"
+    },
+    {
+      "pair": "mobile-shell -> desktop-shell",
+      "evidence": "apps/mobile/src/server.ts imports electrobun.config app.version"
+    }
+  ],
+  "problems": []
+}

@@ -2,28 +2,36 @@
   "module": "mobile-shell",
   "edges": [
     {
-      "id": "e27",
+      "id": "e28",
       "from": "mobile-shell",
       "to": "server-api",
       "type": "call",
-      "strength": "normal",
-      "label": "内嵌 createApp 与 remoteConnection"
-    },
-    {
-      "id": "e28",
-      "from": "mobile-shell",
-      "to": "shared-foundation",
-      "type": "import",
-      "strength": "normal",
-      "label": "file"
+      "label": "5 处 createApp/remoteConnection/i18n",
+      "strength": "normal"
     },
     {
       "id": "e29",
       "from": "mobile-shell",
+      "to": "shared-foundation",
+      "type": "import",
+      "label": "14 处 file 读写",
+      "strength": "normal"
+    },
+    {
+      "id": "e30",
+      "from": "mobile-shell",
       "to": "web-console",
       "type": "import",
-      "strength": "weak",
-      "label": "browserCapabilities 探针"
+      "label": "1 处 browserCapabilities 探针",
+      "strength": "weak"
+    },
+    {
+      "id": "e31",
+      "from": "mobile-shell",
+      "to": "desktop-shell",
+      "type": "config",
+      "label": "启动读取 electrobun.config 的 app.version",
+      "strength": "weak"
     }
   ]
 }

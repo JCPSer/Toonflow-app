@@ -2,7 +2,7 @@
   "id": "agent-runtime",
   "name": "Agent 运行时",
   "layer": "domain",
-  "responsibility": "Agent 会话主循环、模型选择、子代理、团队、技能与 A2A 协作编排",
+  "responsibility": "Agent 会话主循环、子代理、团队、技能与 A2A 编排",
   "files": [
     "apps/server/src/agent/**",
     "packages/teamScaffold/**",
@@ -17,49 +17,59 @@
     },
     {
       "file": "apps/server/src/agent/runtime/sessions.ts",
-      "symbol": "createAgentConversation",
+      "symbol": "registerAgentSession",
       "kind": "function"
     },
     {
       "file": "apps/server/src/agent/a2a/index.ts",
       "symbol": "createA2aRouter",
-      "kind": "function"
+      "kind": "route"
     },
     {
       "file": "apps/server/src/agent/teams/index.ts",
       "symbol": "createTeamRunner",
       "kind": "function"
+    },
+    {
+      "file": "apps/server/src/agent/skills/index.ts",
+      "symbol": "loadAgentSkills",
+      "kind": "function"
     }
   ],
-  "health": {
-    "score": 64,
-    "coupling": "medium",
-    "complexity": "high",
-    "churn": "high",
-    "decay_flags": [
-      "circular_dep",
-      "responsibility_overlap"
-    ],
-    "review_note": "30 文件 3,492 行；承担主循环、会话注册、模型选择、子代理、团队、技能与 A2A；66 处 import 指回 server-api 的 utils/lib，server-api 又反向导出 agent。近 3 个月 16 次提交、94 次文件变更。建议定义 AgentHost 端口注入 conf/workspace/ai/teams，并拆出 session registry 与 runner。",
-    "concerns": [
-      {
-        "id": "c-agent-runtime-1",
-        "severity": "critical",
-        "finding": "Agent 运行时直接 import @/utils/conf、workspace/files、ai、teams 等应用层实现（66 处），server-api 的 utils.ts 与 app.ts 又反向导出 agent，形成模块环。",
-        "suggestion": "定义 AgentHost 端口（配置/工作区/模型/团队）并在 createApp 注入，runtime 仅依赖端口与 agent 内部类型。"
-      },
-      {
-        "id": "c-agent-runtime-2",
-        "severity": "high",
-        "finding": "runtime/index.ts（462 行）与 sessions.ts（467 行）同时持有主循环、会话注册表与事件追踪，状态与编排混在单文件。",
-        "suggestion": "拆出 session registry 与 runner，事件流改为显式接口，便于按会话隔离与单测。"
-      }
-    ]
-  },
   "dependencies": [
     "agent-tools",
     "server-api",
     "shared-foundation"
   ],
-  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+  "health": {
+    "score": 62,
+    "coupling": "medium",
+    "complexity": "high",
+    "churn": "medium",
+    "decay_flags": [
+      "circular_dep"
+    ],
+    "review_note": "33 文件 / 4,395 行；agent→server 73 处、server→agent 28 处构成环，runtime/index.ts 的 run() 同时承担附件校验、会话锁、模型装配、工具装配与事件转发；sessions.ts 785 行把活跃会话放在进程级 Map。建议先抽 AgentHost 端口切断对 server 源码的静态依赖，再拆 run() 与会话存储。",
+    "concerns": [
+      {
+        "id": "c-agent-runtime-1",
+        "severity": "critical",
+        "finding": "与 server-api 双向 import（agent→server 73 处、server→agent 28 处），run() 直接依赖 @/utils/workspace、@/utils/ai 与 @/lib/i18n，环落在每条 Agent 请求路径。",
+        "suggestion": "抽 AgentHost 端口，把 workspace/ai/conf 访问改为注入，切断 runtime 对 server 源码的静态依赖。"
+      },
+      {
+        "id": "c-agent-runtime-2",
+        "severity": "high",
+        "finding": "runtime/index.ts、sessions.ts、requests.ts 合计约 1,700 行，run() 同时承担附件校验、会话锁、模型装配、工具装配、事件转发与取消。",
+        "suggestion": "把工具装配、模型配置、事件转发拆为独立模块，run() 只保留一次会话的编排流程。"
+      },
+      {
+        "id": "c-agent-runtime-3",
+        "severity": "high",
+        "finding": "活跃会话存放在进程级 Map（sessions.ts），代码注释已注明多进程部署需要共享会话所有权，进程重启即丢失运行态。",
+        "suggestion": "把活跃会话封装为可替换的 SessionStore，先提供文件或共享存储实现，再替换内存 Map。"
+      }
+    ]
+  },
+  "last_analyzed_at": "2026-10-26T21:12:00+08:00"
 }

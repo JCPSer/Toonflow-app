@@ -95,7 +95,8 @@
         "packages/startup/**",
         "compat/macIntel/**",
         "electrobun.config.ts",
-        "hutch.config.ts"
+        "hutch.config.ts",
+        "scripts/bundle-desktop.ts"
       ]
     },
     {
@@ -121,32 +122,32 @@
       "file_occurrences": 39
     },
     "agent-tools": {
-      "commits": 13,
-      "file_occurrences": 66
+      "commits": 15,
+      "file_occurrences": 70
     },
     "agent-runtime": {
-      "commits": 16,
-      "file_occurrences": 94
+      "commits": 21,
+      "file_occurrences": 116
     },
     "workflow-nodes": {
-      "commits": 16,
-      "file_occurrences": 171
+      "commits": 24,
+      "file_occurrences": 200
     },
     "canvas-extensions": {
-      "commits": 2,
-      "file_occurrences": 27
+      "commits": 4,
+      "file_occurrences": 33
     },
     "web-console": {
-      "commits": 43,
-      "file_occurrences": 459
+      "commits": 64,
+      "file_occurrences": 585
     },
     "server-api": {
-      "commits": 31,
-      "file_occurrences": 429
+      "commits": 41,
+      "file_occurrences": 517
     },
     "desktop-shell": {
-      "commits": 37,
-      "file_occurrences": 121
+      "commits": 39,
+      "file_occurrences": 124
     },
     "mobile-shell": {
       "commits": 6,
@@ -205,6 +206,7 @@
     "apps/desktop/src/saveFile.ts",
     "apps/desktop/src/update/windowsUpdater.ts",
     "apps/desktop/src/webviewRuntime.ts",
+    "apps/desktop/src/windowState.ts",
     "apps/mobile/native/browserBridge/content.ts",
     "apps/mobile/native/build.gradle.kts",
     "apps/mobile/native/mobileActivity.java",
@@ -228,11 +230,14 @@
     "apps/server/src/agent/runtime/index.ts",
     "apps/server/src/agent/runtime/mentions.ts",
     "apps/server/src/agent/runtime/model.ts",
+    "apps/server/src/agent/runtime/permissions.ts",
+    "apps/server/src/agent/runtime/preferences.ts",
     "apps/server/src/agent/runtime/prompt.ts",
     "apps/server/src/agent/runtime/requests.ts",
     "apps/server/src/agent/runtime/resources.ts",
     "apps/server/src/agent/runtime/sessions.ts",
     "apps/server/src/agent/runtime/subAgent.ts",
+    "apps/server/src/agent/runtime/toolOutput.ts",
     "apps/server/src/agent/runtime/types.ts",
     "apps/server/src/agent/skills/index.ts",
     "apps/server/src/agent/teams/index.ts",
@@ -257,12 +262,15 @@
     "apps/server/src/routes/agent.ts",
     "apps/server/src/routes/agent/answer.ts",
     "apps/server/src/routes/agent/canvasResult.ts",
+    "apps/server/src/routes/agent/compact.ts",
     "apps/server/src/routes/agent/create.ts",
+    "apps/server/src/routes/agent/fork.ts",
     "apps/server/src/routes/agent/get.ts",
     "apps/server/src/routes/agent/list.ts",
     "apps/server/src/routes/agent/mentionSource.ts",
     "apps/server/src/routes/agent/message.ts",
     "apps/server/src/routes/agent/rename.ts",
+    "apps/server/src/routes/agent/rewind.ts",
     "apps/server/src/routes/agent/skills.ts",
     "apps/server/src/routes/agents/a2a/get.ts",
     "apps/server/src/routes/agents/a2a/save.ts",
@@ -274,6 +282,7 @@
     "apps/server/src/routes/agents/setEnabled.ts",
     "apps/server/src/routes/agents/uninstall.ts",
     "apps/server/src/routes/ai/generate.ts",
+    "apps/server/src/routes/ai/generate/stop.ts",
     "apps/server/src/routes/ai/media/balance.ts",
     "apps/server/src/routes/ai/media/balanceEvents.ts",
     "apps/server/src/routes/ai/media/generate.ts",
@@ -282,12 +291,24 @@
     "apps/server/src/routes/ai/media/tasks/cancel.ts",
     "apps/server/src/routes/ai/media/tasks/status.ts",
     "apps/server/src/routes/ai/models.ts",
+    "apps/server/src/routes/assets/events.ts",
+    "apps/server/src/routes/assets/forget.ts",
+    "apps/server/src/routes/assets/import.ts",
     "apps/server/src/routes/assets/list.ts",
+    "apps/server/src/routes/assets/meta.ts",
     "apps/server/src/routes/assets/mkdir.ts",
+    "apps/server/src/routes/assets/move.ts",
+    "apps/server/src/routes/assets/purge.ts",
     "apps/server/src/routes/assets/read.ts",
     "apps/server/src/routes/assets/remove.ts",
     "apps/server/src/routes/assets/rename.ts",
+    "apps/server/src/routes/assets/restore.ts",
+    "apps/server/src/routes/assets/roots.ts",
     "apps/server/src/routes/assets/save.ts",
+    "apps/server/src/routes/assets/thumb.ts",
+    "apps/server/src/routes/assets/trash.ts",
+    "apps/server/src/routes/assets/tree.ts",
+    "apps/server/src/routes/assets/usage.ts",
     "apps/server/src/routes/browser/input.ts",
     "apps/server/src/routes/browser/stream.ts",
     "apps/server/src/routes/desktop/clipboard/read.ts",
@@ -338,6 +359,8 @@
     "apps/server/src/routes/mobileLink/pairing.ts",
     "apps/server/src/routes/mobileLink/revoke.ts",
     "apps/server/src/routes/mobileLink/status.ts",
+    "apps/server/src/routes/monitor/free.ts",
+    "apps/server/src/routes/monitor/status.ts",
     "apps/server/src/routes/nodes/files.ts",
     "apps/server/src/routes/nodes/get.ts",
     "apps/server/src/routes/nodes/install.ts",
@@ -354,6 +377,8 @@
     "apps/server/src/routes/providers/media/save.ts",
     "apps/server/src/routes/providers/media/validate.ts",
     "apps/server/src/routes/providers/models.ts",
+    "apps/server/src/routes/sessionState/get.ts",
+    "apps/server/src/routes/sessionState/patch.ts",
     "apps/server/src/routes/settings/get.ts",
     "apps/server/src/routes/settings/personalization/get.ts",
     "apps/server/src/routes/settings/personalization/save.ts",
@@ -391,6 +416,7 @@
     "apps/server/src/routes/workspaces/files/remove.ts",
     "apps/server/src/routes/workspaces/files/rename.ts",
     "apps/server/src/routes/workspaces/files/reveal.ts",
+    "apps/server/src/routes/workspaces/files/thumb.ts",
     "apps/server/src/routes/workspaces/files/write.ts",
     "apps/server/src/routes/workspaces/list.ts",
     "apps/server/src/routes/workspaces/selectDirectory.ts",
@@ -402,7 +428,17 @@
     "apps/server/src/utils/ai/modelContextLimits.ts",
     "apps/server/src/utils/ai/models.ts",
     "apps/server/src/utils/ai/requestFiles.ts",
+    "apps/server/src/utils/ai/runs.ts",
+    "apps/server/src/utils/ai/visibility.ts",
+    "apps/server/src/utils/assets/guard.ts",
     "apps/server/src/utils/assets/index.ts",
+    "apps/server/src/utils/assets/library.ts",
+    "apps/server/src/utils/assets/libraryMeta.ts",
+    "apps/server/src/utils/assets/roots.ts",
+    "apps/server/src/utils/assets/routeSchema.ts",
+    "apps/server/src/utils/assets/thumb.ts",
+    "apps/server/src/utils/assets/usage.ts",
+    "apps/server/src/utils/assets/watch.ts",
     "apps/server/src/utils/browser/index.ts",
     "apps/server/src/utils/conf/index.ts",
     "apps/server/src/utils/desktop/index.ts",
@@ -425,6 +461,7 @@
     "apps/server/src/utils/media/provider.ts",
     "apps/server/src/utils/media/tasks.ts",
     "apps/server/src/utils/mobileLink/index.ts",
+    "apps/server/src/utils/monitor.ts",
     "apps/server/src/utils/personalization.ts",
     "apps/server/src/utils/plugins/ext.ts",
     "apps/server/src/utils/plugins/initialize.ts",
@@ -432,6 +469,7 @@
     "apps/server/src/utils/plugins/install.ts",
     "apps/server/src/utils/plugins/nodes.ts",
     "apps/server/src/utils/plugins/tools.ts",
+    "apps/server/src/utils/sessionState/index.ts",
     "apps/server/src/utils/singleAgent/index.ts",
     "apps/server/src/utils/singleAgent/types.ts",
     "apps/server/src/utils/skills/files.ts",
@@ -523,9 +561,13 @@
     "apps/web/src/lib/desktopProtocol.ts",
     "apps/web/src/lib/i18n.ts",
     "apps/web/src/lib/mcpControl.ts",
+    "apps/web/src/lib/mediaPlayback.ts",
     "apps/web/src/lib/mobile.ts",
+    "apps/web/src/lib/modelVisibility.ts",
     "apps/web/src/lib/platform.ts",
+    "apps/web/src/lib/projectUi.ts",
     "apps/web/src/lib/providerBilling.ts",
+    "apps/web/src/lib/quitGuard.ts",
     "apps/web/src/lib/saveFile.ts",
     "apps/web/src/lib/shiki.ts",
     "apps/web/src/lib/tf.ts",
@@ -534,7 +576,8 @@
     "apps/web/src/main.ts",
     "apps/web/src/pages/hello/bg.vue",
     "apps/web/src/pages/hello/index.vue",
-    "apps/web/src/pages/home/assetLibraryDialog.vue",
+    "apps/web/src/pages/home/assetDetailDrawer.vue",
+    "apps/web/src/pages/home/assetLibraryView.vue",
     "apps/web/src/pages/home/bg.vue",
     "apps/web/src/pages/home/explore.vue",
     "apps/web/src/pages/home/exploreDetail.vue",
@@ -544,17 +587,36 @@
     "apps/web/src/pages/home/workspacePicker.vue",
     "apps/web/src/pages/workspace/canvasFile.ts",
     "apps/web/src/pages/workspace/components/floatingAgent.vue",
+    "apps/web/src/pages/workspace/components/floatingPanel.vue",
     "apps/web/src/pages/workspace/components/workspaceMenu.vue",
     "apps/web/src/pages/workspace/index.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/api.ts",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetContextMenu.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetDestinationTree.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetEmptyState.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetGridView.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetMetaDialog.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetMoveDialog.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetPreview.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetReferenceDialog.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetToolbar.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetTrashView.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetTreeView.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetUploadQueue.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/SaveToLibraryDialog.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/floatingAssetLibrary.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/index.vue",
+    "apps/web/src/pages/workspace/panels/assetLibrary/mock.ts",
+    "apps/web/src/pages/workspace/panels/assetLibrary/types.ts",
+    "apps/web/src/pages/workspace/panels/assetLibrary/useAssetActions.ts",
+    "apps/web/src/pages/workspace/panels/assetLibrary/useAssetLibrary.ts",
+    "apps/web/src/pages/workspace/panels/assetLibrary/useAssetUpload.ts",
     "apps/web/src/pages/workspace/panels/canvas/arrangeCanvas.ts",
     "apps/web/src/pages/workspace/panels/canvas/arrangeSelection.ts",
     "apps/web/src/pages/workspace/panels/canvas/canvasDrop.ts",
     "apps/web/src/pages/workspace/panels/canvas/canvasFiles.ts",
     "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue",
     "apps/web/src/pages/workspace/panels/canvas/canvasQueries.ts",
-    "apps/web/src/pages/workspace/panels/canvas/components/assetBrowser.vue",
-    "apps/web/src/pages/workspace/panels/canvas/components/assetLibrary.vue",
-    "apps/web/src/pages/workspace/panels/canvas/components/assetMenu.vue",
     "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue",
     "apps/web/src/pages/workspace/panels/canvas/components/canvasEmpty.vue",
     "apps/web/src/pages/workspace/panels/canvas/components/canvasMenu.vue",
@@ -567,7 +629,9 @@
     "apps/web/src/pages/workspace/panels/canvas/components/selectionToolbar.vue",
     "apps/web/src/pages/workspace/panels/canvas/index.vue",
     "apps/web/src/pages/workspace/panels/canvas/loadNodeComponent.ts",
+    "apps/web/src/pages/workspace/panels/canvas/nodeAssetCleanup.ts",
     "apps/web/src/pages/workspace/panels/canvas/nodeClipboard.ts",
+    "apps/web/src/pages/workspace/panels/canvas/overlayHost.vue",
     "apps/web/src/pages/workspace/panels/canvas/selectionConnections.ts",
     "apps/web/src/pages/workspace/panels/canvas/selectionNodes.ts",
     "apps/web/src/pages/workspace/panels/canvas/useCanvasHistory.ts",
@@ -585,9 +649,12 @@
     "apps/web/src/pages/workspace/panels/document/index.vue",
     "apps/web/src/pages/workspace/panels/document/theme.ts",
     "apps/web/src/router/index.ts",
+    "apps/web/src/stores/agentComposer.ts",
+    "apps/web/src/stores/assetLibrary.ts",
     "apps/web/src/stores/desktopUpdate.ts",
     "apps/web/src/stores/developer.ts",
     "apps/web/src/stores/hello.ts",
+    "apps/web/src/stores/sessionState.ts",
     "apps/web/src/stores/settings.ts",
     "apps/web/src/stores/workspace.ts",
     "apps/web/src/types/components.d.ts",
@@ -617,6 +684,10 @@
     "packages/ext/canvasNode/src/index.vue",
     "packages/ext/canvasNode/src/metadata.ts",
     "packages/ext/canvasNode/viteConfig.ts",
+    "packages/ext/comfyMonitor/src/index.ts",
+    "packages/ext/comfyMonitor/src/index.vue",
+    "packages/ext/comfyMonitor/src/metadata.ts",
+    "packages/ext/comfyMonitor/viteConfig.ts",
     "packages/ext/image/src/index.ts",
     "packages/ext/image/src/index.vue",
     "packages/ext/image/src/metadata.ts",
@@ -736,6 +807,7 @@
     "packages/nodes/imageNode/src/components/imageMultiAngleStage.vue",
     "packages/nodes/imageNode/src/components/imagePanorama.vue",
     "packages/nodes/imageNode/src/components/imagePanoramaPreview.vue",
+    "packages/nodes/imageNode/src/components/imageScale.vue",
     "packages/nodes/imageNode/src/components/imageVariationGenerator.vue",
     "packages/nodes/imageNode/src/imageInpaint.ts",
     "packages/nodes/imageNode/src/imageLighting.ts",
@@ -810,7 +882,8 @@
     "packages/tools/webSearch/src/index.ts",
     "packages/tools/workspace/build.ts",
     "packages/tools/workspace/src/index.ts",
-    "postcss.config.ts"
+    "postcss.config.ts",
+    "scripts/bundle-desktop.ts"
   ],
   "owned": {
     "apps/desktop/installer/checkRunning.cs": "desktop-shell",
@@ -832,6 +905,7 @@
     "apps/desktop/src/saveFile.ts": "desktop-shell",
     "apps/desktop/src/update/windowsUpdater.ts": "desktop-shell",
     "apps/desktop/src/webviewRuntime.ts": "desktop-shell",
+    "apps/desktop/src/windowState.ts": "desktop-shell",
     "apps/mobile/native/browserBridge/content.ts": "mobile-shell",
     "apps/mobile/native/build.gradle.kts": "mobile-shell",
     "apps/mobile/native/mobileActivity.java": "mobile-shell",
@@ -855,11 +929,14 @@
     "apps/server/src/agent/runtime/index.ts": "agent-runtime",
     "apps/server/src/agent/runtime/mentions.ts": "agent-runtime",
     "apps/server/src/agent/runtime/model.ts": "agent-runtime",
+    "apps/server/src/agent/runtime/permissions.ts": "agent-runtime",
+    "apps/server/src/agent/runtime/preferences.ts": "agent-runtime",
     "apps/server/src/agent/runtime/prompt.ts": "agent-runtime",
     "apps/server/src/agent/runtime/requests.ts": "agent-runtime",
     "apps/server/src/agent/runtime/resources.ts": "agent-runtime",
     "apps/server/src/agent/runtime/sessions.ts": "agent-runtime",
     "apps/server/src/agent/runtime/subAgent.ts": "agent-runtime",
+    "apps/server/src/agent/runtime/toolOutput.ts": "agent-runtime",
     "apps/server/src/agent/runtime/types.ts": "agent-runtime",
     "apps/server/src/agent/skills/index.ts": "agent-runtime",
     "apps/server/src/agent/teams/index.ts": "agent-runtime",
@@ -884,12 +961,15 @@
     "apps/server/src/routes/agent.ts": "server-api",
     "apps/server/src/routes/agent/answer.ts": "server-api",
     "apps/server/src/routes/agent/canvasResult.ts": "server-api",
+    "apps/server/src/routes/agent/compact.ts": "server-api",
     "apps/server/src/routes/agent/create.ts": "server-api",
+    "apps/server/src/routes/agent/fork.ts": "server-api",
     "apps/server/src/routes/agent/get.ts": "server-api",
     "apps/server/src/routes/agent/list.ts": "server-api",
     "apps/server/src/routes/agent/mentionSource.ts": "server-api",
     "apps/server/src/routes/agent/message.ts": "server-api",
     "apps/server/src/routes/agent/rename.ts": "server-api",
+    "apps/server/src/routes/agent/rewind.ts": "server-api",
     "apps/server/src/routes/agent/skills.ts": "server-api",
     "apps/server/src/routes/agents/a2a/get.ts": "server-api",
     "apps/server/src/routes/agents/a2a/save.ts": "server-api",
@@ -901,6 +981,7 @@
     "apps/server/src/routes/agents/setEnabled.ts": "server-api",
     "apps/server/src/routes/agents/uninstall.ts": "server-api",
     "apps/server/src/routes/ai/generate.ts": "server-api",
+    "apps/server/src/routes/ai/generate/stop.ts": "server-api",
     "apps/server/src/routes/ai/media/balance.ts": "server-api",
     "apps/server/src/routes/ai/media/balanceEvents.ts": "server-api",
     "apps/server/src/routes/ai/media/generate.ts": "server-api",
@@ -909,12 +990,24 @@
     "apps/server/src/routes/ai/media/tasks/cancel.ts": "server-api",
     "apps/server/src/routes/ai/media/tasks/status.ts": "server-api",
     "apps/server/src/routes/ai/models.ts": "server-api",
+    "apps/server/src/routes/assets/events.ts": "server-api",
+    "apps/server/src/routes/assets/forget.ts": "server-api",
+    "apps/server/src/routes/assets/import.ts": "server-api",
     "apps/server/src/routes/assets/list.ts": "server-api",
+    "apps/server/src/routes/assets/meta.ts": "server-api",
     "apps/server/src/routes/assets/mkdir.ts": "server-api",
+    "apps/server/src/routes/assets/move.ts": "server-api",
+    "apps/server/src/routes/assets/purge.ts": "server-api",
     "apps/server/src/routes/assets/read.ts": "server-api",
     "apps/server/src/routes/assets/remove.ts": "server-api",
     "apps/server/src/routes/assets/rename.ts": "server-api",
+    "apps/server/src/routes/assets/restore.ts": "server-api",
+    "apps/server/src/routes/assets/roots.ts": "server-api",
     "apps/server/src/routes/assets/save.ts": "server-api",
+    "apps/server/src/routes/assets/thumb.ts": "server-api",
+    "apps/server/src/routes/assets/trash.ts": "server-api",
+    "apps/server/src/routes/assets/tree.ts": "server-api",
+    "apps/server/src/routes/assets/usage.ts": "server-api",
     "apps/server/src/routes/browser/input.ts": "server-api",
     "apps/server/src/routes/browser/stream.ts": "server-api",
     "apps/server/src/routes/desktop/clipboard/read.ts": "server-api",
@@ -965,6 +1058,8 @@
     "apps/server/src/routes/mobileLink/pairing.ts": "server-api",
     "apps/server/src/routes/mobileLink/revoke.ts": "server-api",
     "apps/server/src/routes/mobileLink/status.ts": "server-api",
+    "apps/server/src/routes/monitor/free.ts": "server-api",
+    "apps/server/src/routes/monitor/status.ts": "server-api",
     "apps/server/src/routes/nodes/files.ts": "server-api",
     "apps/server/src/routes/nodes/get.ts": "server-api",
     "apps/server/src/routes/nodes/install.ts": "server-api",
@@ -981,6 +1076,8 @@
     "apps/server/src/routes/providers/media/save.ts": "server-api",
     "apps/server/src/routes/providers/media/validate.ts": "server-api",
     "apps/server/src/routes/providers/models.ts": "server-api",
+    "apps/server/src/routes/sessionState/get.ts": "server-api",
+    "apps/server/src/routes/sessionState/patch.ts": "server-api",
     "apps/server/src/routes/settings/get.ts": "server-api",
     "apps/server/src/routes/settings/personalization/get.ts": "server-api",
     "apps/server/src/routes/settings/personalization/save.ts": "server-api",
@@ -1018,6 +1115,7 @@
     "apps/server/src/routes/workspaces/files/remove.ts": "server-api",
     "apps/server/src/routes/workspaces/files/rename.ts": "server-api",
     "apps/server/src/routes/workspaces/files/reveal.ts": "server-api",
+    "apps/server/src/routes/workspaces/files/thumb.ts": "server-api",
     "apps/server/src/routes/workspaces/files/write.ts": "server-api",
     "apps/server/src/routes/workspaces/list.ts": "server-api",
     "apps/server/src/routes/workspaces/selectDirectory.ts": "server-api",
@@ -1029,7 +1127,17 @@
     "apps/server/src/utils/ai/modelContextLimits.ts": "server-api",
     "apps/server/src/utils/ai/models.ts": "server-api",
     "apps/server/src/utils/ai/requestFiles.ts": "server-api",
+    "apps/server/src/utils/ai/runs.ts": "server-api",
+    "apps/server/src/utils/ai/visibility.ts": "server-api",
+    "apps/server/src/utils/assets/guard.ts": "server-api",
     "apps/server/src/utils/assets/index.ts": "server-api",
+    "apps/server/src/utils/assets/library.ts": "server-api",
+    "apps/server/src/utils/assets/libraryMeta.ts": "server-api",
+    "apps/server/src/utils/assets/roots.ts": "server-api",
+    "apps/server/src/utils/assets/routeSchema.ts": "server-api",
+    "apps/server/src/utils/assets/thumb.ts": "server-api",
+    "apps/server/src/utils/assets/usage.ts": "server-api",
+    "apps/server/src/utils/assets/watch.ts": "server-api",
     "apps/server/src/utils/browser/index.ts": "server-api",
     "apps/server/src/utils/conf/index.ts": "server-api",
     "apps/server/src/utils/desktop/index.ts": "server-api",
@@ -1052,6 +1160,7 @@
     "apps/server/src/utils/media/provider.ts": "server-api",
     "apps/server/src/utils/media/tasks.ts": "server-api",
     "apps/server/src/utils/mobileLink/index.ts": "server-api",
+    "apps/server/src/utils/monitor.ts": "server-api",
     "apps/server/src/utils/personalization.ts": "server-api",
     "apps/server/src/utils/plugins/ext.ts": "server-api",
     "apps/server/src/utils/plugins/initialize.ts": "server-api",
@@ -1059,6 +1168,7 @@
     "apps/server/src/utils/plugins/install.ts": "server-api",
     "apps/server/src/utils/plugins/nodes.ts": "server-api",
     "apps/server/src/utils/plugins/tools.ts": "server-api",
+    "apps/server/src/utils/sessionState/index.ts": "server-api",
     "apps/server/src/utils/singleAgent/index.ts": "server-api",
     "apps/server/src/utils/singleAgent/types.ts": "server-api",
     "apps/server/src/utils/skills/files.ts": "server-api",
@@ -1150,9 +1260,13 @@
     "apps/web/src/lib/desktopProtocol.ts": "web-console",
     "apps/web/src/lib/i18n.ts": "web-console",
     "apps/web/src/lib/mcpControl.ts": "web-console",
+    "apps/web/src/lib/mediaPlayback.ts": "web-console",
     "apps/web/src/lib/mobile.ts": "web-console",
+    "apps/web/src/lib/modelVisibility.ts": "web-console",
     "apps/web/src/lib/platform.ts": "web-console",
+    "apps/web/src/lib/projectUi.ts": "web-console",
     "apps/web/src/lib/providerBilling.ts": "web-console",
+    "apps/web/src/lib/quitGuard.ts": "web-console",
     "apps/web/src/lib/saveFile.ts": "web-console",
     "apps/web/src/lib/shiki.ts": "web-console",
     "apps/web/src/lib/tf.ts": "web-console",
@@ -1161,7 +1275,8 @@
     "apps/web/src/main.ts": "web-console",
     "apps/web/src/pages/hello/bg.vue": "web-console",
     "apps/web/src/pages/hello/index.vue": "web-console",
-    "apps/web/src/pages/home/assetLibraryDialog.vue": "web-console",
+    "apps/web/src/pages/home/assetDetailDrawer.vue": "web-console",
+    "apps/web/src/pages/home/assetLibraryView.vue": "web-console",
     "apps/web/src/pages/home/bg.vue": "web-console",
     "apps/web/src/pages/home/explore.vue": "web-console",
     "apps/web/src/pages/home/exploreDetail.vue": "web-console",
@@ -1171,17 +1286,36 @@
     "apps/web/src/pages/home/workspacePicker.vue": "web-console",
     "apps/web/src/pages/workspace/canvasFile.ts": "web-console",
     "apps/web/src/pages/workspace/components/floatingAgent.vue": "web-console",
+    "apps/web/src/pages/workspace/components/floatingPanel.vue": "web-console",
     "apps/web/src/pages/workspace/components/workspaceMenu.vue": "web-console",
     "apps/web/src/pages/workspace/index.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/api.ts": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetContextMenu.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetDestinationTree.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetEmptyState.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetGridView.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetMetaDialog.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetMoveDialog.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetPreview.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetReferenceDialog.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetToolbar.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetTrashView.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetTreeView.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetUploadQueue.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/components/SaveToLibraryDialog.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/floatingAssetLibrary.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/index.vue": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/mock.ts": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/types.ts": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/useAssetActions.ts": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/useAssetLibrary.ts": "web-console",
+    "apps/web/src/pages/workspace/panels/assetLibrary/useAssetUpload.ts": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/arrangeCanvas.ts": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/arrangeSelection.ts": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/canvasDrop.ts": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/canvasFiles.ts": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/canvasQueries.ts": "web-console",
-    "apps/web/src/pages/workspace/panels/canvas/components/assetBrowser.vue": "web-console",
-    "apps/web/src/pages/workspace/panels/canvas/components/assetLibrary.vue": "web-console",
-    "apps/web/src/pages/workspace/panels/canvas/components/assetMenu.vue": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/components/canvasEmpty.vue": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/components/canvasMenu.vue": "web-console",
@@ -1194,7 +1328,9 @@
     "apps/web/src/pages/workspace/panels/canvas/components/selectionToolbar.vue": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/index.vue": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/loadNodeComponent.ts": "web-console",
+    "apps/web/src/pages/workspace/panels/canvas/nodeAssetCleanup.ts": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/nodeClipboard.ts": "web-console",
+    "apps/web/src/pages/workspace/panels/canvas/overlayHost.vue": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/selectionConnections.ts": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/selectionNodes.ts": "web-console",
     "apps/web/src/pages/workspace/panels/canvas/useCanvasHistory.ts": "web-console",
@@ -1212,9 +1348,12 @@
     "apps/web/src/pages/workspace/panels/document/index.vue": "web-console",
     "apps/web/src/pages/workspace/panels/document/theme.ts": "web-console",
     "apps/web/src/router/index.ts": "web-console",
+    "apps/web/src/stores/agentComposer.ts": "web-console",
+    "apps/web/src/stores/assetLibrary.ts": "web-console",
     "apps/web/src/stores/desktopUpdate.ts": "web-console",
     "apps/web/src/stores/developer.ts": "web-console",
     "apps/web/src/stores/hello.ts": "web-console",
+    "apps/web/src/stores/sessionState.ts": "web-console",
     "apps/web/src/stores/settings.ts": "web-console",
     "apps/web/src/stores/workspace.ts": "web-console",
     "apps/web/src/types/components.d.ts": "web-console",
@@ -1244,6 +1383,10 @@
     "packages/ext/canvasNode/src/index.vue": "canvas-extensions",
     "packages/ext/canvasNode/src/metadata.ts": "canvas-extensions",
     "packages/ext/canvasNode/viteConfig.ts": "canvas-extensions",
+    "packages/ext/comfyMonitor/src/index.ts": "canvas-extensions",
+    "packages/ext/comfyMonitor/src/index.vue": "canvas-extensions",
+    "packages/ext/comfyMonitor/src/metadata.ts": "canvas-extensions",
+    "packages/ext/comfyMonitor/viteConfig.ts": "canvas-extensions",
     "packages/ext/image/src/index.ts": "canvas-extensions",
     "packages/ext/image/src/index.vue": "canvas-extensions",
     "packages/ext/image/src/metadata.ts": "canvas-extensions",
@@ -1363,6 +1506,7 @@
     "packages/nodes/imageNode/src/components/imageMultiAngleStage.vue": "workflow-nodes",
     "packages/nodes/imageNode/src/components/imagePanorama.vue": "workflow-nodes",
     "packages/nodes/imageNode/src/components/imagePanoramaPreview.vue": "workflow-nodes",
+    "packages/nodes/imageNode/src/components/imageScale.vue": "workflow-nodes",
     "packages/nodes/imageNode/src/components/imageVariationGenerator.vue": "workflow-nodes",
     "packages/nodes/imageNode/src/imageInpaint.ts": "workflow-nodes",
     "packages/nodes/imageNode/src/imageLighting.ts": "workflow-nodes",
@@ -1437,7 +1581,8 @@
     "packages/tools/webSearch/src/index.ts": "agent-tools",
     "packages/tools/workspace/build.ts": "agent-tools",
     "packages/tools/workspace/src/index.ts": "agent-tools",
-    "postcss.config.ts": "web-console"
+    "postcss.config.ts": "web-console",
+    "scripts/bundle-desktop.ts": "desktop-shell"
   },
   "unowned": [],
   "stats": {
@@ -1455,31 +1600,31 @@
     },
     "agent-tools": {
       "files": 37,
-      "loc": 3579
+      "loc": 3592
     },
     "agent-runtime": {
-      "files": 30,
-      "loc": 3492
+      "files": 33,
+      "loc": 4395
     },
     "workflow-nodes": {
-      "files": 93,
-      "loc": 16146
+      "files": 94,
+      "loc": 17171
     },
     "canvas-extensions": {
-      "files": 26,
-      "loc": 1963
+      "files": 30,
+      "loc": 2523
     },
     "web-console": {
-      "files": 147,
-      "loc": 35114
+      "files": 176,
+      "loc": 42491
     },
     "server-api": {
-      "files": 204,
-      "loc": 11106
+      "files": 237,
+      "loc": 14349
     },
     "desktop-shell": {
-      "files": 37,
-      "loc": 4269
+      "files": 39,
+      "loc": 4707
     },
     "mobile-shell": {
       "files": 20,
@@ -1504,9 +1649,9 @@
     {
       "from": "agent-runtime",
       "to": "server-api",
-      "count": 66,
+      "count": 73,
       "types": {
-        "import": 66
+        "import": 73
       },
       "samples": [
         "apps/server/src/agent/a2a/index.ts -> @/utils/teams",
@@ -1518,9 +1663,9 @@
     {
       "from": "agent-runtime",
       "to": "shared-foundation",
-      "count": 12,
+      "count": 14,
       "types": {
-        "import": 12
+        "import": 14
       },
       "samples": [
         "apps/server/src/agent/a2a/settings.ts -> @toonflow/file",
@@ -1610,9 +1755,9 @@
     {
       "from": "desktop-shell",
       "to": "shared-foundation",
-      "count": 25,
+      "count": 26,
       "types": {
-        "import": 25
+        "import": 26
       },
       "samples": [
         "apps/desktop/installer/initializeInstall.ts -> @toonflow/file",
@@ -1701,9 +1846,9 @@
     {
       "from": "server-api",
       "to": "agent-runtime",
-      "count": 25,
+      "count": 28,
       "types": {
-        "import": 25
+        "import": 28
       },
       "samples": [
         "apps/server/src/app.ts -> @/agent/a2a",
@@ -1769,9 +1914,9 @@
     {
       "from": "server-api",
       "to": "shared-foundation",
-      "count": 69,
+      "count": 77,
       "types": {
-        "import": 69
+        "import": 77
       },
       "samples": [
         "apps/server/scripts/build.ts -> @toonflow/file",
@@ -1783,9 +1928,9 @@
     {
       "from": "web-console",
       "to": "agent-runtime",
-      "count": 19,
+      "count": 18,
       "types": {
-        "import": 19
+        "import": 18
       },
       "samples": [
         "apps/web/src/components/agent/conversation.vue -> @toonflow/server/agent/types",
@@ -1825,11 +1970,12 @@
     {
       "from": "web-console",
       "to": "canvas-extensions",
-      "count": 3,
+      "count": 4,
       "types": {
-        "import": 3
+        "import": 4
       },
       "samples": [
+        "apps/web/src/pages/workspace/panels/canvas/overlayHost.vue -> @toonflow/ext-scaffold/runtime",
         "apps/web/src/pages/workspace/panels/document/documentSession.ts -> @toonflow/ext-scaffold/runtime",
         "apps/web/src/pages/workspace/panels/document/extensions.ts -> @toonflow/ext-scaffold/runtime",
         "apps/web/src/pages/workspace/panels/document/index.vue -> @toonflow/ext-scaffold/runtime"
@@ -1861,10 +2007,10 @@
     {
       "from": "web-console",
       "to": "server-api",
-      "count": 68,
+      "count": 64,
       "types": {
         "import": 20,
-        "api": 48
+        "api": 44
       },
       "samples": [
         "apps/web/src/App.vue -> @toonflow/server/desktop",
@@ -1876,23 +2022,23 @@
     {
       "from": "web-console",
       "to": "shared-foundation",
-      "count": 51,
+      "count": 70,
       "types": {
-        "import": 51
+        "import": 70
       },
       "samples": [
         "apps/web/src/App.vue -> @toonflow/i18n/elementPlus",
         "apps/web/src/App.vue -> @toonflow/i18n/vue",
-        "apps/web/src/components/agent/conversation.vue -> @toonflow/i18n/vue",
-        "apps/web/src/components/agent/conversation/messageInput.vue -> @toonflow/i18n/vue"
+        "apps/web/src/components/agent/attachmentPreview.vue -> @toonflow/i18n/vue",
+        "apps/web/src/components/agent/conversation.vue -> @toonflow/i18n/vue"
       ]
     },
     {
       "from": "web-console",
       "to": "workflow-nodes",
-      "count": 30,
+      "count": 32,
       "types": {
-        "import": 30
+        "import": 32
       },
       "samples": [
         "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue -> @toonflow/nodes-scaffold/nodeAi",

@@ -2,7 +2,7 @@
   "id": "workflow-nodes",
   "name": "画布节点插件",
   "layer": "presentation",
-  "responsibility": "短剧画布节点插件与共享节点 UI/运行时脚手架",
+  "responsibility": "短剧画布节点插件与节点 UI/运行时脚手架",
   "files": [
     "packages/nodes/**",
     "packages/nodeShared/**",
@@ -17,7 +17,7 @@
     {
       "file": "packages/nodeScaffold/src/nodeSkeleton.vue",
       "symbol": "nodeSkeleton",
-      "kind": "class"
+      "kind": "function"
     },
     {
       "file": "packages/nodeShared/src/useNodeGeneration.ts",
@@ -27,38 +27,37 @@
     {
       "file": "packages/nodes/director3dNode/src/index.vue",
       "symbol": "director3dNode",
-      "kind": "class"
+      "kind": "function"
     }
   ],
-  "health": {
-    "score": 72,
-    "coupling": "medium",
-    "complexity": "high",
-    "churn": "high",
-    "decay_flags": [
-      "build_duplication",
-      "large_module"
-    ],
-    "review_note": "93 文件 16,146 行，9 个节点包各自维护 vite.config.ts 与构建脚本；nodeSkeleton.vue 786 行为全部节点提供 UI 基座，近 3 个月 16 次提交、171 次文件变更。建议把重复构建配置收敛为共享 preset，并把骨架拆成布局/状态/操作三段、版本化接口。",
-    "concerns": [
-      {
-        "id": "c-workflow-nodes-1",
-        "severity": "high",
-        "finding": "9 个节点包各自复制 vite.config.ts 与 build.ts，新增节点靠脚手架复制，构建配置已出现多份近似实现。",
-        "suggestion": "抽 @toonflow/nodes-build preset，节点只保留 package.json 与入口，构建差异用参数表达。"
-      },
-      {
-        "id": "c-workflow-nodes-2",
-        "severity": "high",
-        "finding": "nodeSkeleton.vue（786 行）是所有节点共用的 UI 基座，一处改动会同时影响全部节点插件。",
-        "suggestion": "拆分骨架为布局/状态/操作三段并发布版本化接口，节点按需组合，避免基座变更引发全量回归。"
-      }
-    ]
-  },
   "dependencies": [
     "agent-tools",
     "media-toolkit",
     "shared-foundation"
   ],
-  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+  "health": {
+    "score": 70,
+    "coupling": "medium",
+    "complexity": "high",
+    "churn": "medium",
+    "decay_flags": [
+      "large_module"
+    ],
+    "review_note": "94 文件 / 17,171 行，9 个节点包共享 nodeScaffold；出边 3、入边仅 web。nodeSkeleton.vue 854 行、sceneEditor.vue 833 行、imagePanoramaPreview.vue 599 行集中了布局、交互与场景生命周期。建议按布局/工具栏/场景拆组件，并由 nodeScaffold 统一节点 manifest 的生成与构建期校验。",
+    "concerns": [
+      {
+        "id": "c-workflow-nodes-1",
+        "severity": "high",
+        "finding": "nodeSkeleton.vue 854 行、sceneEditor.vue 833 行、imagePanoramaPreview.vue 599 行，单文件同时承担布局、工具栏、交互与 3D 场景生命周期。",
+        "suggestion": "按布局、工具栏、场景生命周期拆组件，交互逻辑移入 composable，节点入口只保留装配。"
+      },
+      {
+        "id": "c-workflow-nodes-2",
+        "severity": "high",
+        "finding": "9 个节点包的元数据与构建产物格式依赖 nodeScaffold 注释隐式约定，缺少统一 manifest schema 与跨包校验，新增节点容易漏字段。",
+        "suggestion": "由 nodeScaffold 生成统一的节点 manifest 类型，并在构建脚本中做 schema 校验。"
+      }
+    ]
+  },
+  "last_analyzed_at": "2026-10-26T21:12:00+08:00"
 }

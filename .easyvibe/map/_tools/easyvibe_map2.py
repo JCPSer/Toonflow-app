@@ -273,12 +273,14 @@ def cmd_write_edges(_args):
     print(mid)
 
 
-def load_parts(order):
+def load_parts(order, allow_missing=False):
     modules, edges = [], []
     for mid in order["modules"]:
         mpath = os.path.join(PARTS_DIR, mid + ".json")
         epath = os.path.join(PARTS_DIR, mid + ".edges.json")
         if not os.path.exists(mpath):
+            if allow_missing:
+                break
             sys.exit(f"missing part: {mid}")
         mod = read_json(mpath)
         out = read_json(epath)["edges"] if os.path.exists(epath) else []
@@ -290,7 +292,8 @@ def load_parts(order):
 
 def cmd_append_log(_args):
     order = read_json(EMIT_ORDER)
-    modules, edges = load_parts(order)
+    # Incremental: append the bottom-up prefix that exists. The final call appends the rest.
+    modules, edges = load_parts(order, allow_missing=True)
     by_id = {m["id"]: m for m in modules}
     seen_layers, seen_modules, seen_archive = set(), set(), False
     if os.path.exists(GROWTH):
@@ -314,6 +317,8 @@ def cmd_append_log(_args):
     for mid in order["modules"]:
         if mid in seen_modules:
             continue
+        if mid not in by_id:
+            break
         mod = by_id[mid]
         out = [e for e in edges if e["from"] == mid]
         append_jsonl(GROWTH, {"type": "module", "module": mod, "out_edges": out})
@@ -382,25 +387,35 @@ def cmd_finalize(args):
     for m in modules:
         m["last_analyzed_at"] = m.get("last_analyzed_at") or args.generated_at
 
+    meta = {
+        "repo": "Toonflow-app",
+        "generated_at": args.generated_at,
+        "generator": "easyvibe-architect/claude-sonnet-4-6",
+        "description": "Toonflow AI 短剧漫剧创作平台：Vue 工作区 + Express 服务 + Agent 运行时，插件化节点/工具/扩展与素材库，桌面与移动端原生壳与更新分发。",
+        "languages": ["TypeScript", "Vue", "C#", "C++", "ArkTS", "Java", "Objective-C"],
+        "loc": args.loc,
+        "map_freshness": "fresh",
+        "stats": {
+            "files_total": total,
+            "files_covered": covered,
+            "coverage_ratio": round(ratio, 4),
+            "edges_derived": len(edges),
+            "edges_inferred": 0,
+            "retried_modules": 0,
+        },
+    }
+    if args.meta_file:
+        overrides = read_json(args.meta_file)
+        for key in ("repo", "generator", "description", "languages", "loc", "map_freshness", "last_patrol_at"):
+            if key in overrides:
+                meta[key] = overrides[key]
+    if args.head_short:
+        if not re.match(r"^[0-9a-f]{7,40}$", args.head_short):
+            sys.exit("bad --head-short")
+        meta["provenance"] = {"head_short": args.head_short, "generated_at": args.generated_at}
     map_data = {
         "version": "1.0",
-        "meta": {
-            "repo": "Toonflow-app",
-            "generated_at": args.generated_at,
-            "generator": "easyvibe-architect/claude-opus-4-6",
-            "description": "Toonflow AI 短剧漫剧创作平台：Vue 工作区 + Express 服务 + Agent 运行时，插件化节点/工具/扩展，桌面与移动端原生壳与更新分发。",
-            "languages": ["TypeScript", "Vue", "JavaScript", "Java", "C++", "C#", "ArkTS"],
-            "loc": args.loc,
-            "map_freshness": "fresh",
-            "stats": {
-                "files_total": total,
-                "files_covered": covered,
-                "coverage_ratio": round(ratio, 4),
-                "edges_derived": len(edges),
-                "edges_inferred": 0,
-                "retried_modules": 0,
-            },
-        },
+        "meta": meta,
         "layers": layers,
         "modules": modules,
         "edges": edges,
@@ -459,6 +474,8 @@ def main():
     fin = sub.add_parser("finalize")
     fin.add_argument("--generated-at", default=now())
     fin.add_argument("--loc", type=int, default=0)
+    fin.add_argument("--head-short", default="")
+    fin.add_argument("--meta-file", default=None)
     fin.set_defaults(fn=cmd_finalize)
     args = ap.parse_args()
     args.fn(args)

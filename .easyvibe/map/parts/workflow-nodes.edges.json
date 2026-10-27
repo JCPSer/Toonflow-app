@@ -2,28 +2,28 @@
   "module": "workflow-nodes",
   "edges": [
     {
-      "id": "e13",
+      "id": "e14",
       "from": "workflow-nodes",
       "to": "agent-tools",
       "type": "import",
-      "strength": "weak",
-      "label": "tools-scaffold 类型"
-    },
-    {
-      "id": "e14",
-      "from": "workflow-nodes",
-      "to": "media-toolkit",
-      "type": "import",
-      "strength": "normal",
-      "label": "ffmpeg/asr"
+      "label": "3 处 tools-scaffold 类型",
+      "strength": "weak"
     },
     {
       "id": "e15",
       "from": "workflow-nodes",
+      "to": "media-toolkit",
+      "type": "import",
+      "label": "7 处 ffmpeg/asr",
+      "strength": "normal"
+    },
+    {
+      "id": "e16",
+      "from": "workflow-nodes",
       "to": "shared-foundation",
       "type": "import",
-      "strength": "weak",
-      "label": "file/i18n"
+      "label": "1 处 file 构建脚手架",
+      "strength": "weak"
     }
   ]
 }

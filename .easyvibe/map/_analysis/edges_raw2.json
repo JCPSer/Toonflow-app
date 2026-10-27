@@ -1,0 +1,721 @@
+{
+ "desktop-shell->shared-foundation": {
+  "count": 25,
+  "files": [
+   "apps/desktop/installer/initializeInstall.ts",
+   "apps/desktop/scripts/build.ts",
+   "apps/desktop/scripts/localizeMac.ts",
+   "apps/desktop/scripts/macDmg.ts",
+   "apps/desktop/scripts/packageWindows.ts",
+   "apps/desktop/scripts/release.ts",
+   "apps/desktop/src/index.ts",
+   "apps/desktop/src/saveFile.ts",
+   "apps/desktop/src/update/windowsUpdater.ts",
+   "apps/updateServer/scripts/publish.ts",
+   "apps/updateServer/src/app.ts",
+   "apps/updateServer/src/index.ts",
+   "compat/macIntel/build.ts",
+   "compat/macIntel/prepareNative.ts",
+   "compat/macIntel/updater.ts",
+   "packages/startup/scripts/buildMac.ts",
+   "packages/startup/src/splashPlayer.ts"
+  ],
+  "examples": [
+   "@toonflow/file",
+   "@toonflow/file/bun",
+   "@toonflow/i18n"
+  ]
+ },
+ "desktop-shell->server-api": {
+  "count": 15,
+  "files": [
+   "apps/desktop/scripts/build.ts",
+   "apps/desktop/src/connection.ts",
+   "apps/desktop/src/index.ts",
+   "apps/desktop/src/protocol.ts",
+   "apps/desktop/src/saveFile.ts",
+   "apps/desktop/src/update/windowsUpdater.ts"
+  ],
+  "examples": [
+   "../../server/scripts/copyDocumentPackages",
+   "@toonflow/server/remoteConnection",
+   "@toonflow/server/mobileLink",
+   "@toonflow/server/mcp",
+   "@toonflow/server/i18n",
+   "@toonflow/server/platform",
+   "@toonflow/server/desktop",
+   "@toonflow/server/app"
+  ]
+ },
+ "mobile-shell->shared-foundation": {
+  "count": 14,
+  "files": [
+   "apps/mobile/scripts/build.ts",
+   "apps/mobile/scripts/prepare.ts",
+   "apps/mobile/src/server.ts",
+   "compat/ohos/build.ts",
+   "compat/ohos/nodeBuildPlugin.ts",
+   "compat/ohos/prepare.ts",
+   "compat/ohos/runtime.ts"
+  ],
+  "examples": [
+   "@toonflow/file",
+   "@toonflow/file/bun"
+  ]
+ },
+ "mobile-shell->desktop-shell": {
+  "count": 3,
+  "files": [
+   "apps/mobile/scripts/build.ts",
+   "apps/mobile/src/server.ts",
+   "compat/ohos/build.ts"
+  ],
+  "examples": [
+   "../../../electrobun.config",
+   "../../electrobun.config"
+  ]
+ },
+ "mobile-shell->web-console": {
+  "count": 1,
+  "files": [
+   "apps/mobile/src/server.ts"
+  ],
+  "examples": [
+   "@toonflow/web/browserCapabilities"
+  ]
+ },
+ "mobile-shell->server-api": {
+  "count": 5,
+  "files": [
+   "apps/mobile/src/server.ts"
+  ],
+  "examples": [
+   "@toonflow/server/remoteConnection",
+   "@toonflow/server/i18n",
+   "@toonflow/server/platform",
+   "@toonflow/server/app",
+   "@toonflow/server/mcp"
+  ]
+ },
+ "server-api->shared-foundation": {
+  "count": 75,
+  "files": [
+   "apps/server/scripts/build.ts",
+   "apps/server/scripts/buildStandalone.ts",
+   "apps/server/scripts/copyDocumentPackages.ts",
+   "apps/server/src/app.ts",
+   "apps/server/src/core.ts",
+   "apps/server/src/lib/i18n.ts",
+   "apps/server/src/lib/responseFormat.ts",
+   "apps/server/src/remoteConnection.ts",
+   "apps/server/src/routes/assets/forget.ts",
+   "apps/server/src/routes/assets/list.ts",
+   "apps/server/src/routes/assets/read.ts",
+   "apps/server/src/routes/desktop/selectDirectory.ts",
+   "apps/server/src/routes/exec/index.ts",
+   "apps/server/src/routes/ext/list.ts",
+   "apps/server/src/routes/ext/read.ts",
+   "apps/server/src/routes/ext/setEnabled.ts",
+   "apps/server/src/routes/ext/uninstall.ts",
+   "apps/server/src/routes/nodes/files.ts",
+   "apps/server/src/routes/nodes/get.ts",
+   "apps/server/src/routes/nodes/setEnabled.ts",
+   "apps/server/src/routes/nodes/uninstall.ts",
+   "apps/server/src/routes/plugins/export.ts",
+   "apps/server/src/routes/skills/get.ts",
+   "apps/server/src/routes/skills/read.ts",
+   "apps/server/src/routes/tools/client.ts",
+   "apps/server/src/routes/tools/setEnabled.ts",
+   "apps/server/src/routes/tools/uninstall.ts",
+   "apps/server/src/routes/workspaces/clone.ts",
+   "apps/server/src/routes/workspaces/files/list.ts",
+   "apps/server/src/routes/workspaces/files/mkdir.ts",
+   "apps/server/src/routes/workspaces/files/read.ts",
+   "apps/server/src/routes/workspaces/files/remove.ts",
+   "apps/server/src/routes/workspaces/files/reveal.ts",
+   "apps/server/src/routes/workspaces/files/write.ts",
+   "apps/server/src/routes/workspaces/list.ts",
+   "apps/server/src/routes/workspaces/selectDirectory.ts",
+   "apps/server/src/utils/ai/files.ts",
+   "apps/server/src/utils/ai/index.ts",
+   "apps/server/src/utils/assets/index.ts",
+   "apps/server/src/utils/assets/library.ts",
+   "apps/server/src/utils/assets/libraryMeta.ts",
+   "apps/server/src/utils/assets/roots.ts",
+   "apps/server/src/utils/assets/thumb.ts",
+   "apps/server/src/utils/assets/usage.ts",
+   "apps/server/src/utils/conf/index.ts",
+   "apps/server/src/utils/desktop/index.ts",
+   "apps/server/src/utils/documents.ts",
+   "apps/server/src/utils/fileHttp.ts",
+   "apps/server/src/utils/mcp/dxt.ts",
+   "apps/server/src/utils/mcp/resources.ts",
+   "apps/server/src/utils/mcp/runtime.ts",
+   "apps/server/src/utils/mcp/tools.ts",
+   "apps/server/src/utils/media/generation.ts",
+   "apps/server/src/utils/media/priceReference.ts",
+   "apps/server/src/utils/media/provider.ts",
+   "apps/server/src/utils/mobileLink/index.ts",
+   "apps/server/src/utils/personalization.ts",
+   "apps/server/src/utils/plugins/ext.ts",
+   "apps/server/src/utils/plugins/initialize.ts",
+   "apps/server/src/utils/plugins/initializeExt.ts",
+   "apps/server/src/utils/plugins/install.ts",
+   "apps/server/src/utils/plugins/nodes.ts",
+   "apps/server/src/utils/plugins/tools.ts",
+   "apps/server/src/utils/singleAgent/index.ts",
+   "apps/server/src/utils/skills/files.ts",
+   "apps/server/src/utils/teams/files.ts",
+   "apps/server/src/utils/teams/index.ts",
+   "apps/server/src/utils/teams/install.ts",
+   "apps/server/src/utils/workspace/chatImages.ts",
+   "apps/server/src/utils/workspace/files.ts",
+   "apps/server/src/utils/workspace/index.ts"
+  ],
+  "examples": [
+   "@toonflow/file",
+   "@toonflow/i18n",
+   "@toonflow/file/bun"
+  ]
+ },
+ "server-api->desktop-shell": {
+  "count": 2,
+  "files": [
+   "apps/server/scripts/build.ts",
+   "apps/server/src/index.ts"
+  ],
+  "examples": [
+   "../../../electrobun.config"
+  ]
+ },
+ "agent-runtime->agent-tools": {
+  "count": 16,
+  "files": [
+   "apps/server/src/agent/a2a/index.ts",
+   "apps/server/src/agent/assets.ts",
+   "apps/server/src/agent/bridge/canvas.ts",
+   "apps/server/src/agent/bridge/question.ts",
+   "apps/server/src/agent/runtime/delegation.ts",
+   "apps/server/src/agent/runtime/index.ts",
+   "apps/server/src/agent/runtime/subAgent.ts",
+   "apps/server/src/agent/runtime/types.ts",
+   "apps/server/src/agent/skills/index.ts",
+   "apps/server/src/agent/teams/index.ts",
+   "apps/server/src/agent/tools/index.ts",
+   "apps/server/src/agent/tools/subAgent.ts"
+  ],
+  "examples": [
+   "@toonflow/tools-scaffold/runtime",
+   "@toonflow/tool-asset-operator/runtime",
+   "@toonflow/tool-canvas/runtime"
+  ]
+ },
+ "agent-runtime->server-api": {
+  "count": 69,
+  "files": [
+   "apps/server/src/agent/a2a/index.ts",
+   "apps/server/src/agent/a2a/settings.ts",
+   "apps/server/src/agent/assets.ts",
+   "apps/server/src/agent/mentionFiles.ts",
+   "apps/server/src/agent/mentionSources.ts",
+   "apps/server/src/agent/runtime/delegation.ts",
+   "apps/server/src/agent/runtime/imageAttachments.ts",
+   "apps/server/src/agent/runtime/index.ts",
+   "apps/server/src/agent/runtime/mentions.ts",
+   "apps/server/src/agent/runtime/model.ts",
+   "apps/server/src/agent/runtime/requests.ts",
+   "apps/server/src/agent/runtime/resources.ts",
+   "apps/server/src/agent/runtime/sessions.ts",
+   "apps/server/src/agent/runtime/types.ts",
+   "apps/server/src/agent/skills/index.ts",
+   "apps/server/src/agent/teams/index.ts",
+   "apps/server/src/agent/teams/remote.ts",
+   "apps/server/src/agent/tools/index.ts",
+   "apps/server/src/agent/tools/memory.ts",
+   "apps/server/src/agent/tools/subAgent.ts"
+  ],
+  "examples": [
+   "@/utils/teams",
+   "@/utils/mcp/control",
+   "@/utils/conf",
+   "@/utils/workspace/files",
+   "@/lib/platform",
+   "@/lib/modelReasoning",
+   "@/utils/assets",
+   "@/utils/assets/roots"
+  ]
+ },
+ "agent-runtime->shared-foundation": {
+  "count": 12,
+  "files": [
+   "apps/server/src/agent/a2a/settings.ts",
+   "apps/server/src/agent/assets.ts",
+   "apps/server/src/agent/mentionFiles.ts",
+   "apps/server/src/agent/runtime/delegation.ts",
+   "apps/server/src/agent/runtime/imageAttachments.ts",
+   "apps/server/src/agent/runtime/index.ts",
+   "apps/server/src/agent/runtime/mentions.ts",
+   "apps/server/src/agent/runtime/resources.ts",
+   "apps/server/src/agent/runtime/sessions.ts",
+   "apps/server/src/agent/skills/index.ts",
+   "apps/server/src/agent/tools/index.ts",
+   "packages/teamScaffold/index.ts"
+  ],
+  "examples": [
+   "@toonflow/file"
+  ]
+ },
+ "server-api->agent-tools": {
+  "count": 25,
+  "files": [
+   "apps/server/src/app.ts",
+   "apps/server/src/routes/agent.ts",
+   "apps/server/src/routes/ai/media/generate.ts",
+   "apps/server/src/routes/ai/media/price.ts",
+   "apps/server/src/routes/browser/input.ts",
+   "apps/server/src/routes/browser/stream.ts",
+   "apps/server/src/routes/mcp/skill.ts",
+   "apps/server/src/utils/browser/index.ts",
+   "apps/server/src/utils/conf/index.ts",
+   "apps/server/src/utils/mcp/dxt.ts",
+   "apps/server/src/utils/mcp/operations.ts",
+   "apps/server/src/utils/mcp/resources.ts",
+   "apps/server/src/utils/mcp/servers.ts",
+   "apps/server/src/utils/mcp/tools.ts",
+   "apps/server/src/utils/media/generation.ts",
+   "apps/server/src/utils/media/priceReference.ts",
+   "apps/server/src/utils/media/tasks.ts",
+   "apps/server/src/utils/plugins/tools.ts",
+   "apps/server/src/utils/singleAgent/index.ts",
+   "apps/server/src/utils/singleAgent/types.ts"
+  ],
+  "examples": [
+   "@toonflow/mcp",
+   "@toonflow/tools-scaffold/runtime",
+   "@toonflow/tool-media-generation/runtime",
+   "@toonflow/tool-browser/protocol",
+   "@toonflow/mcp/skill",
+   "@toonflow/tool-browser/host",
+   "@toonflow/mcp/client"
+  ]
+ },
+ "server-api->agent-runtime": {
+  "count": 24,
+  "files": [
+   "apps/server/src/app.ts",
+   "apps/server/src/routes/agent.ts",
+   "apps/server/src/routes/agents/a2a/save.ts",
+   "apps/server/src/routes/settings/save.ts",
+   "apps/server/src/routes/settings/systemPrompt.ts",
+   "apps/server/src/routes/singleAgent/run.ts",
+   "apps/server/src/utils.ts",
+   "apps/server/src/utils/assets/index.ts",
+   "apps/server/src/utils/assets/library.ts",
+   "apps/server/src/utils/assets/thumb.ts",
+   "apps/server/src/utils/conf/index.ts",
+   "apps/server/src/utils/mcp/tools.ts",
+   "apps/server/src/utils/singleAgent/index.ts",
+   "apps/server/src/utils/singleAgent/types.ts"
+  ],
+  "examples": [
+   "@/agent/a2a",
+   "@/agent/runtime/types",
+   "@/agent/runtime/model",
+   "@/agent/runtime/prompt",
+   "@/agent",
+   "@/agent/bridge/canvas",
+   "@/agent/bridge/question",
+   "@/agent/a2a/settings"
+  ]
+ },
+ "server-api->media-toolkit": {
+  "count": 4,
+  "files": [
+   "apps/server/src/routes/ffmpeg/execute.ts",
+   "apps/server/src/utils/ffmpeg/index.ts"
+  ],
+  "examples": [
+   "@toonflow/ffmpeg"
+  ]
+ },
+ "server-api->ai-providers": {
+  "count": 9,
+  "files": [
+   "apps/server/src/utils/ai/initialize.ts",
+   "apps/server/src/utils/conf/index.ts",
+   "apps/server/src/utils/media/audioProcessor.ts",
+   "apps/server/src/utils/media/billing.ts",
+   "apps/server/src/utils/media/generation.ts",
+   "apps/server/src/utils/media/priceReference.ts",
+   "apps/server/src/utils/media/provider.ts"
+  ],
+  "examples": [
+   "@toonflow/providers/language/tfRouter",
+   "@toonflow/providers/media/tfRouter",
+   "@toonflow/providers"
+  ]
+ },
+ "web-console->shared-foundation": {
+  "count": 70,
+  "files": [
+   "apps/web/src/App.vue",
+   "apps/web/src/components/agent/attachmentPreview.vue",
+   "apps/web/src/components/agent/conversation.vue",
+   "apps/web/src/components/agent/conversation/messageInput.vue",
+   "apps/web/src/components/agent/conversation/messageList.vue",
+   "apps/web/src/components/agent/index.vue",
+   "apps/web/src/components/agent/mentionMenu.vue",
+   "apps/web/src/components/agent/textAttachments.ts",
+   "apps/web/src/components/languageSelect.vue",
+   "apps/web/src/components/loadingPage.vue",
+   "apps/web/src/components/modelPopover.vue",
+   "apps/web/src/components/settings/panels/about.vue",
+   "apps/web/src/components/settings/panels/developer/index.vue",
+   "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
+   "apps/web/src/components/settings/panels/deviceLink.vue",
+   "apps/web/src/components/settings/panels/general/canvasShortcuts.vue",
+   "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
+   "apps/web/src/components/settings/panels/languageModel/index.vue",
+   "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue",
+   "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
+   "apps/web/src/components/settings/panels/mediaModel/index.vue",
+   "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue",
+   "apps/web/src/components/settings/panels/personalization.vue",
+   "apps/web/src/components/settings/panels/pluginMarket/index.vue",
+   "apps/web/src/components/settings/panels/privacy.vue",
+   "apps/web/src/components/settings/tfAccount.vue",
+   "apps/web/src/components/settings/tfRechargeDialog.vue",
+   "apps/web/src/components/singleAgentDialog.vue",
+   "apps/web/src/lib/desktopProtocol.ts",
+   "apps/web/src/lib/i18n.ts",
+   "apps/web/src/lib/mcpControl.ts",
+   "apps/web/src/lib/mobile.ts",
+   "apps/web/src/main.ts",
+   "apps/web/src/pages/hello/index.vue",
+   "apps/web/src/pages/home/assetDetailDrawer.vue",
+   "apps/web/src/pages/home/assetLibraryView.vue",
+   "apps/web/src/pages/home/bg.vue",
+   "apps/web/src/pages/home/index.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetContextMenu.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetDestinationTree.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetEmptyState.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetGridView.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetMetaDialog.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetMoveDialog.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetPreview.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetReferenceDialog.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetToolbar.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetTrashView.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetTreeView.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/AssetUploadQueue.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/SaveToLibraryDialog.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/floatingAssetLibrary.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/index.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/useAssetActions.ts",
+   "apps/web/src/pages/workspace/panels/assetLibrary/useAssetLibrary.ts",
+   "apps/web/src/pages/workspace/panels/canvas/components/canvasMenu.vue",
+   "apps/web/src/pages/workspace/panels/document/components/fileTree.vue",
+   "apps/web/src/pages/workspace/panels/document/components/workspaceSearch.vue",
+   "apps/web/src/pages/workspace/panels/document/documentSession.ts",
+   "apps/web/src/pages/workspace/panels/document/extensions.ts",
+   "apps/web/src/pages/workspace/panels/document/index.vue",
+   "apps/web/src/stores/settings.ts",
+   "apps/web/vite.config.ts"
+  ],
+  "examples": [
+   "@toonflow/i18n/elementPlus",
+   "@toonflow/i18n/vue",
+   "@toonflow/assets/logo.svg",
+   "@toonflow/i18n",
+   "@toonflow/assets/logo.svg?raw",
+   "@toonflow/model-icons",
+   "@toonflow/i18n/vite"
+  ]
+ },
+ "web-console->server-api": {
+  "count": 20,
+  "files": [
+   "apps/web/src/App.vue",
+   "apps/web/src/components/agent/conversation.vue",
+   "apps/web/src/components/agent/conversation/messageInput.vue",
+   "apps/web/src/components/agent/textAttachments.ts",
+   "apps/web/src/components/modelPopover.vue",
+   "apps/web/src/components/settings/panels/developer/index.vue",
+   "apps/web/src/components/settings/panels/general/nodeMenuSettings.vue",
+   "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
+   "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue",
+   "apps/web/src/components/settings/panels/pluginMarket/a2aSettingsDialog.vue",
+   "apps/web/src/components/singleAgentDialog.vue",
+   "apps/web/src/lib/desktopProtocol.ts",
+   "apps/web/src/pages/home/index.vue",
+   "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue",
+   "apps/web/src/pages/workspace/panels/canvas/components/nodeMenuItems.vue",
+   "apps/web/src/stores/desktopUpdate.ts",
+   "apps/web/src/stores/settings.ts"
+  ],
+  "examples": [
+   "@toonflow/server/desktop",
+   "@toonflow/server/documentFormats",
+   "@toonflow/server/modelReasoning",
+   "@toonflow/server/nodeMenu",
+   "@toonflow/server/singleAgent/types"
+  ]
+ },
+ "web-console->agent-runtime": {
+  "count": 18,
+  "files": [
+   "apps/web/src/components/agent/conversation.vue",
+   "apps/web/src/components/agent/conversation/contextUsage.vue",
+   "apps/web/src/components/agent/conversation/messageInput.vue",
+   "apps/web/src/components/agent/conversation/messageList.vue",
+   "apps/web/src/components/agent/index.vue",
+   "apps/web/src/components/agent/mentionContent.vue",
+   "apps/web/src/components/agent/mentionMenu.vue",
+   "apps/web/src/components/agent/mentionSources.ts",
+   "apps/web/src/components/agent/mentionText.ts",
+   "apps/web/src/components/agent/menu.vue",
+   "apps/web/src/components/agent/replyStream.ts",
+   "apps/web/src/components/agent/toolMessage.vue",
+   "apps/web/src/components/agent/types.ts",
+   "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue",
+   "apps/web/src/stores/agentComposer.ts"
+  ],
+  "examples": [
+   "@toonflow/server/agent/types",
+   "@toonflow/server/agent/mentionSources"
+  ]
+ },
+ "web-console->agent-tools": {
+  "count": 16,
+  "files": [
+   "apps/web/src/components/agent/conversation.vue",
+   "apps/web/src/components/agent/conversation/messageInput.vue",
+   "apps/web/src/components/agent/conversation/messageList.vue",
+   "apps/web/src/components/agent/toolMessage.vue",
+   "apps/web/src/components/settings/panels/mediaModel/providerAgentDialog.vue",
+   "apps/web/src/components/singleAgentDialog.vue",
+   "apps/web/src/lib/mcpControl.ts",
+   "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue",
+   "apps/web/src/pages/workspace/panels/canvas/canvasQueries.ts",
+   "apps/web/src/pages/workspace/panels/canvas/index.vue",
+   "apps/web/src/pages/workspace/panels/canvas/useCanvasTools.ts"
+  ],
+  "examples": [
+   "@toonflow/tool-canvas/runtime",
+   "@toonflow/tool-browser/panel",
+   "@toonflow/tool-browser/client",
+   "@toonflow/tools-scaffold/client",
+   "@toonflow/tools-scaffold/runtime"
+  ]
+ },
+ "web-console->media-toolkit": {
+  "count": 2,
+  "files": [
+   "apps/web/src/components/agent/conversation/useVoiceInput.ts",
+   "apps/web/src/pages/workspace/panels/canvas/useCanvasTools.ts"
+  ],
+  "examples": [
+   "@toonflow/asr"
+  ]
+ },
+ "web-console->ai-providers": {
+  "count": 15,
+  "files": [
+   "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
+   "apps/web/src/components/settings/panels/languageModel/addCustomProviderDialog.vue",
+   "apps/web/src/components/settings/panels/languageModel/addProviderDialog.vue",
+   "apps/web/src/components/settings/panels/languageModel/index.vue",
+   "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue",
+   "apps/web/src/components/settings/panels/mediaModel/providerPrompt.ts",
+   "apps/web/src/components/settings/panels/pluginMarket/index.vue",
+   "apps/web/src/components/settings/tfAccount.vue",
+   "apps/web/src/lib/providerBilling.ts",
+   "apps/web/src/pages/hello/index.vue"
+  ],
+  "examples": [
+   "@toonflow/providers",
+   "@toonflow/providers/media/tfRouter?raw",
+   "@toonflow/providers/media/apiMart?raw",
+   "@toonflow/providers/media/metaso?raw",
+   "@toonflow/providers/media/compshare?raw",
+   "@toonflow/providers/types?raw",
+   "@toonflow/providers/language/tfRouter"
+  ]
+ },
+ "web-console->workflow-nodes": {
+  "count": 32,
+  "files": [
+   "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
+   "apps/web/src/components/settings/panels/mediaModel/addCustomProviderDialog.vue",
+   "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
+   "apps/web/src/components/settings/panels/mediaModel/index.vue",
+   "apps/web/src/components/settings/panels/pluginMarket/index.vue",
+   "apps/web/src/lib/desktopProtocol.ts",
+   "apps/web/src/lib/mcpControl.ts",
+   "apps/web/src/lib/tf.ts",
+   "apps/web/src/pages/hello/index.vue",
+   "apps/web/src/pages/home/exploreProcess.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/components/SaveToLibraryDialog.vue",
+   "apps/web/src/pages/workspace/panels/assetLibrary/index.vue",
+   "apps/web/src/pages/workspace/panels/canvas/canvasDrop.ts",
+   "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue",
+   "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue",
+   "apps/web/src/pages/workspace/panels/canvas/components/remoteNode.vue",
+   "apps/web/src/pages/workspace/panels/canvas/components/selectionHandle.vue",
+   "apps/web/src/pages/workspace/panels/canvas/components/selectionToolbar.vue",
+   "apps/web/src/pages/workspace/panels/canvas/index.vue",
+   "apps/web/src/pages/workspace/panels/canvas/nodeClipboard.ts",
+   "apps/web/src/pages/workspace/panels/canvas/selectionConnections.ts",
+   "apps/web/src/pages/workspace/panels/canvas/useCanvasHistory.ts",
+   "apps/web/src/pages/workspace/panels/canvas/useCanvasTools.ts",
+   "apps/web/src/stores/assetLibrary.ts",
+   "apps/web/src/stores/settings.ts"
+  ],
+  "examples": [
+   "@toonflow/nodes-scaffold/nodeAi",
+   "@toonflow/nodes-scaffold/connection",
+   "@toonflow/nodes-scaffold/nodeSkeleton",
+   "@toonflow/node-video/videoPlayer",
+   "@toonflow/node-text/markdownPreview",
+   "@toonflow/nodes-scaffold/values",
+   "@toonflow/nodes-scaffold/workspaceFiles",
+   "@toonflow/nodes-scaffold/nodeDocument"
+  ]
+ },
+ "web-console->canvas-extensions": {
+  "count": 4,
+  "files": [
+   "apps/web/src/pages/workspace/panels/canvas/overlayHost.vue",
+   "apps/web/src/pages/workspace/panels/document/documentSession.ts",
+   "apps/web/src/pages/workspace/panels/document/extensions.ts",
+   "apps/web/src/pages/workspace/panels/document/index.vue"
+  ],
+  "examples": [
+   "@toonflow/ext-scaffold/runtime"
+  ]
+ },
+ "web-console->desktop-shell": {
+  "count": 1,
+  "files": [
+   "apps/web/vite.config.ts"
+  ],
+  "examples": [
+   "../../electrobun.config.ts"
+  ]
+ },
+ "canvas-extensions->shared-foundation": {
+  "count": 3,
+  "files": [
+   "packages/ext/md/src/index.vue",
+   "packages/extScaffold/create.ts",
+   "packages/extScaffold/index.ts"
+  ],
+  "examples": [
+   "@toonflow/i18n/vue",
+   "@toonflow/file"
+  ]
+ },
+ "media-toolkit->shared-foundation": {
+  "count": 7,
+  "files": [
+   "packages/ffmpeg/src/index.ts",
+   "packages/ffmpeg/src/remote.ts",
+   "packages/ffmpeg/src/runtime.ts"
+  ],
+  "examples": [
+   "@toonflow/i18n",
+   "@toonflow/i18n/errors",
+   "@toonflow/file",
+   "@toonflow/file/bun"
+  ]
+ },
+ "agent-tools->shared-foundation": {
+  "count": 9,
+  "files": [
+   "packages/mcp/scripts/build.ts",
+   "packages/mcp/src/index.ts",
+   "packages/mcp/src/stdio.ts",
+   "packages/toolScaffold/index.ts",
+   "packages/toolScaffold/src/runtime.ts",
+   "packages/tools/browser/src/host.ts"
+  ],
+  "examples": [
+   "@toonflow/file",
+   "@toonflow/i18n",
+   "@toonflow/file/bun"
+  ]
+ },
+ "workflow-nodes->shared-foundation": {
+  "count": 1,
+  "files": [
+   "packages/nodeScaffold/index.ts"
+  ],
+  "examples": [
+   "@toonflow/file"
+  ]
+ },
+ "workflow-nodes->web-console": {
+  "count": 1,
+  "files": [
+   "packages/nodeScaffold/index.ts"
+  ],
+  "examples": [
+   "../../postcss.config.ts"
+  ]
+ },
+ "workflow-nodes->agent-tools": {
+  "count": 3,
+  "files": [
+   "packages/nodeScaffold/src/nodeAi.ts",
+   "packages/nodeScaffold/src/nodeTools.ts"
+  ],
+  "examples": [
+   "@toonflow/tools-scaffold/runtime"
+  ]
+ },
+ "workflow-nodes->media-toolkit": {
+  "count": 7,
+  "files": [
+   "packages/nodeScaffold/src/nodeAsr.ts",
+   "packages/nodeScaffold/src/nodeFfmpeg.ts",
+   "packages/nodes/audioNode/src/audioProcessing.ts",
+   "packages/nodes/videoNode/src/videoProcessing.ts"
+  ],
+  "examples": [
+   "@toonflow/asr",
+   "@toonflow/ffmpeg/browser"
+  ]
+ },
+ "ai-providers->media-toolkit": {
+  "count": 2,
+  "files": [
+   "packages/providers/index.ts",
+   "packages/providers/types.d.ts"
+  ],
+  "examples": [
+   "@toonflow/ffmpeg/types"
+  ]
+ },
+ "agent-tools->web-console": {
+  "count": 1,
+  "files": [
+   "packages/toolScaffold/index.ts"
+  ],
+  "examples": [
+   "../../postcss.config.ts"
+  ]
+ },
+ "agent-tools->media-toolkit": {
+  "count": 5,
+  "files": [
+   "packages/toolScaffold/src/client.ts",
+   "packages/toolScaffold/src/runtime.ts",
+   "packages/tools/ffmpeg/src/index.ts"
+  ],
+  "examples": [
+   "@toonflow/asr",
+   "@toonflow/ffmpeg/types",
+   "@toonflow/ffmpeg/remote"
+  ]
+ }
+}

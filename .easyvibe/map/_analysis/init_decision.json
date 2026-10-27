@@ -1,10 +1,15 @@
 {
   "decision_reason": "compliant_generated",
-  "at": "2026-10-24T16:36:02+0800",
-  "map_backup": null,
+  "at": "2026-10-26T21:13:51+08:00",
+  "schema_path": "/Users/liyuhang/Documents/EasyVibe/easyvibe-desktop/src-tauri/target/release/bundle/macos/EasyVibe.app/Contents/Resources/resources/prompts/easyvibe-map-schema-v1.1.json",
+  "map_backup": [
+    "map.json.20261026-210844.bak",
+    "map.json.20261026-211241.bak"
+  ],
   "growth_archives": [
-    "growth.log.20261024-120325.bak",
-    "growth.log.20261024-163355.bak",
-    "growth.log.20261024-163602.bak"
-  ]
+    "growth.log.20261026-210844.bak",
+    "growth.log.20261026-211241.bak",
+    "growth.log.20261026-211351.bak"
+  ],
+  "note": "以宿主注入的 v1.1 schema 复核：旧 map.json 的 meta.provenance 属于 Schema 内字段，整体无越界，属合规机器产物，按规范直接覆盖不备份。首次 init 曾误用 ~/.easyvibe/assets 下的旧 schema 副本（缺少 provenance 定义）而多生成两份安全备份，保留备查；最终产物已按注入 schema 全量校验通过。旧 growth.log 在 init 时归档并重建。"
 }

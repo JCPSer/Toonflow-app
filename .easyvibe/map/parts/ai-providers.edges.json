@@ -6,8 +6,8 @@
       "from": "ai-providers",
       "to": "media-toolkit",
       "type": "import",
-      "strength": "weak",
-      "label": "ffmpeg 类型与转码"
+      "label": "2 处 ffmpeg 类型契约",
+      "strength": "weak"
     }
   ]
 }

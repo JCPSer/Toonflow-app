@@ -4,7 +4,7 @@
       "id": "foundation",
       "name": "基础能力层",
       "order": 4,
-      "description": "文件访问、国际化、图标与音视频/语音基础能力，零业务依赖，被所有上层复用"
+      "description": "文件原子访问、21 语国际化、模型图标与 FFmpeg/语音基础能力，零业务依赖，被所有上层复用"
     },
     {
       "id": "domain",
@@ -16,13 +16,13 @@
       "id": "application",
       "name": "应用服务层",
       "order": 2,
-      "description": "Express 应用边界、单接口路由、媒体/插件/MCP/工作区业务编排与进程组合根"
+      "description": "Express 边界、161 个单接口路由与素材/媒体/插件/MCP/工作区业务编排与进程组合根"
     },
     {
       "id": "presentation",
       "name": "交互呈现层",
       "order": 1,
-      "description": "Vue 工作区、画布节点与扩展插件：节点图编辑、文档面板、对话与设置界面"
+      "description": "Vue 工作区、9 个画布节点与 6 个扩展插件：节点图编辑、素材/文档面板、对话与设置界面"
     },
     {
       "id": "host-shell",

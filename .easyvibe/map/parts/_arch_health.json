@@ -1,32 +1,30 @@
 {
-  "score": 60,
+  "score": 68,
   "coupling": "high",
   "complexity": "high",
   "churn": "high",
   "decay_flags": [
     "circular_dep",
-    "layer_violation",
-    "god_module",
-    "responsibility_overlap"
+    "layer_violation"
   ],
-  "review_note": "五层（宿主 → 呈现 → 应用 → 领域 → 基础）大体成立：web 只向下取插件与共享契约，server-api 统一装配，foundation 是无出边的叶子。但结构性问题独立于模块均分：1）server-api 与 agent-runtime 双向引用（server→agent 25 处、agent→server 66 处），29 条边中 1 条逆向，环落在最热的 Agent 链路上；2）server-api 以 204 文件承载 138 个路由与媒体/插件/MCP/工作区/命令执行多域逻辑，是全局唯一 god module；3）呈现层把 node/tool/ext 运行时包在编译期静态引入 30 处，插件体系在 UI 侧实际不可动态扩展。建议按“端口化 AgentHost → 拆 server 子域 → 契约包下沉 → 插件注册表”的顺序治理。",
+  "review_note": "五层（宿主 → 呈现 → 应用 → 领域 → 基础）大体成立：web 只向下取插件与共享契约，应用层统一装配，foundation 是无出边的叶子。2026-10-27 重算后 server-api 已由 246 文件单模块拆为 7 个子模块 + 组合根，god module 关注点关闭；剩余结构性问题：1）应用层与 agent-runtime 双向引用（agent→应用 71 处、应用→agent 24 处），环仍落在最热的 Agent 链路上；2）应用层内部 53 条跨子模块深引绕过入口，契约无运行时守卫；3）呈现层把 node/tool/ext 运行时包在编译期静态引入 30 处。建议按「AgentHost 端口 → 子域深引收敛 → 契约包下沉与插件注册表」顺序治理。",
   "concerns": [
     {
       "id": "c-arch-1",
       "severity": "critical",
-      "finding": "server-api 与 agent-runtime 双向 import（server→agent 25 处、agent→server 66 处）构成环，且环位于每条 Agent 请求的必经路径，任何一侧改动都会牵动另一侧。",
-      "suggestion": "先抽 AgentHost 端口切断 agent→utils/lib，再让 app.ts 单向装配 agent 与各服务器子域。"
+      "finding": "agent-runtime 与应用层双向 import（agent→应用 71 处、应用→agent 24 处）构成环，且环位于每条 Agent 请求的必经路径，任何一侧改动都会牵动另一侧。",
+      "suggestion": "先抽 AgentHost 端口切断 agent→@/utils·@/lib，再让 app.ts 单向装配 agent 与各应用子模块。"
     },
     {
-      "id": "c-arch-2",
-      "severity": "critical",
-      "finding": "server-api 一个模块 204 文件、138 个路由，同时承担媒体生成、插件安装、MCP、工作区、桌面桥接与命令执行，全库 29 条边中 9 条与它相连。",
-      "suggestion": "按媒体生成、插件市场、工作区、命令执行拆出四个应用子模块，app.ts 只保留组合根。"
+      "id": "c-arch-4",
+      "severity": "high",
+      "finding": "应用层 7 个子模块的边界由目录与文档承担：57 条跨子模块 import 中 53 条直引对方域文件，入口只承载 4 条，边界漂移没有运行时或脚本守卫。",
+      "suggestion": "把冻结的深引清单写入子图并纳入评审模板，新增深引必须登记，逐步以 ModuleContext 替换。"
     },
     {
       "id": "c-arch-3",
       "severity": "high",
-      "finding": "web 在编译期 import 插件运行时包 30 处、引用 server 源码/接口 68 处，插件与前后端契约都被静态编入主包，安装式插件无法影响 UI。",
+      "finding": "web 在编译期 import 插件运行时包 30 处、引用 server 源码/接口 38 处，插件与前后端契约都被静态编入主包，安装式插件无法影响 UI。",
       "suggestion": "抽出 contracts 包并把插件 UI 改为注册表 + 动态入口，web 只依赖契约。"
     }
   ]

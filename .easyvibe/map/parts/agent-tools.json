@@ -1,8 +1,8 @@
 {
   "id": "agent-tools",
-  "name": "Agent 工具与 MCP",
+  "name": "Agent 工具插件",
   "layer": "domain",
-  "responsibility": "Agent 工具插件与 MCP 服务：浏览器、画布、资产、检索与技能操作",
+  "responsibility": "Agent 工具插件与 MCP 服务：浏览器、画布、素材、检索",
   "files": [
     "packages/tools/**",
     "packages/toolScaffold/**",
@@ -15,9 +15,9 @@
       "kind": "config"
     },
     {
-      "file": "packages/tools/browser/src/index.ts",
-      "symbol": "default",
-      "kind": "config"
+      "file": "packages/tools/browser/src/host.ts",
+      "symbol": "createBrowserRuntime",
+      "kind": "function"
     },
     {
       "file": "packages/tools/canvas/src/runtime.ts",
@@ -27,28 +27,28 @@
     {
       "file": "packages/mcp/src/index.ts",
       "symbol": "createMcpRouter",
-      "kind": "function"
+      "kind": "route"
     }
   ],
+  "dependencies": [
+    "shared-foundation",
+    "media-toolkit"
+  ],
   "health": {
-    "score": 78,
+    "score": 77,
     "coupling": "medium",
     "complexity": "medium",
-    "churn": "medium",
+    "churn": "low",
     "decay_flags": [],
-    "review_note": "37 文件 3,579 行；工具以 .tool.js 产物由 server 装载，MCP 复用同一批工具定义，browser 工具自带 CDP 宿主与 Vue 面板。近 3 个月 13 次提交、66 次文件变更。建议为工具清单加契约测试，并把 browser 的 protocol/host/panel 拆成显式出口。",
+    "review_note": "37 文件 / 3,592 行，10 个工具包共享 toolScaffold 契约，出边 2、入边 5，边界清楚。浏览器工具长成模块内最大单体：host.ts 717 行 + browserPanel.vue 616 行，建议把 WebView/CDP 生命周期收进独立 runtime 包，工具壳只保留定义与面板。",
     "concerns": [
       {
         "id": "c-agent-tools-1",
         "severity": "high",
-        "finding": "browser 工具在 host.ts（717 行）内自建浏览器会话、CDP 协议与元素引用解析，协议、宿主与面板同包演进，升级 Puppeteer 时需多处同步。",
-        "suggestion": "抽出 browser-protocol/client 包并锁定宿主版本，面板只依赖协议客户端，宿主实现可独立替换。"
+        "finding": "浏览器工具 host.ts 717 行 + browserPanel.vue 616 行，直接管理 WebView/CDP 生命周期，其余 9 个工具包多数不足 200 行。",
+        "suggestion": "把浏览器进程与协议封装为独立 runtime 包，browser 工具只保留工具定义、配置 schema 与面板入口。"
       }
     ]
   },
-  "dependencies": [
-    "media-toolkit",
-    "shared-foundation"
-  ],
-  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+  "last_analyzed_at": "2026-10-26T21:12:00+08:00"
 }

@@ -1,0 +1,1124 @@
+{
+  "version": "1.0",
+  "parent": {
+    "module_id": "server-api",
+    "files_snapshot": [
+      "apps/server/scripts/build.ts",
+      "apps/server/scripts/buildStandalone.ts",
+      "apps/server/scripts/copyDocumentPackages.ts",
+      "apps/server/src/app.ts",
+      "apps/server/src/core.ts",
+      "apps/server/src/index.ts",
+      "apps/server/src/lib/desktop.ts",
+      "apps/server/src/lib/documentFormats.ts",
+      "apps/server/src/lib/i18n.ts",
+      "apps/server/src/lib/mentionSources.ts",
+      "apps/server/src/lib/middleware.ts",
+      "apps/server/src/lib/modelReasoning.ts",
+      "apps/server/src/lib/nodeMenu.ts",
+      "apps/server/src/lib/platform.ts",
+      "apps/server/src/lib/responseFormat.ts",
+      "apps/server/src/modules/agentAccess/browser/index.ts",
+      "apps/server/src/modules/agentAccess/index.ts",
+      "apps/server/src/modules/agentAccess/sessionState/index.ts",
+      "apps/server/src/modules/agentAccess/singleAgent/index.ts",
+      "apps/server/src/modules/agentAccess/singleAgent/types.ts",
+      "apps/server/src/modules/assetLibrary/assets/guard.ts",
+      "apps/server/src/modules/assetLibrary/assets/index.ts",
+      "apps/server/src/modules/assetLibrary/assets/library.ts",
+      "apps/server/src/modules/assetLibrary/assets/libraryMeta.ts",
+      "apps/server/src/modules/assetLibrary/assets/roots.ts",
+      "apps/server/src/modules/assetLibrary/assets/routeSchema.ts",
+      "apps/server/src/modules/assetLibrary/assets/thumb.ts",
+      "apps/server/src/modules/assetLibrary/assets/usage.ts",
+      "apps/server/src/modules/assetLibrary/assets/watch.ts",
+      "apps/server/src/modules/assetLibrary/index.ts",
+      "apps/server/src/modules/localRuntime/desktop/index.ts",
+      "apps/server/src/modules/localRuntime/exec.ts",
+      "apps/server/src/modules/localRuntime/index.ts",
+      "apps/server/src/modules/localRuntime/mobileLink/index.ts",
+      "apps/server/src/modules/localRuntime/remoteConnection.ts",
+      "apps/server/src/modules/localRuntime/workspace/chatImages.ts",
+      "apps/server/src/modules/localRuntime/workspace/download.ts",
+      "apps/server/src/modules/localRuntime/workspace/files.ts",
+      "apps/server/src/modules/localRuntime/workspace/index.ts",
+      "apps/server/src/modules/mcpIntegration/index.ts",
+      "apps/server/src/modules/mcpIntegration/mcp/control.ts",
+      "apps/server/src/modules/mcpIntegration/mcp/dxt.ts",
+      "apps/server/src/modules/mcpIntegration/mcp/operations.ts",
+      "apps/server/src/modules/mcpIntegration/mcp/resources.ts",
+      "apps/server/src/modules/mcpIntegration/mcp/runtime.ts",
+      "apps/server/src/modules/mcpIntegration/mcp/servers.ts",
+      "apps/server/src/modules/mcpIntegration/mcp/tools.ts",
+      "apps/server/src/modules/mediaGeneration/ai/files.ts",
+      "apps/server/src/modules/mediaGeneration/ai/index.ts",
+      "apps/server/src/modules/mediaGeneration/ai/initialize.ts",
+      "apps/server/src/modules/mediaGeneration/ai/modelContextLimits.ts",
+      "apps/server/src/modules/mediaGeneration/ai/models.ts",
+      "apps/server/src/modules/mediaGeneration/ai/requestFiles.ts",
+      "apps/server/src/modules/mediaGeneration/ai/runs.ts",
+      "apps/server/src/modules/mediaGeneration/ai/visibility.ts",
+      "apps/server/src/modules/mediaGeneration/documents.ts",
+      "apps/server/src/modules/mediaGeneration/ffmpeg/index.ts",
+      "apps/server/src/modules/mediaGeneration/index.ts",
+      "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts",
+      "apps/server/src/modules/mediaGeneration/media/billing.ts",
+      "apps/server/src/modules/mediaGeneration/media/debug.ts",
+      "apps/server/src/modules/mediaGeneration/media/generation.ts",
+      "apps/server/src/modules/mediaGeneration/media/priceReference.ts",
+      "apps/server/src/modules/mediaGeneration/media/provider.ts",
+      "apps/server/src/modules/mediaGeneration/media/tasks.ts",
+      "apps/server/src/modules/platformCore/conf/index.ts",
+      "apps/server/src/modules/platformCore/fileHttp.ts",
+      "apps/server/src/modules/platformCore/index.ts",
+      "apps/server/src/modules/platformCore/monitor.ts",
+      "apps/server/src/modules/platformCore/personalization.ts",
+      "apps/server/src/modules/pluginMarket/index.ts",
+      "apps/server/src/modules/pluginMarket/plugins/ext.ts",
+      "apps/server/src/modules/pluginMarket/plugins/initialize.ts",
+      "apps/server/src/modules/pluginMarket/plugins/initializeExt.ts",
+      "apps/server/src/modules/pluginMarket/plugins/install.ts",
+      "apps/server/src/modules/pluginMarket/plugins/nodes.ts",
+      "apps/server/src/modules/pluginMarket/plugins/tools.ts",
+      "apps/server/src/modules/pluginMarket/skills/files.ts",
+      "apps/server/src/modules/pluginMarket/teams/files.ts",
+      "apps/server/src/modules/pluginMarket/teams/index.ts",
+      "apps/server/src/modules/pluginMarket/teams/install.ts",
+      "apps/server/src/router.ts",
+      "apps/server/src/routes/agent.ts",
+      "apps/server/src/routes/agent/answer.ts",
+      "apps/server/src/routes/agent/canvasResult.ts",
+      "apps/server/src/routes/agent/compact.ts",
+      "apps/server/src/routes/agent/create.ts",
+      "apps/server/src/routes/agent/fork.ts",
+      "apps/server/src/routes/agent/get.ts",
+      "apps/server/src/routes/agent/list.ts",
+      "apps/server/src/routes/agent/mentionSource.ts",
+      "apps/server/src/routes/agent/message.ts",
+      "apps/server/src/routes/agent/rename.ts",
+      "apps/server/src/routes/agent/rewind.ts",
+      "apps/server/src/routes/agent/skills.ts",
+      "apps/server/src/routes/agents/a2a/get.ts",
+      "apps/server/src/routes/agents/a2a/save.ts",
+      "apps/server/src/routes/agents/connect.ts",
+      "apps/server/src/routes/agents/get.ts",
+      "apps/server/src/routes/agents/install.ts",
+      "apps/server/src/routes/agents/read.ts",
+      "apps/server/src/routes/agents/save.ts",
+      "apps/server/src/routes/agents/setEnabled.ts",
+      "apps/server/src/routes/agents/uninstall.ts",
+      "apps/server/src/routes/ai/generate.ts",
+      "apps/server/src/routes/ai/generate/stop.ts",
+      "apps/server/src/routes/ai/media/balance.ts",
+      "apps/server/src/routes/ai/media/balanceEvents.ts",
+      "apps/server/src/routes/ai/media/generate.ts",
+      "apps/server/src/routes/ai/media/models.ts",
+      "apps/server/src/routes/ai/media/price.ts",
+      "apps/server/src/routes/ai/media/tasks/cancel.ts",
+      "apps/server/src/routes/ai/media/tasks/status.ts",
+      "apps/server/src/routes/ai/models.ts",
+      "apps/server/src/routes/assets/events.ts",
+      "apps/server/src/routes/assets/forget.ts",
+      "apps/server/src/routes/assets/import.ts",
+      "apps/server/src/routes/assets/list.ts",
+      "apps/server/src/routes/assets/meta.ts",
+      "apps/server/src/routes/assets/mkdir.ts",
+      "apps/server/src/routes/assets/move.ts",
+      "apps/server/src/routes/assets/purge.ts",
+      "apps/server/src/routes/assets/read.ts",
+      "apps/server/src/routes/assets/remove.ts",
+      "apps/server/src/routes/assets/rename.ts",
+      "apps/server/src/routes/assets/restore.ts",
+      "apps/server/src/routes/assets/roots.ts",
+      "apps/server/src/routes/assets/save.ts",
+      "apps/server/src/routes/assets/thumb.ts",
+      "apps/server/src/routes/assets/trash.ts",
+      "apps/server/src/routes/assets/tree.ts",
+      "apps/server/src/routes/assets/usage.ts",
+      "apps/server/src/routes/browser/input.ts",
+      "apps/server/src/routes/browser/stream.ts",
+      "apps/server/src/routes/desktop/clipboard/read.ts",
+      "apps/server/src/routes/desktop/clipboard/write.ts",
+      "apps/server/src/routes/desktop/devtools.ts",
+      "apps/server/src/routes/desktop/openUrl.ts",
+      "apps/server/src/routes/desktop/plugins/install.ts",
+      "apps/server/src/routes/desktop/providerFile/read.ts",
+      "apps/server/src/routes/desktop/providerFile/select.ts",
+      "apps/server/src/routes/desktop/ready.ts",
+      "apps/server/src/routes/desktop/saveFile.ts",
+      "apps/server/src/routes/desktop/selectDirectory.ts",
+      "apps/server/src/routes/desktop/selectSaveFile.ts",
+      "apps/server/src/routes/desktop/update/apply.ts",
+      "apps/server/src/routes/desktop/update/check.ts",
+      "apps/server/src/routes/desktop/update/download.ts",
+      "apps/server/src/routes/desktop/update/index.ts",
+      "apps/server/src/routes/exec/cancel.ts",
+      "apps/server/src/routes/exec/index.ts",
+      "apps/server/src/routes/ext/install.ts",
+      "apps/server/src/routes/ext/list.ts",
+      "apps/server/src/routes/ext/read.ts",
+      "apps/server/src/routes/ext/save.ts",
+      "apps/server/src/routes/ext/setEnabled.ts",
+      "apps/server/src/routes/ext/uninstall.ts",
+      "apps/server/src/routes/ffmpeg/cancel.ts",
+      "apps/server/src/routes/ffmpeg/download.ts",
+      "apps/server/src/routes/ffmpeg/events.ts",
+      "apps/server/src/routes/ffmpeg/execute.ts",
+      "apps/server/src/routes/ffmpeg/progress.ts",
+      "apps/server/src/routes/ffmpeg/status.ts",
+      "apps/server/src/routes/mcp/control/events.ts",
+      "apps/server/src/routes/mcp/control/result.ts",
+      "apps/server/src/routes/mcp/control/state.ts",
+      "apps/server/src/routes/mcp/servers/importDxt.ts",
+      "apps/server/src/routes/mcp/servers/importJson.ts",
+      "apps/server/src/routes/mcp/servers/inspectDxt.ts",
+      "apps/server/src/routes/mcp/servers/list.ts",
+      "apps/server/src/routes/mcp/servers/remove.ts",
+      "apps/server/src/routes/mcp/servers/save.ts",
+      "apps/server/src/routes/mcp/servers/setEnabled.ts",
+      "apps/server/src/routes/mcp/servers/test.ts",
+      "apps/server/src/routes/mcp/skill.ts",
+      "apps/server/src/routes/mcp/status.ts",
+      "apps/server/src/routes/mobileLink/config.ts",
+      "apps/server/src/routes/mobileLink/heartbeat.ts",
+      "apps/server/src/routes/mobileLink/pair.ts",
+      "apps/server/src/routes/mobileLink/pairing.ts",
+      "apps/server/src/routes/mobileLink/revoke.ts",
+      "apps/server/src/routes/mobileLink/status.ts",
+      "apps/server/src/routes/monitor/free.ts",
+      "apps/server/src/routes/monitor/status.ts",
+      "apps/server/src/routes/nodes/files.ts",
+      "apps/server/src/routes/nodes/get.ts",
+      "apps/server/src/routes/nodes/install.ts",
+      "apps/server/src/routes/nodes/save.ts",
+      "apps/server/src/routes/nodes/setEnabled.ts",
+      "apps/server/src/routes/nodes/uninstall.ts",
+      "apps/server/src/routes/plugins/export.ts",
+      "apps/server/src/routes/providers/debug/inspect.ts",
+      "apps/server/src/routes/providers/debug/run.ts",
+      "apps/server/src/routes/providers/media/add.ts",
+      "apps/server/src/routes/providers/media/delete.ts",
+      "apps/server/src/routes/providers/media/list.ts",
+      "apps/server/src/routes/providers/media/models.ts",
+      "apps/server/src/routes/providers/media/save.ts",
+      "apps/server/src/routes/providers/media/validate.ts",
+      "apps/server/src/routes/providers/models.ts",
+      "apps/server/src/routes/sessionState/get.ts",
+      "apps/server/src/routes/sessionState/patch.ts",
+      "apps/server/src/routes/settings/get.ts",
+      "apps/server/src/routes/settings/personalization/get.ts",
+      "apps/server/src/routes/settings/personalization/save.ts",
+      "apps/server/src/routes/settings/save.ts",
+      "apps/server/src/routes/settings/systemPrompt.ts",
+      "apps/server/src/routes/singleAgent/answer.ts",
+      "apps/server/src/routes/singleAgent/control.ts",
+      "apps/server/src/routes/singleAgent/create.ts",
+      "apps/server/src/routes/singleAgent/run.ts",
+      "apps/server/src/routes/singleAgent/toolResult.ts",
+      "apps/server/src/routes/skills/create.ts",
+      "apps/server/src/routes/skills/get.ts",
+      "apps/server/src/routes/skills/install.ts",
+      "apps/server/src/routes/skills/list.ts",
+      "apps/server/src/routes/skills/move.ts",
+      "apps/server/src/routes/skills/order.ts",
+      "apps/server/src/routes/skills/read.ts",
+      "apps/server/src/routes/skills/save.ts",
+      "apps/server/src/routes/skills/setEnabled.ts",
+      "apps/server/src/routes/skills/uninstall.ts",
+      "apps/server/src/routes/tools/client.ts",
+      "apps/server/src/routes/tools/get.ts",
+      "apps/server/src/routes/tools/install.ts",
+      "apps/server/src/routes/tools/renderers.ts",
+      "apps/server/src/routes/tools/save.ts",
+      "apps/server/src/routes/tools/setEnabled.ts",
+      "apps/server/src/routes/tools/uninstall.ts",
+      "apps/server/src/routes/workspaces/check.ts",
+      "apps/server/src/routes/workspaces/clone.ts",
+      "apps/server/src/routes/workspaces/files/copy.ts",
+      "apps/server/src/routes/workspaces/files/importImage.ts",
+      "apps/server/src/routes/workspaces/files/list.ts",
+      "apps/server/src/routes/workspaces/files/mkdir.ts",
+      "apps/server/src/routes/workspaces/files/read.ts",
+      "apps/server/src/routes/workspaces/files/remove.ts",
+      "apps/server/src/routes/workspaces/files/rename.ts",
+      "apps/server/src/routes/workspaces/files/reveal.ts",
+      "apps/server/src/routes/workspaces/files/thumb.ts",
+      "apps/server/src/routes/workspaces/files/write.ts",
+      "apps/server/src/routes/workspaces/list.ts",
+      "apps/server/src/routes/workspaces/selectDirectory.ts",
+      "apps/server/src/types/desktop.ts",
+      "apps/server/src/types/module.ts",
+      "apps/server/src/utils.ts"
+    ]
+  },
+  "generated_at": "2026-10-27T08:05:00+08:00",
+  "generator": "easyvibe-submap/v1.0",
+  "sub_modules": [
+    {
+      "id": "bootstrap_wiring",
+      "name": "组合根与装配",
+      "responsibility": "应用组合根、路由表生成、聚合出口与模块契约",
+      "files": [
+        "apps/server/scripts/build.ts",
+        "apps/server/scripts/buildStandalone.ts",
+        "apps/server/scripts/copyDocumentPackages.ts",
+        "apps/server/src/app.ts",
+        "apps/server/src/core.ts",
+        "apps/server/src/index.ts",
+        "apps/server/src/router.ts",
+        "apps/server/src/types/module.ts",
+        "apps/server/src/utils.ts"
+      ],
+      "key_entries": [
+        {
+          "file": "apps/server/src/app.ts",
+          "symbol": "createApp",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/core.ts",
+          "symbol": "generateRouter",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/utils.ts",
+          "symbol": "default",
+          "kind": "config"
+        }
+      ],
+      "dependencies": [
+        "agent_access",
+        "asset_library",
+        "local_runtime",
+        "mcp_integration",
+        "media_generation",
+        "platform_core",
+        "plugin_market"
+      ],
+      "health": {
+        "score": 62,
+        "coupling": "high",
+        "complexity": "medium",
+        "churn": "high",
+        "decay_flags": [
+          "god_facade",
+          "circular_dep"
+        ],
+        "review_note": "9 文件 691 行：app.ts 78 行组合根（动态装配 7 入口 + 15 步）、core.ts 40 行路由生成、router.ts 348 行生成物、utils.ts 75 行 37 键聚合出口、types/module.ts 契约、scripts 3 个构建脚本。出边覆盖全部 7 个子模块、入边来自全部 7 个子模块（多为 @/utils facade），是唯一的装配枢纽；utils.ts 聚合 @/agent，使 server↔agent 环多一个接点。建议把 utils.ts 的 agent 出口移出 facade，由 app.ts 显式装配。",
+        "concerns": [
+          {
+            "severity": "critical",
+            "finding": "utils.ts 以 37 个键聚合全部服务并被 145 个文件引用，其中包含 @/agent，任何路由都隐式依赖 Agent 实现并放大 server↔agent 环。",
+            "suggestion": "按域拆 facade 或改构造注入，至少把 agent 三个出口移到 app.ts 显式装配。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "asset_library",
+      "name": "素材库",
+      "responsibility": "素材库根解析、索引分页、增删改移、回收站、缩略图与用量",
+      "files": [
+        "apps/server/src/modules/assetLibrary/assets/guard.ts",
+        "apps/server/src/modules/assetLibrary/assets/index.ts",
+        "apps/server/src/modules/assetLibrary/assets/library.ts",
+        "apps/server/src/modules/assetLibrary/assets/libraryMeta.ts",
+        "apps/server/src/modules/assetLibrary/assets/roots.ts",
+        "apps/server/src/modules/assetLibrary/assets/routeSchema.ts",
+        "apps/server/src/modules/assetLibrary/assets/thumb.ts",
+        "apps/server/src/modules/assetLibrary/assets/usage.ts",
+        "apps/server/src/modules/assetLibrary/assets/watch.ts",
+        "apps/server/src/modules/assetLibrary/index.ts",
+        "apps/server/src/routes/assets/events.ts",
+        "apps/server/src/routes/assets/forget.ts",
+        "apps/server/src/routes/assets/import.ts",
+        "apps/server/src/routes/assets/list.ts",
+        "apps/server/src/routes/assets/meta.ts",
+        "apps/server/src/routes/assets/mkdir.ts",
+        "apps/server/src/routes/assets/move.ts",
+        "apps/server/src/routes/assets/purge.ts",
+        "apps/server/src/routes/assets/read.ts",
+        "apps/server/src/routes/assets/remove.ts",
+        "apps/server/src/routes/assets/rename.ts",
+        "apps/server/src/routes/assets/restore.ts",
+        "apps/server/src/routes/assets/roots.ts",
+        "apps/server/src/routes/assets/save.ts",
+        "apps/server/src/routes/assets/thumb.ts",
+        "apps/server/src/routes/assets/trash.ts",
+        "apps/server/src/routes/assets/tree.ts",
+        "apps/server/src/routes/assets/usage.ts"
+      ],
+      "key_entries": [
+        {
+          "file": "apps/server/src/modules/assetLibrary/assets/roots.ts",
+          "symbol": "resolveAssetRoot",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/modules/assetLibrary/assets/library.ts",
+          "symbol": "listAssetEntries",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/modules/assetLibrary/assets/thumb.ts",
+          "symbol": "sweepThumbnailCache",
+          "kind": "function"
+        }
+      ],
+      "dependencies": [
+        "bootstrap_wiring",
+        "local_runtime",
+        "media_generation",
+        "platform_core"
+      ],
+      "health": {
+        "score": 76,
+        "coupling": "medium",
+        "complexity": "medium",
+        "churn": "high",
+        "decay_flags": [],
+        "review_note": "28 文件 2,633 行（9 域文件 + 18 路由 + 入口）。路径越界防护集中在 roots.ts，library.ts 729 行承载索引分页/增删改移/回收站，libraryMeta.ts 410 行处理元数据与可见性；出边 4（localRuntime 8、platformCore 27、mediaGeneration 1、bootstrap 2）。建议把 library.ts 的列出/移动/回收站切成三段。",
+        "concerns": [
+          {
+            "severity": "high",
+            "finding": "assets/library.ts 729 行同时承担索引分页、增删改移、回收站与用量统计，单文件改动牵动全部素材接口。",
+            "suggestion": "按 list/mutate/trash 拆文件，public API 保持一个域入口导出。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "media_generation",
+      "name": "媒体生成",
+      "responsibility": "供应商配置、文本/媒体生成与计费、ffmpeg、文档转 Markdown",
+      "files": [
+        "apps/server/src/modules/mediaGeneration/ai/files.ts",
+        "apps/server/src/modules/mediaGeneration/ai/index.ts",
+        "apps/server/src/modules/mediaGeneration/ai/initialize.ts",
+        "apps/server/src/modules/mediaGeneration/ai/modelContextLimits.ts",
+        "apps/server/src/modules/mediaGeneration/ai/models.ts",
+        "apps/server/src/modules/mediaGeneration/ai/requestFiles.ts",
+        "apps/server/src/modules/mediaGeneration/ai/runs.ts",
+        "apps/server/src/modules/mediaGeneration/ai/visibility.ts",
+        "apps/server/src/modules/mediaGeneration/documents.ts",
+        "apps/server/src/modules/mediaGeneration/ffmpeg/index.ts",
+        "apps/server/src/modules/mediaGeneration/index.ts",
+        "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts",
+        "apps/server/src/modules/mediaGeneration/media/billing.ts",
+        "apps/server/src/modules/mediaGeneration/media/debug.ts",
+        "apps/server/src/modules/mediaGeneration/media/generation.ts",
+        "apps/server/src/modules/mediaGeneration/media/priceReference.ts",
+        "apps/server/src/modules/mediaGeneration/media/provider.ts",
+        "apps/server/src/modules/mediaGeneration/media/tasks.ts",
+        "apps/server/src/routes/ai/generate.ts",
+        "apps/server/src/routes/ai/generate/stop.ts",
+        "apps/server/src/routes/ai/media/balance.ts",
+        "apps/server/src/routes/ai/media/balanceEvents.ts",
+        "apps/server/src/routes/ai/media/generate.ts",
+        "apps/server/src/routes/ai/media/models.ts",
+        "apps/server/src/routes/ai/media/price.ts",
+        "apps/server/src/routes/ai/media/tasks/cancel.ts",
+        "apps/server/src/routes/ai/media/tasks/status.ts",
+        "apps/server/src/routes/ai/models.ts",
+        "apps/server/src/routes/ffmpeg/cancel.ts",
+        "apps/server/src/routes/ffmpeg/download.ts",
+        "apps/server/src/routes/ffmpeg/events.ts",
+        "apps/server/src/routes/ffmpeg/execute.ts",
+        "apps/server/src/routes/ffmpeg/progress.ts",
+        "apps/server/src/routes/ffmpeg/status.ts",
+        "apps/server/src/routes/providers/debug/inspect.ts",
+        "apps/server/src/routes/providers/debug/run.ts",
+        "apps/server/src/routes/providers/media/add.ts",
+        "apps/server/src/routes/providers/media/delete.ts",
+        "apps/server/src/routes/providers/media/list.ts",
+        "apps/server/src/routes/providers/media/models.ts",
+        "apps/server/src/routes/providers/media/save.ts",
+        "apps/server/src/routes/providers/media/validate.ts",
+        "apps/server/src/routes/providers/models.ts"
+      ],
+      "key_entries": [
+        {
+          "file": "apps/server/src/modules/mediaGeneration/media/provider.ts",
+          "symbol": "mediaProvider",
+          "kind": "config"
+        },
+        {
+          "file": "apps/server/src/modules/mediaGeneration/media/generation.ts",
+          "symbol": "generateMedia",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/modules/mediaGeneration/ai/index.ts",
+          "symbol": "initializeProviderModels",
+          "kind": "function"
+        }
+      ],
+      "dependencies": [
+        "bootstrap_wiring",
+        "local_runtime",
+        "platform_core"
+      ],
+      "health": {
+        "score": 74,
+        "coupling": "high",
+        "complexity": "high",
+        "churn": "high",
+        "decay_flags": [],
+        "review_note": "43 文件 3,037 行（18 域文件 + 25 路由 + 入口）。ai/** 管模型目录与请求文件，media/** 管供应商、生成、计费、任务与价格参考，provider.ts 498 行最重；出边 3（platformCore 63、localRuntime 4、bootstrap 26）。建议按 models/generate/billing 拆 provider.ts 并抽公共提交-轮询。",
+        "concerns": [
+          {
+            "severity": "high",
+            "finding": "media/provider.ts 498 行集中模型清单、价格、生成与轮询差异，供应商接口一变就落在同一文件。",
+            "suggestion": "按 models/price/generate/poll 拆分并以 ProviderDefinition 组合。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "plugin_market",
+      "name": "插件市场",
+      "responsibility": "tool/node/ext/skill/agent 五类插件与团队的安装、读取、启停、卸载",
+      "files": [
+        "apps/server/src/modules/pluginMarket/index.ts",
+        "apps/server/src/modules/pluginMarket/plugins/ext.ts",
+        "apps/server/src/modules/pluginMarket/plugins/initialize.ts",
+        "apps/server/src/modules/pluginMarket/plugins/initializeExt.ts",
+        "apps/server/src/modules/pluginMarket/plugins/install.ts",
+        "apps/server/src/modules/pluginMarket/plugins/nodes.ts",
+        "apps/server/src/modules/pluginMarket/plugins/tools.ts",
+        "apps/server/src/modules/pluginMarket/skills/files.ts",
+        "apps/server/src/modules/pluginMarket/teams/files.ts",
+        "apps/server/src/modules/pluginMarket/teams/index.ts",
+        "apps/server/src/modules/pluginMarket/teams/install.ts",
+        "apps/server/src/routes/agents/a2a/get.ts",
+        "apps/server/src/routes/agents/a2a/save.ts",
+        "apps/server/src/routes/agents/connect.ts",
+        "apps/server/src/routes/agents/get.ts",
+        "apps/server/src/routes/agents/install.ts",
+        "apps/server/src/routes/agents/read.ts",
+        "apps/server/src/routes/agents/save.ts",
+        "apps/server/src/routes/agents/setEnabled.ts",
+        "apps/server/src/routes/agents/uninstall.ts",
+        "apps/server/src/routes/ext/install.ts",
+        "apps/server/src/routes/ext/list.ts",
+        "apps/server/src/routes/ext/read.ts",
+        "apps/server/src/routes/ext/save.ts",
+        "apps/server/src/routes/ext/setEnabled.ts",
+        "apps/server/src/routes/ext/uninstall.ts",
+        "apps/server/src/routes/nodes/files.ts",
+        "apps/server/src/routes/nodes/get.ts",
+        "apps/server/src/routes/nodes/install.ts",
+        "apps/server/src/routes/nodes/save.ts",
+        "apps/server/src/routes/nodes/setEnabled.ts",
+        "apps/server/src/routes/nodes/uninstall.ts",
+        "apps/server/src/routes/plugins/export.ts",
+        "apps/server/src/routes/skills/create.ts",
+        "apps/server/src/routes/skills/get.ts",
+        "apps/server/src/routes/skills/install.ts",
+        "apps/server/src/routes/skills/list.ts",
+        "apps/server/src/routes/skills/move.ts",
+        "apps/server/src/routes/skills/order.ts",
+        "apps/server/src/routes/skills/read.ts",
+        "apps/server/src/routes/skills/save.ts",
+        "apps/server/src/routes/skills/setEnabled.ts",
+        "apps/server/src/routes/skills/uninstall.ts",
+        "apps/server/src/routes/tools/client.ts",
+        "apps/server/src/routes/tools/get.ts",
+        "apps/server/src/routes/tools/install.ts",
+        "apps/server/src/routes/tools/renderers.ts",
+        "apps/server/src/routes/tools/save.ts",
+        "apps/server/src/routes/tools/setEnabled.ts",
+        "apps/server/src/routes/tools/uninstall.ts"
+      ],
+      "key_entries": [
+        {
+          "file": "apps/server/src/modules/pluginMarket/plugins/install.ts",
+          "symbol": "default",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/modules/pluginMarket/plugins/initializeExt.ts",
+          "symbol": "default",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/modules/pluginMarket/teams/index.ts",
+          "symbol": "createTeamRunner",
+          "kind": "function"
+        }
+      ],
+      "dependencies": [
+        "bootstrap_wiring",
+        "local_runtime",
+        "media_generation",
+        "platform_core"
+      ],
+      "health": {
+        "score": 72,
+        "coupling": "high",
+        "complexity": "high",
+        "churn": "high",
+        "decay_flags": [],
+        "review_note": "50 文件 2,339 行（10 域文件 + 39 路由 + 入口）。安装内核 install.ts 450 行统一处理目录同步、解包与修订哈希，teams/** 承载团队安装与远端；出边 4（platformCore 92、bootstrap 40、localRuntime 6、mediaGeneration 1）。建议把 install.ts 的职责按「解包/落盘/修订」拆开。",
+        "concerns": [
+          {
+            "severity": "high",
+            "finding": "plugins/install.ts 450 行同时处理解包、路径校验、目录同步与修订哈希，五类插件共用同一实现，改动风险面覆盖全部插件类型。",
+            "suggestion": "拆分 extract/validate/sync 三段，安装器只做编排，并用类型参数表达五类差异。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "mcp_integration",
+      "name": "MCP 集成",
+      "responsibility": "MCP 服务器配置、DXT/JSON 导入、对外 MCP 端点与控制通道",
+      "files": [
+        "apps/server/src/modules/mcpIntegration/index.ts",
+        "apps/server/src/modules/mcpIntegration/mcp/control.ts",
+        "apps/server/src/modules/mcpIntegration/mcp/dxt.ts",
+        "apps/server/src/modules/mcpIntegration/mcp/operations.ts",
+        "apps/server/src/modules/mcpIntegration/mcp/resources.ts",
+        "apps/server/src/modules/mcpIntegration/mcp/runtime.ts",
+        "apps/server/src/modules/mcpIntegration/mcp/servers.ts",
+        "apps/server/src/modules/mcpIntegration/mcp/tools.ts",
+        "apps/server/src/routes/mcp/control/events.ts",
+        "apps/server/src/routes/mcp/control/result.ts",
+        "apps/server/src/routes/mcp/control/state.ts",
+        "apps/server/src/routes/mcp/servers/importDxt.ts",
+        "apps/server/src/routes/mcp/servers/importJson.ts",
+        "apps/server/src/routes/mcp/servers/inspectDxt.ts",
+        "apps/server/src/routes/mcp/servers/list.ts",
+        "apps/server/src/routes/mcp/servers/remove.ts",
+        "apps/server/src/routes/mcp/servers/save.ts",
+        "apps/server/src/routes/mcp/servers/setEnabled.ts",
+        "apps/server/src/routes/mcp/servers/test.ts",
+        "apps/server/src/routes/mcp/skill.ts",
+        "apps/server/src/routes/mcp/status.ts"
+      ],
+      "key_entries": [
+        {
+          "file": "apps/server/src/modules/mcpIntegration/mcp/control.ts",
+          "symbol": "getMcpSettings",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/modules/mcpIntegration/mcp/runtime.ts",
+          "symbol": "initializeMcpRuntime",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/modules/mcpIntegration/mcp/tools.ts",
+          "symbol": "getMcpTools",
+          "kind": "function"
+        }
+      ],
+      "dependencies": [
+        "bootstrap_wiring",
+        "local_runtime",
+        "media_generation",
+        "platform_core",
+        "plugin_market"
+      ],
+      "health": {
+        "score": 80,
+        "coupling": "medium",
+        "complexity": "medium",
+        "churn": "medium",
+        "decay_flags": [
+          "file_cycle"
+        ],
+        "review_note": "21 文件 1,464 行（7 域文件 + 13 路由 + 入口）。配置、DXT 导入、工具聚合、技能资源与控制通道分层清楚，tools.ts 262 行最重；出边 5（platformCore 36、bootstrap 14、pluginMarket 3、localRuntime 3、mediaGeneration 1）。仅存 dxt.ts ↔ servers.ts 文件级环（互为兜底清理）。",
+        "concerns": []
+      }
+    },
+    {
+      "id": "local_runtime",
+      "name": "本机运行时",
+      "responsibility": "工作区文件 CRUD 与越界防护、命令执行、桌面桥、设备配对",
+      "files": [
+        "apps/server/src/modules/localRuntime/desktop/index.ts",
+        "apps/server/src/modules/localRuntime/exec.ts",
+        "apps/server/src/modules/localRuntime/index.ts",
+        "apps/server/src/modules/localRuntime/mobileLink/index.ts",
+        "apps/server/src/modules/localRuntime/remoteConnection.ts",
+        "apps/server/src/modules/localRuntime/workspace/chatImages.ts",
+        "apps/server/src/modules/localRuntime/workspace/download.ts",
+        "apps/server/src/modules/localRuntime/workspace/files.ts",
+        "apps/server/src/modules/localRuntime/workspace/index.ts",
+        "apps/server/src/routes/desktop/clipboard/read.ts",
+        "apps/server/src/routes/desktop/clipboard/write.ts",
+        "apps/server/src/routes/desktop/devtools.ts",
+        "apps/server/src/routes/desktop/openUrl.ts",
+        "apps/server/src/routes/desktop/plugins/install.ts",
+        "apps/server/src/routes/desktop/providerFile/read.ts",
+        "apps/server/src/routes/desktop/providerFile/select.ts",
+        "apps/server/src/routes/desktop/ready.ts",
+        "apps/server/src/routes/desktop/saveFile.ts",
+        "apps/server/src/routes/desktop/selectDirectory.ts",
+        "apps/server/src/routes/desktop/selectSaveFile.ts",
+        "apps/server/src/routes/desktop/update/apply.ts",
+        "apps/server/src/routes/desktop/update/check.ts",
+        "apps/server/src/routes/desktop/update/download.ts",
+        "apps/server/src/routes/desktop/update/index.ts",
+        "apps/server/src/routes/exec/cancel.ts",
+        "apps/server/src/routes/exec/index.ts",
+        "apps/server/src/routes/mobileLink/config.ts",
+        "apps/server/src/routes/mobileLink/heartbeat.ts",
+        "apps/server/src/routes/mobileLink/pair.ts",
+        "apps/server/src/routes/mobileLink/pairing.ts",
+        "apps/server/src/routes/mobileLink/revoke.ts",
+        "apps/server/src/routes/mobileLink/status.ts",
+        "apps/server/src/routes/workspaces/check.ts",
+        "apps/server/src/routes/workspaces/clone.ts",
+        "apps/server/src/routes/workspaces/files/copy.ts",
+        "apps/server/src/routes/workspaces/files/importImage.ts",
+        "apps/server/src/routes/workspaces/files/list.ts",
+        "apps/server/src/routes/workspaces/files/mkdir.ts",
+        "apps/server/src/routes/workspaces/files/read.ts",
+        "apps/server/src/routes/workspaces/files/remove.ts",
+        "apps/server/src/routes/workspaces/files/rename.ts",
+        "apps/server/src/routes/workspaces/files/reveal.ts",
+        "apps/server/src/routes/workspaces/files/thumb.ts",
+        "apps/server/src/routes/workspaces/files/write.ts",
+        "apps/server/src/routes/workspaces/list.ts",
+        "apps/server/src/routes/workspaces/selectDirectory.ts"
+      ],
+      "key_entries": [
+        {
+          "file": "apps/server/src/modules/localRuntime/workspace/files.ts",
+          "symbol": "workspaceFile",
+          "kind": "config"
+        },
+        {
+          "file": "apps/server/src/modules/localRuntime/exec.ts",
+          "symbol": "runCommand",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/modules/localRuntime/remoteConnection.ts",
+          "symbol": "createRemoteConnection",
+          "kind": "function"
+        }
+      ],
+      "dependencies": [
+        "asset_library",
+        "bootstrap_wiring",
+        "media_generation",
+        "platform_core"
+      ],
+      "health": {
+        "score": 78,
+        "coupling": "high",
+        "complexity": "high",
+        "churn": "high",
+        "decay_flags": [],
+        "review_note": "46 文件 2,205 行（8 域文件 + 37 路由 + 入口）。workspace/** 统一路径越界与下载/图片缓存，desktop/ 与 mobileLink/ 承担宿主桥接，exec.ts 管命令执行；出边 4（platformCore 78、bootstrap 38、assetLibrary 3、mediaGeneration 1）。建议为 exec 增加显式确认与审计（E3 内聚口径不变）。",
+        "concerns": [
+          {
+            "severity": "high",
+            "finding": "exec.ts 允许同源页面执行任意 shell 命令，仅靠来源头与工作区路径校验，缺少逐命令审批与审计。",
+            "suggestion": "增加显式确认、审计日志与按工作区的并发/时长配额。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "agent_access",
+      "name": "Agent 接入",
+      "responsibility": "Agent 流式会话、单 Agent 运行、浏览器通道、会话状态与 A2A",
+      "files": [
+        "apps/server/src/modules/agentAccess/browser/index.ts",
+        "apps/server/src/modules/agentAccess/index.ts",
+        "apps/server/src/modules/agentAccess/sessionState/index.ts",
+        "apps/server/src/modules/agentAccess/singleAgent/index.ts",
+        "apps/server/src/modules/agentAccess/singleAgent/types.ts",
+        "apps/server/src/routes/agent.ts",
+        "apps/server/src/routes/agent/answer.ts",
+        "apps/server/src/routes/agent/canvasResult.ts",
+        "apps/server/src/routes/agent/compact.ts",
+        "apps/server/src/routes/agent/create.ts",
+        "apps/server/src/routes/agent/fork.ts",
+        "apps/server/src/routes/agent/get.ts",
+        "apps/server/src/routes/agent/list.ts",
+        "apps/server/src/routes/agent/mentionSource.ts",
+        "apps/server/src/routes/agent/message.ts",
+        "apps/server/src/routes/agent/rename.ts",
+        "apps/server/src/routes/agent/rewind.ts",
+        "apps/server/src/routes/agent/skills.ts",
+        "apps/server/src/routes/browser/input.ts",
+        "apps/server/src/routes/browser/stream.ts",
+        "apps/server/src/routes/sessionState/get.ts",
+        "apps/server/src/routes/sessionState/patch.ts",
+        "apps/server/src/routes/singleAgent/answer.ts",
+        "apps/server/src/routes/singleAgent/control.ts",
+        "apps/server/src/routes/singleAgent/create.ts",
+        "apps/server/src/routes/singleAgent/run.ts",
+        "apps/server/src/routes/singleAgent/toolResult.ts"
+      ],
+      "key_entries": [
+        {
+          "file": "apps/server/src/modules/agentAccess/sessionState/index.ts",
+          "symbol": "patchSessionState",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/modules/agentAccess/singleAgent/index.ts",
+          "symbol": "runSingleAgent",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/modules/agentAccess/browser/index.ts",
+          "symbol": "browserCapabilities",
+          "kind": "config"
+        }
+      ],
+      "dependencies": [
+        "bootstrap_wiring",
+        "platform_core",
+        "plugin_market"
+      ],
+      "health": {
+        "score": 80,
+        "coupling": "medium",
+        "complexity": "medium",
+        "churn": "high",
+        "decay_flags": [],
+        "review_note": "27 文件 1,214 行（4 域文件 + 22 路由 + 入口）。singleAgent/** 编排单 Agent 与会话回调（index.ts 375 行），sessionState/** 管流式状态，browser/** 管输入输出桥；出边 3（platformCore 51、bootstrap 23、pluginMarket 1）。入口同时登记 /a2a 网关。",
+        "concerns": [
+          {
+            "severity": "high",
+            "finding": "singleAgent/index.ts 375 行同时处理工具回调、会话推进与流式输出，与 sessionState 的状态边界靠约定维持。",
+            "suggestion": "把工具回调与流式输出抽为独立文件，session 状态只经 sessionState 访问。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "platform_core",
+      "name": "平台核心",
+      "responsibility": "i18n、字段校验、统一响应/错误、平台判定、conf 持久化与设置监控",
+      "files": [
+        "apps/server/src/lib/desktop.ts",
+        "apps/server/src/lib/documentFormats.ts",
+        "apps/server/src/lib/i18n.ts",
+        "apps/server/src/lib/mentionSources.ts",
+        "apps/server/src/lib/middleware.ts",
+        "apps/server/src/lib/modelReasoning.ts",
+        "apps/server/src/lib/nodeMenu.ts",
+        "apps/server/src/lib/platform.ts",
+        "apps/server/src/lib/responseFormat.ts",
+        "apps/server/src/modules/platformCore/conf/index.ts",
+        "apps/server/src/modules/platformCore/fileHttp.ts",
+        "apps/server/src/modules/platformCore/index.ts",
+        "apps/server/src/modules/platformCore/monitor.ts",
+        "apps/server/src/modules/platformCore/personalization.ts",
+        "apps/server/src/routes/monitor/free.ts",
+        "apps/server/src/routes/monitor/status.ts",
+        "apps/server/src/routes/settings/get.ts",
+        "apps/server/src/routes/settings/personalization/get.ts",
+        "apps/server/src/routes/settings/personalization/save.ts",
+        "apps/server/src/routes/settings/save.ts",
+        "apps/server/src/routes/settings/systemPrompt.ts",
+        "apps/server/src/types/desktop.ts"
+      ],
+      "key_entries": [
+        {
+          "file": "apps/server/src/modules/platformCore/conf/index.ts",
+          "symbol": "default",
+          "kind": "config"
+        },
+        {
+          "file": "apps/server/src/lib/i18n.ts",
+          "symbol": "languageRequest",
+          "kind": "function"
+        },
+        {
+          "file": "apps/server/src/lib/responseFormat.ts",
+          "symbol": "success",
+          "kind": "function"
+        }
+      ],
+      "dependencies": [
+        "bootstrap_wiring",
+        "local_runtime",
+        "media_generation"
+      ],
+      "health": {
+        "score": 82,
+        "coupling": "high",
+        "complexity": "low",
+        "churn": "medium",
+        "decay_flags": [],
+        "review_note": "22 文件 1,001 行（4 域文件 + lib/** 9 + types/desktop.ts + 7 路由 + 入口）。conf 单例、监控、个性化与 fileHttp 横切，lib/** 提供 i18n/校验/响应/平台判定；被全部 7 个子模块引用（入边最多），出边 3（bootstrap 8、localRuntime 1、mediaGeneration 1）。建议把 lib/** 中的 i18n 与响应格式标注为稳定公共面。",
+        "concerns": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "sm-agent_access-bootstrap_wiring-1",
+      "to": "bootstrap_wiring",
+      "type": "import",
+      "label": "23 处 import（23 个源文件）",
+      "strength": "strong",
+      "from": "agent_access"
+    },
+    {
+      "id": "sm-agent_access-platform_core-1",
+      "to": "platform_core",
+      "type": "import",
+      "label": "51 处 import（25 个源文件）",
+      "strength": "strong",
+      "from": "agent_access"
+    },
+    {
+      "id": "sm-agent_access-plugin_market-1",
+      "to": "plugin_market",
+      "type": "import",
+      "label": "1 处 import（1 个源文件）",
+      "strength": "weak",
+      "from": "agent_access"
+    },
+    {
+      "id": "sm-asset_library-bootstrap_wiring-1",
+      "to": "bootstrap_wiring",
+      "type": "import",
+      "label": "2 处 import（2 个源文件）",
+      "strength": "weak",
+      "from": "asset_library"
+    },
+    {
+      "id": "sm-asset_library-local_runtime-1",
+      "to": "local_runtime",
+      "type": "import",
+      "label": "8 处 import（7 个源文件）",
+      "strength": "medium",
+      "from": "asset_library"
+    },
+    {
+      "id": "sm-asset_library-media_generation-1",
+      "to": "media_generation",
+      "type": "import",
+      "label": "1 处 import（1 个源文件）",
+      "strength": "weak",
+      "from": "asset_library"
+    },
+    {
+      "id": "sm-asset_library-platform_core-1",
+      "to": "platform_core",
+      "type": "import",
+      "label": "27 处 import（23 个源文件）",
+      "strength": "strong",
+      "from": "asset_library"
+    },
+    {
+      "id": "sm-bootstrap_wiring-agent_access-1",
+      "to": "agent_access",
+      "type": "import",
+      "label": "25 处 import（3 个源文件）",
+      "strength": "strong",
+      "from": "bootstrap_wiring"
+    },
+    {
+      "id": "sm-bootstrap_wiring-asset_library-1",
+      "to": "asset_library",
+      "type": "import",
+      "label": "20 处 import（3 个源文件）",
+      "strength": "strong",
+      "from": "bootstrap_wiring"
+    },
+    {
+      "id": "sm-bootstrap_wiring-local_runtime-1",
+      "to": "local_runtime",
+      "type": "import",
+      "label": "46 处 import（4 个源文件）",
+      "strength": "strong",
+      "from": "bootstrap_wiring"
+    },
+    {
+      "id": "sm-bootstrap_wiring-mcp_integration-1",
+      "to": "mcp_integration",
+      "type": "import",
+      "label": "19 处 import（4 个源文件）",
+      "strength": "medium",
+      "from": "bootstrap_wiring"
+    },
+    {
+      "id": "sm-bootstrap_wiring-media_generation-1",
+      "to": "media_generation",
+      "type": "import",
+      "label": "34 处 import（3 个源文件）",
+      "strength": "strong",
+      "from": "bootstrap_wiring"
+    },
+    {
+      "id": "sm-bootstrap_wiring-platform_core-1",
+      "to": "platform_core",
+      "type": "import",
+      "label": "14 处 import（3 个源文件）",
+      "strength": "medium",
+      "from": "bootstrap_wiring"
+    },
+    {
+      "id": "sm-bootstrap_wiring-plugin_market-1",
+      "to": "plugin_market",
+      "type": "import",
+      "label": "46 处 import（3 个源文件）",
+      "strength": "strong",
+      "from": "bootstrap_wiring"
+    },
+    {
+      "id": "sm-local_runtime-asset_library-1",
+      "to": "asset_library",
+      "type": "import",
+      "label": "3 处 import（2 个源文件）",
+      "strength": "weak",
+      "from": "local_runtime"
+    },
+    {
+      "id": "sm-local_runtime-bootstrap_wiring-1",
+      "to": "bootstrap_wiring",
+      "type": "import",
+      "label": "38 处 import（38 个源文件）",
+      "strength": "strong",
+      "from": "local_runtime"
+    },
+    {
+      "id": "sm-local_runtime-media_generation-1",
+      "to": "media_generation",
+      "type": "import",
+      "label": "1 处 import（1 个源文件）",
+      "strength": "weak",
+      "from": "local_runtime"
+    },
+    {
+      "id": "sm-local_runtime-platform_core-1",
+      "to": "platform_core",
+      "type": "import",
+      "label": "78 处 import（41 个源文件）",
+      "strength": "strong",
+      "from": "local_runtime"
+    },
+    {
+      "id": "sm-mcp_integration-bootstrap_wiring-1",
+      "to": "bootstrap_wiring",
+      "type": "import",
+      "label": "14 处 import（14 个源文件）",
+      "strength": "medium",
+      "from": "mcp_integration"
+    },
+    {
+      "id": "sm-mcp_integration-local_runtime-1",
+      "to": "local_runtime",
+      "type": "import",
+      "label": "3 处 import（3 个源文件）",
+      "strength": "weak",
+      "from": "mcp_integration"
+    },
+    {
+      "id": "sm-mcp_integration-media_generation-1",
+      "to": "media_generation",
+      "type": "import",
+      "label": "1 处 import（1 个源文件）",
+      "strength": "weak",
+      "from": "mcp_integration"
+    },
+    {
+      "id": "sm-mcp_integration-platform_core-1",
+      "to": "platform_core",
+      "type": "import",
+      "label": "36 处 import（19 个源文件）",
+      "strength": "strong",
+      "from": "mcp_integration"
+    },
+    {
+      "id": "sm-mcp_integration-plugin_market-1",
+      "to": "plugin_market",
+      "type": "import",
+      "label": "3 处 import（3 个源文件）",
+      "strength": "weak",
+      "from": "mcp_integration"
+    },
+    {
+      "id": "sm-media_generation-bootstrap_wiring-1",
+      "to": "bootstrap_wiring",
+      "type": "import",
+      "label": "26 处 import（26 个源文件）",
+      "strength": "strong",
+      "from": "media_generation"
+    },
+    {
+      "id": "sm-media_generation-local_runtime-1",
+      "to": "local_runtime",
+      "type": "import",
+      "label": "4 处 import（4 个源文件）",
+      "strength": "weak",
+      "from": "media_generation"
+    },
+    {
+      "id": "sm-media_generation-platform_core-1",
+      "to": "platform_core",
+      "type": "import",
+      "label": "63 处 import（37 个源文件）",
+      "strength": "strong",
+      "from": "media_generation"
+    },
+    {
+      "id": "sm-platform_core-bootstrap_wiring-1",
+      "to": "bootstrap_wiring",
+      "type": "import",
+      "label": "8 处 import（8 个源文件）",
+      "strength": "medium",
+      "from": "platform_core"
+    },
+    {
+      "id": "sm-platform_core-local_runtime-1",
+      "to": "local_runtime",
+      "type": "import",
+      "label": "1 处 import（1 个源文件）",
+      "strength": "weak",
+      "from": "platform_core"
+    },
+    {
+      "id": "sm-platform_core-media_generation-1",
+      "to": "media_generation",
+      "type": "import",
+      "label": "1 处 import（1 个源文件）",
+      "strength": "weak",
+      "from": "platform_core"
+    },
+    {
+      "id": "sm-plugin_market-bootstrap_wiring-1",
+      "to": "bootstrap_wiring",
+      "type": "import",
+      "label": "40 处 import（40 个源文件）",
+      "strength": "strong",
+      "from": "plugin_market"
+    },
+    {
+      "id": "sm-plugin_market-local_runtime-1",
+      "to": "local_runtime",
+      "type": "import",
+      "label": "6 处 import（6 个源文件）",
+      "strength": "medium",
+      "from": "plugin_market"
+    },
+    {
+      "id": "sm-plugin_market-media_generation-1",
+      "to": "media_generation",
+      "type": "import",
+      "label": "1 处 import（1 个源文件）",
+      "strength": "weak",
+      "from": "plugin_market"
+    },
+    {
+      "id": "sm-plugin_market-platform_core-1",
+      "to": "platform_core",
+      "type": "import",
+      "label": "92 处 import（47 个源文件）",
+      "strength": "strong",
+      "from": "plugin_market"
+    }
+  ]
+}

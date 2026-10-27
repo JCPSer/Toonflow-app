@@ -2,7 +2,7 @@
   "id": "media-toolkit",
   "name": "音视频基础能力",
   "layer": "foundation",
-  "responsibility": "FFmpeg 二进制管理与音视频转码、浏览器语音识别封装",
+  "responsibility": "FFmpeg 二进制管理与音视频处理、浏览器语音识别封装",
   "files": [
     "packages/ffmpeg/**",
     "packages/asr/**"
@@ -15,7 +15,12 @@
     },
     {
       "file": "packages/ffmpeg/src/index.ts",
-      "symbol": "getToolStatus",
+      "symbol": "installFfmpeg",
+      "kind": "function"
+    },
+    {
+      "file": "packages/ffmpeg/src/remote.ts",
+      "symbol": "executeRemoteFfmpeg",
       "kind": "function"
     },
     {
@@ -24,24 +29,24 @@
       "kind": "function"
     }
   ],
+  "dependencies": [
+    "shared-foundation"
+  ],
   "health": {
     "score": 82,
     "coupling": "medium",
     "complexity": "medium",
-    "churn": "medium",
+    "churn": "low",
     "decay_flags": [],
-    "review_note": "8 文件 1,062 行；FFmpeg 运行时按 catalog 下载/校验并回退系统 PATH，ASR 仅浏览器端封装。近 3 个月 9 次提交、21 次文件变更。建议在 /api/ffmpeg/status 暴露实际二进制版本与来源，并固定下载源 checksum，降低“同机不同编码器”的排障成本。",
+    "review_note": "8 文件 / 1,062 行，出边 1、入边 5；FFmpeg 下载源集中声明并校验 sha256，安装走临时目录整体替换，浏览器/远程执行共用 browserTypes 白名单。建议把 ASR 能力探测从 UA 版本判断改为特性探测，避免宿主内核升级后静默失效。",
     "concerns": [
       {
         "id": "c-media-toolkit-1",
         "severity": "high",
-        "finding": "FFmpeg 按 catalog.ts 下载二进制并回退系统 PATH，不同机器的编码器版本与来源不一致，问题只在具体转码任务失败时暴露。",
-        "suggestion": "固定目标版本与 checksum，在 /api/ffmpeg/status 暴露实际版本、来源与校验结果，并让下载失败降级为显式错误。"
+        "finding": "ASR 以 UA 中的 Chromium 主版本号 ≥135 判断音频轨道识别能力，Electron/WebView 或非 Chrome 内核会被直接判为不支持，且注释承认这是临时门槛。",
+        "suggestion": "改为探测 SpeechRecognition 与 AudioContext 的特性组合，并把不支持原因作为可展示的能力缺失返回。"
       }
     ]
   },
-  "dependencies": [
-    "shared-foundation"
-  ],
-  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+  "last_analyzed_at": "2026-10-26T21:12:00+08:00"
 }

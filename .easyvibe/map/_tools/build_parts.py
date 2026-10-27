@@ -206,23 +206,24 @@ MODULES = {
   }
 },
 "server-api": {
-  "id": "server-api", "name": "服务边界与业务编排", "layer": "application",
-  "responsibility": "Express 路由边界、媒体/插件/MCP/工作区业务编排与应用装配",
-  "files": ["apps/server/src/app.ts", "apps/server/src/index.ts", "apps/server/src/core.ts", "apps/server/src/router.ts", "apps/server/src/utils.ts", "apps/server/src/remoteConnection.ts", "apps/server/src/lib/**", "apps/server/src/routes/**", "apps/server/src/types/**", "apps/server/src/utils/**", "apps/server/scripts/**"],
+  "id": "server-api", "name": "服务边界与编排", "layer": "application",
+  "responsibility": "Express 组合根、161 单接口路由与 7 个应用子模块的装配与编排",
+  "files": ["apps/server/src/app.ts", "apps/server/src/index.ts", "apps/server/src/core.ts", "apps/server/src/router.ts", "apps/server/src/utils.ts", "apps/server/src/lib/**", "apps/server/src/modules/**", "apps/server/src/types/**", "apps/server/scripts/**"],
   "key_entries": [
     {"file": "apps/server/src/app.ts", "symbol": "createApp", "kind": "function"},
     {"file": "apps/server/src/core.ts", "symbol": "generateRouter", "kind": "function"},
-    {"file": "apps/server/src/remoteConnection.ts", "symbol": "createRemoteConnection", "kind": "function"},
-    {"file": "apps/server/src/routes/exec/index.ts", "symbol": "POST /api/exec", "kind": "route"},
-    {"file": "apps/server/src/routes/settings/get.ts", "symbol": "GET /api/settings/get", "kind": "route"},
+    {"file": "apps/server/src/modules/localRuntime/remoteConnection.ts", "symbol": "createRemoteConnection", "kind": "function"},
+    {"file": "apps/server/src/modules/platformCore/index.ts", "symbol": "corsGuard", "kind": "function"},
+    {"file": "apps/server/src/modules/assetLibrary/index.ts", "symbol": "warmup", "kind": "function"},
+    {"file": "apps/server/src/routes/assets/list.ts", "symbol": "GET /api/assets/list", "kind": "route"},
   ],
   "health": {
-    "score": 54, "coupling": "critical", "complexity": "high", "churn": "high", "decay_flags": ["god_module", "circular_dep", "coupling_high"],
-    "review_note": "204 文件 11,106 行、138 个单接口路由，同时承载 HTTP 边界、媒体生成/计费、插件安装、MCP、工作区与新增的本机命令执行；出边 5、入边 4。近 3 个月 31 次提交、429 次文件变更。建议先按 media/plugins/workspace/exec 拆子模块，把 agent 依赖的基础能力端口化，routes 只做校验与编排。",
+    "score": 72, "coupling": "high", "complexity": "high", "churn": "high", "decay_flags": ["circular_dep", "coupling_high"],
+    "review_note": "已按素材库/媒体生成/插件市场/MCP/本机运行时/Agent 接入/平台核心拆出 7 个子模块，246 文件 / 14,584 行，app.ts 收敛为 78 行组合根，单模块 god module 形态消除。仍剩两类结构债：① 与 agent-runtime 双向引用（agent→应用 71 处、应用→agent 24 处）未端口化；② 子模块间 53 条直引对方域文件（36 个文件）绕过入口，仅 4 条经入口。建议以 AgentHost 端口切断 agent→@/utils·@/lib，再按域把深引收敛到入口或 ModuleContext。",
     "concerns": [
-      {"id": "c-server-api-1", "severity": "critical", "finding": "204 文件的模块同时承载 138 个路由、媒体生成/计费、插件安装、MCP 与工作区能力，god module 使任何改动都要全量回归。", "suggestion": "按 routes/media/plugins/workspace 拆成独立模块，保留 app.ts 作为唯一组合根。"},
-      {"id": "c-server-api-2", "severity": "critical", "finding": "server-api 与 agent-runtime 双向引用（server→agent 25 处、agent→server 66 处），应用层与领域层的依赖方向被打破。", "suggestion": "把 agent 需要的配置、工作区、模型能力抽成 foundation 端口，utils.ts 不再聚合导出 agent，由 app.ts 负责装配。"},
-      {"id": "c-server-api-3", "severity": "high", "finding": "/api/exec 允许本机页面执行任意 shell 命令，权限只依赖本机来源、应用请求头与工作区路径校验，缺少命令审批、审计与更细的资源配额。", "suggestion": "把命令执行下沉为独立 exec 服务，增加显式用户确认与审计日志，并暴露按工作区的并发/时长配额。"}
+      {"id": "c-server-api-2", "severity": "critical", "finding": "agent-runtime 对应用层有 71 处 import（@/modules 50、@/lib 20、@/utils 1），应用层又反向 import agent 24 处，环仍在最热的会话链路上；utils.ts 以 37 个出口聚合、被 145 个文件引用。", "suggestion": "定义 AgentHost 端口（配置/工作区/模型/团队）由 app.ts 注入，utils.ts 不再聚合 agent 能力。"},
+      {"id": "c-server-api-4", "severity": "high", "finding": "7 个子模块之间 57 条 import 中 53 条直接引用对方域文件（36 个文件），仅 4 条经模块入口；契约 dependencies 无运行时消费者，漂移只能靠人工与地图复核。", "suggestion": "按域逐条收敛到入口或 ModuleContext，并把深引清单冻结在子图中，新增需登记复核。"},
+      {"id": "c-server-api-3", "severity": "high", "finding": "启动入口 apps/server/src/index.ts 直接 import electrobun.config 读取 app.version，使应用层反向依赖宿主壳配置；移动端 server.ts 也复制了同一读法。", "suggestion": "把版本号改为启动参数或平台能力端口注入，服务端代码不直接 import 宿主壳配置。"},
     ]
   }
 },

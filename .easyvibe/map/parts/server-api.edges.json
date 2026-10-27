@@ -6,40 +6,49 @@
       "from": "server-api",
       "to": "shared-foundation",
       "type": "import",
-      "strength": "strong",
-      "label": "file/i18n/模型图标"
+      "label": "91 处 file/i18n/模型图标/assets",
+      "strength": "strong"
     },
     {
       "id": "e9",
       "from": "server-api",
       "to": "agent-runtime",
       "type": "import",
-      "strength": "strong",
-      "label": "agent.run / a2a / teams"
+      "label": "24 处 agent 会话与 teams 契约",
+      "strength": "strong"
     },
     {
       "id": "e10",
       "from": "server-api",
       "to": "agent-tools",
       "type": "import",
-      "strength": "strong",
-      "label": "MCP 与工具运行时"
+      "label": "25 处 MCP 与工具运行时",
+      "strength": "strong"
     },
     {
       "id": "e11",
       "from": "server-api",
       "to": "ai-providers",
       "type": "import",
-      "strength": "normal",
-      "label": "供应商清单与模型目录"
+      "label": "9 处供应商清单与模型目录",
+      "strength": "normal"
     },
     {
       "id": "e12",
       "from": "server-api",
       "to": "media-toolkit",
       "type": "import",
-      "strength": "normal",
-      "label": "ffmpeg 执行"
+      "label": "4 处 ffmpeg 执行",
+      "strength": "normal"
+    },
+    {
+      "id": "e13",
+      "from": "server-api",
+      "to": "desktop-shell",
+      "type": "config",
+      "label": "启动读取 electrobun.config 的 app.version",
+      "strength": "weak",
+      "direction_violation": true
     }
   ]
 }

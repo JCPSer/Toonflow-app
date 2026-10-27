@@ -1,6 +1,6 @@
 {
   "id": "mobile-shell",
-  "name": "移动端宿主",
+  "name": "移动宿主壳",
   "layer": "host-shell",
   "responsibility": "Android WebView 宿主、OHOS 运行时与移动构建兼容层",
   "files": [
@@ -22,28 +22,42 @@
       "file": "compat/ohos/runtime.ts",
       "symbol": "createTranspiler",
       "kind": "function"
+    },
+    {
+      "file": "compat/ohos/browserCompatibility.ts",
+      "symbol": "installBrowserCompatibility",
+      "kind": "function"
     }
   ],
+  "dependencies": [
+    "server-api",
+    "shared-foundation",
+    "web-console",
+    "desktop-shell"
+  ],
   "health": {
-    "score": 74,
-    "coupling": "low",
+    "score": 72,
+    "coupling": "medium",
     "complexity": "high",
     "churn": "low",
-    "decay_flags": [],
-    "review_note": "20 文件 3,502 行；Android WebView 宿主、OHOS 运行与原生桥接同属移动壳，mobileActivity.java 1,004 行承载 WebView、权限、文件导出与生命周期。近 3 个月 6 次提交、35 次文件变更。建议按 webview/bridge/export 拆类，并让 OHOS 运行时通过显式桥接协议与 Android 对齐。",
+    "decay_flags": [
+      "god_file"
+    ],
+    "review_note": "20 文件 / 3,502 行，出边 4、入边 0；Android 与 OHOS 两套宿主共存。mobileActivity.java 1,004 行集中 WebView 初始化、权限申请、文件选择、媒体采集与 URL 拦截；OHOS 兼容层通过跨包 node_modules 路径 require babel/typescript。建议拆 God Activity，并把兼容层独立为显式声明依赖的 workspace 包。",
     "concerns": [
       {
         "id": "c-mobile-shell-1",
         "severity": "high",
-        "finding": "mobileActivity.java 单文件 1,004 行同时管理 WebView、权限、文件导出与生命周期，任何宿主能力调整都集中在这一文件。",
-        "suggestion": "按 webview/bridge/export 拆类，Activity 只保留装配与生命周期转发。"
+        "finding": "mobileActivity.java 1,004 行集中 WebView 初始化、权限申请、文件选择、媒体采集与 URL 拦截，Activity 难以单测与复用。",
+        "suggestion": "拆 WebViewHost、MediaPermission、FileChooser 三类，Activity 只保留生命周期编排。"
+      },
+      {
+        "id": "c-mobile-shell-2",
+        "severity": "high",
+        "finding": "compat/ohos/runtime.ts 通过 require ../../apps/server/node_modules/@babel/parser 与 ../../packages/extScaffold/node_modules/typescript 解析依赖，绑定他包 node_modules 布局。",
+        "suggestion": "把 OHOS 兼容层独立为 workspace 包并显式声明 babel/typescript 依赖，由构建脚本注入。"
       }
     ]
   },
-  "dependencies": [
-    "server-api",
-    "shared-foundation",
-    "web-console"
-  ],
-  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+  "last_analyzed_at": "2026-10-26T21:12:00+08:00"
 }

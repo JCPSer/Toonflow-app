@@ -1,26 +1,22 @@
 {
   "id": "desktop-shell",
-  "name": "桌面壳与更新分发",
+  "name": "桌面宿主壳",
   "layer": "host-shell",
-  "responsibility": "Electrobun 桌面壳、原生安装/更新程序、兼容层与更新分发",
+  "responsibility": "Electrobun 桌面壳、原生安装/更新程序与更新分发",
   "files": [
     "apps/desktop/**",
     "apps/updateServer/**",
     "packages/startup/**",
     "compat/macIntel/**",
     "electrobun.config.ts",
-    "hutch.config.ts"
+    "hutch.config.ts",
+    "scripts/bundle-desktop.ts"
   ],
   "key_entries": [
     {
       "file": "apps/desktop/src/index.ts",
-      "symbol": "main",
+      "symbol": "start",
       "kind": "cli"
-    },
-    {
-      "file": "apps/desktop/src/protocol.ts",
-      "symbol": "parseInstallUrl",
-      "kind": "function"
     },
     {
       "file": "apps/desktop/src/update/windowsUpdater.ts",
@@ -36,27 +32,40 @@
       "file": "packages/startup/src/index.ts",
       "symbol": "showNativeSplash",
       "kind": "function"
+    },
+    {
+      "file": "scripts/bundle-desktop.ts",
+      "symbol": "bundle-desktop",
+      "kind": "cli"
     }
   ],
-  "health": {
-    "score": 78,
-    "coupling": "low",
-    "complexity": "medium",
-    "churn": "high",
-    "decay_flags": [],
-    "review_note": "37 文件 4,269 行；Electrobun 壳、NSIS/原生辅助程序、startup 启动画面、macIntel 兼容层与 updateServer 同属交付链路；运行期只依赖 server-api 与 file/i18n，近 3 个月 37 次提交、121 次文件变更。建议把 apps/desktop/src/index.ts 拆为 window/protocol/installer/updater 四段装配，并让更新清单/签名校验集中在 updateServer。",
-    "concerns": [
-      {
-        "id": "c-desktop-shell-1",
-        "severity": "high",
-        "finding": "apps/desktop/src/index.ts（372 行）单文件同时处理窗口创建、协议注册、插件安装队列、启动画面与更新启动，桌面入口难以分平台测试。",
-        "suggestion": "拆为 window/protocol/installer/updater 模块，index.ts 只做装配与事件转发，平台分支收敛到各自模块。"
-      }
-    ]
-  },
   "dependencies": [
     "server-api",
     "shared-foundation"
   ],
-  "last_analyzed_at": "2026-10-24T16:36:03+08:00"
+  "health": {
+    "score": 76,
+    "coupling": "medium",
+    "complexity": "medium",
+    "churn": "medium",
+    "decay_flags": [
+      "multi_runtime_duplication"
+    ],
+    "review_note": "39 文件 / 4,707 行，出边 2、入边 2；窗口生命周期、sidecar 启动、更新门控与协议分发集中在 index.ts（615 行），Windows 更新由 updateHelper.cs（657 行）、windowsUpdater.ts（378 行）与 installer.nsi（298 行）三处状态机共同实现。建议抽单一更新步骤协议，三端只做平台适配。",
+    "concerns": [
+      {
+        "id": "c-desktop-shell-1",
+        "severity": "high",
+        "finding": "Windows 更新流程由 updateHelper.cs（657 行）、windowsUpdater.ts（378 行）与 installer.nsi（298 行）三处状态机共同实现，需人工保持步骤与错误码同步。",
+        "suggestion": "抽出单一更新步骤/状态协议文件，C#、TS 与 NSIS 仅做平台适配与展示。"
+      },
+      {
+        "id": "c-desktop-shell-2",
+        "severity": "high",
+        "finding": "src/index.ts 615 行集中窗口生命周期、关闭闸门、更新门控、菜单、协议分发与 sidecar 启动，是壳层全部运行逻辑的单点。",
+        "suggestion": "拆 window/lifecycle/menu/protocol 模块，start() 只做装配与启动顺序编排。"
+      }
+    ]
+  },
+  "last_analyzed_at": "2026-10-26T21:12:00+08:00"
 }
