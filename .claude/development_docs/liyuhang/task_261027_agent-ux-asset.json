@@ -1,0 +1,50 @@
+{
+  "task_id": "task_261027_agent-ux-asset",
+  "created_at": "2026-10-27",
+  "owner": "liyuhang",
+  "goal": "Agent 交互区易用性（历史消息、⌘方向键、原生目录新建、文本节点运行态）+ 素材库大文件拖入与访达定位",
+  "requirements_doc": ".claude/development_docs/liyuhang/1_requirements_matrix/2026-10-27-17-04-agent-ux-and-asset-improvements.md",
+  "solution_doc": ".claude/development_docs/liyuhang/2_requirements_solutions/2026-10-27-17-04-agent-ux-and-asset-improvements.md",
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "输入框历史消息（↑/↓）",
+      "files": ["apps/web/src/components/agent/conversation/messageInput.vue", "apps/web/src/components/agent/conversation.vue"],
+      "depends_on": []
+    },
+    {
+      "id": "T2",
+      "subject": "⌘+方向键行首/文首（对话输入框 + 节点提示词输入框）",
+      "files": ["apps/web/src/components/agent/conversation/messageInput.vue", "packages/nodeShared/src/components/promptInput.vue"],
+      "depends_on": []
+    },
+    {
+      "id": "T3",
+      "subject": "桌面端原生目录面板支持新建文件夹（osascript）",
+      "files": ["apps/desktop/src/index.ts"],
+      "depends_on": []
+    },
+    {
+      "id": "T4",
+      "subject": "文本节点运行态边框动画",
+      "files": ["packages/nodes/textNode/src/index.vue", "packages/nodeScaffold/src/nodeSkeleton.vue"],
+      "depends_on": []
+    },
+    {
+      "id": "T5",
+      "subject": "素材库拖入画布服务端直拷（修复 413）",
+      "files": ["apps/web/src/pages/workspace/panels/canvas/canvasDrop.ts", "apps/server/src/routes/assets/*", "apps/server/src/router.ts"],
+      "depends_on": []
+    },
+    {
+      "id": "T6",
+      "subject": "素材库右键“在访达中显示”",
+      "files": ["apps/web/src/pages/workspace/panels/assetLibrary/*", "apps/server/src/routes/assets/*", "apps/server/src/router.ts"],
+      "depends_on": []
+    }
+  ],
+  "notes": [
+    "T1/T2 共用 messageInput.vue，串行执行避免冲突",
+    "T5/T6 共用 assets 路由与 router.ts，串行执行"
+  ]
+}

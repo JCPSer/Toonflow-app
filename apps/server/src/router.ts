@@ -50,6 +50,8 @@ import route47 from "./routes/assets/thumb";
 import route48 from "./routes/assets/trash";
 import route49 from "./routes/assets/tree";
 import route50 from "./routes/assets/usage";
+import route162 from "./routes/assets/copyToWorkspace";
+import route163 from "./routes/assets/reveal";
 import route51 from "./routes/browser/input";
 import route52 from "./routes/browser/stream";
 import route53 from "./routes/desktop/clipboard/read";
@@ -217,6 +219,8 @@ export default (app: Express) => {
   app.use("/api/assets/trash", route48);
   app.use("/api/assets/tree", route49);
   app.use("/api/assets/usage", route50);
+  app.use("/api/assets/copyToWorkspace", route162);
+  app.use("/api/assets/reveal", route163);
   // agentAccess · /api/browser
   app.use("/api/browser/input", route51);
   app.use("/api/browser/stream", route52);

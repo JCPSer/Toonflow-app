@@ -63,6 +63,29 @@ export function isCanvasFileDrag(event: DragEvent) {
   return event.dataTransfer?.types.some(type => type === assetDragType || type === "Files") ?? false;
 }
 
+type AssetSource = { path: string; library?: "global" | "project"; directory?: string };
+
+function isTextAssetMime(mime: string) {
+  return mime.startsWith("text/") || /^application\/(json|xml|javascript|x-ndjson)$/.test(mime);
+}
+
+/** 服务端直接硬链接（跨盘回退复制）到工作区，返回工作区相对路径；大文件不再经过浏览器中转。 */
+async function copyAssetToWorkspace(assetSource: AssetSource, nodeId: string, workspaceDirectory: string, signal?: AbortSignal) {
+  const { data } = await axios.post<{ code: number; data: { path: string } | null; message?: string }>(
+    "/api/assets/copyToWorkspace",
+    {
+      ...(assetSource.library ? { library: assetSource.library } : {}),
+      ...(assetSource.directory ? { directory: assetSource.directory } : {}),
+      path: assetSource.path,
+      workspaceDirectory,
+      nodeId,
+    },
+    { headers: { "x-toonflow-workspace": "1" }, signal },
+  );
+  if (data.code !== 200 || !data.data) throw new Error(data.message || "素材复制失败");
+  return data.data.path;
+}
+
 type CanvasFileContext = {
   directory: string;
   availableNodes: { type: string }[];
@@ -85,32 +108,62 @@ export async function dropCanvasFiles(event: DragEvent, context: CanvasFileConte
     }
   }
   let droppedFiles = Array.from(transfer.files);
+  let prepared: { id: string; path: string }[] | undefined;
   const { signal, flow } = context;
   const position = flow.screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
   try {
     signal.throwIfAborted();
     if (assetSource) {
-      const { data } = await axios.get<Blob>("/api/assets/read", {
-        params: { path: assetSource.path, library: assetSource.library, directory: assetSource.directory },
-        headers: { "x-toonflow-workspace": "1" },
-        responseType: "blob",
-        signal,
-      });
-      droppedFiles = [new File([data], assetSource.path.split("/").pop()!, { type: data.type })];
+      const name = assetSource.path.split("/").pop()!;
+      const extension = name.split(".").pop()?.toLowerCase() ?? "";
+      const mimeType = fileMimeTypes[extension] ?? "";
+      // ACT: 媒体类只传库内相对路径，由服务端硬链接/复制；文本类体积小且需要正文，仍走 read + text()。
+      if (mimeType && !isTextAssetMime(mimeType)) {
+        const id = crypto.randomUUID();
+        let path: string;
+        try {
+          path = await copyAssetToWorkspace(assetSource, id, context.directory, signal);
+        } catch (error) {
+          // ACT: 请求被取消时服务端可能已经落盘、只是响应没回来；按 nodeId 目录兜底清理，避免孤儿文件。
+          await useWorkspaceFiles(context.directory).remove(`assets/${id}`, true).catch(() => {});
+          throw error;
+        }
+        if (signal.aborted) {
+          await useWorkspaceFiles(context.directory).remove(`assets/${id}`, true).catch(() => {});
+          signal.throwIfAborted();
+        }
+        droppedFiles = [new File([], name, { type: mimeType })];
+        prepared = [{ id, path }];
+      } else {
+        const { data } = await axios.get<Blob>("/api/assets/read", {
+          params: { path: assetSource.path, library: assetSource.library, directory: assetSource.directory },
+          headers: { "x-toonflow-workspace": "1" },
+          responseType: "blob",
+          signal,
+        });
+        droppedFiles = [new File([data], name, { type: data.type || mimeType })];
+      }
     }
-    await importCanvasFiles(droppedFiles, position, context);
+    await importCanvasFiles(droppedFiles, position, context, prepared);
   } catch (error) {
     if (!signal.aborted) showError(error);
   }
 }
 
-export async function importCanvasFiles(droppedFiles: File[], position: { x: number; y: number }, context: CanvasFileContext) {
+export async function importCanvasFiles(droppedFiles: File[], position: { x: number; y: number }, context: CanvasFileContext,
+  prepared?: { id: string; path: string }[]) {
   const { signal, flow, availableNodes } = context;
   const files = useWorkspaceFiles(context.directory);
   for (const [index, file] of droppedFiles.entries()) {
-    if (signal.aborted) break;
-    const id = crypto.randomUUID();
-    let copiedPath: string | undefined;
+    // ACT: 取消发生在建节点之前时，服务端已落盘的素材也要回滚，避免留下无人引用的文件。
+    if (signal.aborted) {
+      for (const item of prepared?.slice(index) ?? []) await files.remove(item.path).catch(() => {});
+      break;
+    }
+    // ACT: 素材库拖入时服务端已按目标 nodeId 落盘，节点 id 必须与目录名一致。
+    const id = prepared?.[index]?.id ?? crypto.randomUUID();
+    // ACT: 素材库拖入的文件在进入循环前就已落盘，任何后续失败（如节点未启用）都要能回滚。
+    let copiedPath: string | undefined = prepared?.[index]?.path;
     try {
       const fileType = file.type.split(";")[0]!.trim().toLowerCase();
       const extension = file.name.split(".").pop()!.toLowerCase();
@@ -125,7 +178,7 @@ export async function importCanvasFiles(droppedFiles: File[], position: { x: num
       if (kind === "text") {
         textSnapshot = await file.text();
       } else {
-        copiedPath = await uploadNodeFile(files, id, file);
+        copiedPath = prepared?.[index]?.path ?? await uploadNodeFile(files, id, file);
         // ACT: 落盘即预热首帧缩略图，画布打开时不用等 FFmpeg。
         if (kind === "video") files.warmThumb(copiedPath);
         output = { dataType: kind === "image" ? "IMAGE" : kind === "audio" ? "AUDIO" : "VIDEO", value: { url: copiedPath, mimeType } };

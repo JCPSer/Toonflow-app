@@ -133,7 +133,7 @@
       @clear-finished="upload.clearFinished"
       @dismiss="upload.dismiss" />
 
-    <AssetContextMenu ref="contextMenuRef" :show-detail="canShowDetail" @command="handleMenuCommand" />
+    <AssetContextMenu ref="contextMenuRef" :show-detail="canShowDetail" :can-reveal="canReveal" @command="handleMenuCommand" />
     <AssetMoveDialog
       v-model="moveVisible"
       :library="library"
@@ -196,9 +196,11 @@ import SaveToLibraryDialog from "./components/SaveToLibraryDialog.vue";
 import { useAssetLibrary } from "./useAssetLibrary";
 import { useAssetActions } from "./useAssetActions";
 import { useAssetUpload } from "./useAssetUpload";
+import { revealEntryInOs, toAssetError } from "./api";
 import { mockMode } from "./mock";
 import type { AssetEntry, AssetSortField, AssetSortOrder, AssetView } from "./types";
 import { hasFileDrag } from "./types";
+import { isDesktop, isRemoteConnection } from "@/lib/platform";
 
 const props = withDefaults(defineProps<{
   directory?: string;
@@ -251,6 +253,8 @@ const orderModel = computed<AssetSortOrder>({ get: () => order.value, set: value
 const queryModel = computed<string>({ get: () => query.value, set: value => { query.value = value; } });
 const hasMore = computed(() => !!nextCursor.value);
 const canWrite = computed(() => library.value === "global" || projectAvailable.value);
+// ACT: "在访达/资源管理器中显示"依赖本机文件管理器；只有桌面客户端可用，普通网页/远程/移动端一律隐藏。
+const canReveal = computed(() => isDesktop && !isRemoteConnection);
 
 // ACT: 上传只新增文件、不改目录结构：树不重建，列表静默刷新，目录计数用增量补丁保持实时。
 // 树节点身份是「库:项目目录:相对路径」（分组模式）或「库:相对路径」，计数补丁必须用同一把 key。
@@ -411,6 +415,14 @@ function showBackgroundMenu(event: MouseEvent) {
 async function handleMenuCommand(command: AssetMenuCommand, entry: AssetEntry) {
   contextMenuRef.value?.closeMenu();
   if (command === "open") return openEntry(entry);
+  if (command === "reveal-in-os") {
+    try {
+      await revealEntryInOs(selector(), entry.path);
+    } catch (error) {
+      showMessage(toAssetError(error).message);
+    }
+    return;
+  }
   if (command === "detail") {
     emit("show-detail", entry);
     return;

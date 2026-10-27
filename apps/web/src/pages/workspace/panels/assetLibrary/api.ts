@@ -255,6 +255,12 @@ export function purgeTrash(selector: AssetSelector, options: { id?: string; all?
   );
 }
 
+/** 在系统文件管理器中定位素材（库内路径，不是工作区路径）；服务端会校验本机/桌面运行时。 */
+export async function revealEntryInOs(selector: AssetSelector, path: string) {
+  const { data } = await client.post<Envelope<null>>("/reveal", { ...selectorParams(selector), path });
+  if (data.code !== 200) throw new AssetRequestError(data.message || "无法在文件管理器中显示", data.code);
+}
+
 export function patchMeta(selector: AssetSelector, path: string, patch: { tags?: string[]; note?: string; favorite?: boolean }) {
   return callWithFallback(
     () => unwrap<{ path: string; tags: string[]; note: string; favorite: boolean }>(client.post("/meta", { ...selectorParams(selector), path, ...patch })),
