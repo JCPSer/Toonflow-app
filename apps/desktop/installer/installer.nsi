@@ -251,6 +251,8 @@ Section "Uninstall"
   Delete "$INSTDIR\.electrobun-observed-update-result.json"
   IfErrors uninstallFailed
   ${If} $removeUserData == ${BST_CHECKED}
+    ; ACT: 1.x 的数据目录叫 data，2.x 改名为 toonflow-data；过渡期两个都要删，否则 RMDir $INSTDIR 会因残留失败。
+    RMDir /r "$INSTDIR\toonflow-data"
     RMDir /r "$INSTDIR\data"
     RMDir /r "$INSTDIR\WebView2"
     IfErrors uninstallFailed

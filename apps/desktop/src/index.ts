@@ -10,6 +10,7 @@ import { dlopen, ptr } from "bun:ffi";
 import type { DesktopRuntime, PluginInstallRequest } from "@toonflow/server/desktop";
 import { showNativeSplash } from "@toonflow/startup";
 import Electrobun, { ApplicationMenu, BrowserWindow, PATHS, Screen, Utils, Updater } from "electrobun/main";
+import { dataDirectoryName, legacyDataDirectoryName, resolveDesktopDataDirectory } from "./dataDirectory";
 import { parseInstallUrl } from "./protocol";
 import saveFile, { selectSaveFile } from "./saveFile";
 import createWindowsUpdater, { confirmWindowsUpdateStartup } from "./update/windowsUpdater";
@@ -182,9 +183,14 @@ async function start() {
   let resolveFlushDone: (() => void) | undefined;
 
   try {
-    // Windows 的 data 与 app 同级；macOS 的 data 与 .app 同级，避免随程序更新被替换。
+    // Windows 的数据目录与 app 同级；macOS 的与 .app 同级，避免随程序更新被替换。
     const installDirectory = resolve(PATHS.RESOURCES_FOLDER, process.platform === "darwin" ? "../../.." : "../..");
-    const dataDirectory = process.env.TOONFLOW_DATA_DIR ?? resolve(installDirectory, "data");
+    // ACT: 迁移逻辑自身已兜住所有分支；这里再包一层，保证任何意外都不会让应用启动失败。
+    const dataDirectory = await resolveDesktopDataDirectory(installDirectory).catch((error) => {
+      console.error("解析桌面数据目录失败，回退到旧目录：", error);
+      const migrated = resolve(installDirectory, dataDirectoryName);
+      return existsSync(migrated) ? migrated : resolve(installDirectory, legacyDataDirectoryName);
+    });
     // ACT: 先显示原生动画，再加载服务，避免初始化期间没有反馈。
     const startupSettings = await file(resolve(dataDirectory, "settings.json")).json().catch((error) => {
       if (error.code !== "ENOENT") console.error("读取启动设置失败，使用默认启动动画：", error);

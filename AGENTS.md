@@ -200,9 +200,9 @@ apps/server/
 ### 配置与持久化
 
 - `conf` 只在 `src/modules/platformCore/conf/index.ts` 初始化，通过 `src/utils.ts` 统一导出，接口使用 `u.conf`；配置层拥有 `RemoteTeam` / `MobileLinkConfig` 类型，业务侧只 re-export。不要在每个接口或每次请求中创建实例。
-- 配置统一存为数据目录下的 `settings.json`，保持 `configName: "settings"`、`configFileMode: 0o600`。开发环境使用仓库根目录 `data/`，该目录必须被 Git 忽略；生产环境使用安装目录下的 `data/`，不再使用默认用户配置目录。
+- 配置统一存为数据目录下的 `settings.json`，保持 `configName: "settings"`、`configFileMode: 0o600`。仓库根目录 `data/` 用于开发环境（必须被 Git 忽略）与独立服务端部署；桌面端使用安装目录下的 `toonflow-data/`（存量安装首次启动由 `apps/desktop/src/dataDirectory.ts` 原子改名），不再使用默认用户配置目录。
 - 启动入口通过 `createApp` 在路由加载前确定 `TOONFLOW_DATA_DIR`，读写必须使用同一目录。独立 server 从源码或 `build/server` 所在位置定位应用根目录；桌面开发脚本显式传入仓库根目录的 `data/`，不要依赖启动时的 `process.cwd()`。
-- Windows 桌面使用实际安装根目录的 `data/`（与可更新的 `app/` 同级），macOS 使用 `.app` 所在目录的 `data/`。不要写入可被更新替换的程序资源或应用包内部。
+- Windows 桌面使用实际安装根目录的 `toonflow-data/`（与可更新的 `app/` 同级），macOS 使用 `.app` 所在目录的 `toonflow-data/`；旧安装的 `data/` 由启动时迁移为前者。不要写入可被更新替换的程序资源或应用包内部。
 - 当前保存接口接收 `{ settings: { ... } }`，使用 `z.record(z.string(), z.json())` 校验设置对象；完整覆盖保存，读取时返回 `settings`，未保存时返回 `{}`。
 - 未经相关需求，不将完整覆盖改成部分合并。工具实例与文件占用状态是进程内单例，不支持多进程并发写入同一工作区。
 

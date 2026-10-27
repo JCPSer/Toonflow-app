@@ -30,6 +30,9 @@ writeAtomicSync(join(installDirectory, ".electrobun-uninstall.json"), JSON.strin
 }, null, 2));
 
 // 重装同一构建也重新同步内置节点、工具和供应商；技能沿用首次初始化，保留用户修改。
-for (const directory of ["nodes", "tools", "providers"]) {
-  rmSync(join(installDirectory, "data", directory, "initialized"), { force: true });
+// ACT: 数据目录已改名 toonflow-data，但旧版本机器上安装器运行时目录仍叫 data，两边都清标记才不会漏同步。
+for (const dataName of ["toonflow-data", "data"]) {
+  for (const directory of ["nodes", "tools", "providers"]) {
+    rmSync(join(installDirectory, dataName, directory, "initialized"), { force: true });
+  }
 }

@@ -12,7 +12,13 @@
 set -euo pipefail
 
 APP="${APP:-/Applications/toonflow-exec.app}"
-DATA="${DATA:-/Applications/data}"
+if [ -z "${DATA:-}" ]; then
+  # ACT: 桌面端数据目录已改名 toonflow-data；未迁移的旧安装仍然只有 data。跟随 APP 所在目录，避免 APP 被覆盖时指错位置。
+  APP_DIR="$(cd "$(dirname "$APP")" && pwd)"
+  if [ -d "$APP_DIR/toonflow-data" ]; then DATA="$APP_DIR/toonflow-data"
+  else DATA="$APP_DIR/data"
+  fi
+fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RES="$APP/Contents/Resources/app"
 
