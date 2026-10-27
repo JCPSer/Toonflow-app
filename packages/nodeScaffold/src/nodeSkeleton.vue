@@ -1,7 +1,7 @@
 <template>
   <div v-if="documentTarget" class="nodeDocumentPlaceholder" :style="canvasSize" aria-hidden="true" />
   <teleport :to="documentTarget ?? 'body'" :disabled="!documentTarget">
-  <div ref="skeletonElement" v-bind="$attrs" class="nodeSkeleton" :class="{ documentNode: documentTarget }" @wheel.capture="zoomCanvas" @dblclick.stop="focusNode" @contextmenu="documentTarget && openMenu($event)">
+  <div ref="skeletonElement" v-bind="$attrs" class="nodeSkeleton" :class="{ documentNode: documentTarget, running }" @wheel.capture="zoomCanvas" @dblclick.stop="focusNode" @contextmenu="documentTarget && openMenu($event)">
     <el-dropdown
       v-if="!readOnly"
       ref="menu"
@@ -212,6 +212,8 @@ const props = withDefaults(
       loading?: boolean;
       readOnly?: boolean;
       previewReady?: boolean;
+      /** 生成/思考中：卡片呼吸描边，提示节点仍在运行。 */
+      running?: boolean;
       topWidth?: string | number;
       bottomWidth?: string | number;
       downloadUrl?: string;
@@ -230,6 +232,7 @@ const props = withDefaults(
     outputs: () => ({}),
     previewReady: true,
     readOnly: false,
+    running: false,
     fullscreenVisible: true,
     bottomPinned: false,
     topWidth: "20vw",
@@ -846,10 +849,30 @@ watch(
       }
     }
   }
+  /* R4: 生成/思考中给卡片加呼吸描边。只动 box-shadow，避免影响选中态 border-color 与节点尺寸。 */
+  &.running .contentCard {
+    animation: nodeRunning 1.6s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &.running .contentCard {
+      animation: none;
+      box-shadow: 0 0 0 2px var(--el-color-primary-light-5);
+    }
+  }
 }
 @keyframes nodeLoading {
   to {
     transform: rotate(360deg);
+  }
+}
+@keyframes nodeRunning {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px var(--el-color-primary-light-5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
   }
 }
 </style>

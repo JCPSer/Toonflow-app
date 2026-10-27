@@ -310,6 +310,11 @@ async function insertReference(reference: MentionItem) {
 }
 
 function handleMentionKey(event: KeyboardEvent) {
+  // ACT: x-sender 会拦截不带 Shift 的左右键做自定义跳转；带 ⌘/Ctrl/Alt 时要放行给原生编辑（行首、文首、按词）。
+  if (!event.isComposing && event.keyCode !== 229 && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key) && (event.metaKey || event.ctrlKey || event.altKey)) {
+    event.stopPropagation();
+    return;
+  }
   if (!sender || event.isComposing || !["ArrowUp", "ArrowDown", "Enter", "Escape"].includes(event.key)) return;
   const dialog = sender.chatElement.dialogRoot.querySelector<HTMLElement>(".chat-mention-dialog-wrap");
   if (!dialog?.getClientRects().length) return;

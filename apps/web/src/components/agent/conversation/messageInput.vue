@@ -76,7 +76,7 @@ import useVoiceInput from "./useVoiceInput";
 import xSender, { type AnyTagProps } from "x-sender";
 import "x-sender/lib/XSender.css";
 
-const props = defineProps<{ active: boolean; disabled: boolean; busy: boolean; remoteRunning: boolean; deletingId?: string; directory?: string; contextUsage?: AgentContext; stats?: AgentStats; contextWindow: number }>();
+const props = defineProps<{ active: boolean; disabled: boolean; busy: boolean; remoteRunning: boolean; deletingId?: string; directory?: string; contextUsage?: AgentContext; stats?: AgentStats; contextWindow: number; history?: AgentMessage[] }>();
 const emit = defineEmits<{ submit: []; stop: [] }>();
 const selectedModel = defineModel<string>("selectedModel", { required: true });
 const reasoningEffort = defineModel<string>("reasoningEffort", { required: true });
@@ -92,6 +92,10 @@ const attachmentAccept = `image/*,video/*,${readableFileAccept}`;
 const draftMentions = ref<AgentMention[]>([]);
 const draftMentionTargets = shallowRef<{ key: symbol; element: HTMLElement; mention: AgentMention }[]>([]);
 const draftMentionPreview = ref<InstanceType<typeof mentionContent>>();
+// ACT: 历史只在当前会话内生效；进入条件是草稿完全为空，翻出的消息要连提及与附件一起还原。
+let historyIndex: number | null = null;
+let historyFilling = false;
+let historyQueue: Promise<void> = Promise.resolve();
 let editDraft: { model: AnyTagProps[][]; mentions: AgentMention[]; attachments: AgentAttachment[] } | undefined;
 let sender: xSender | undefined;
 const senderElement = ref<HTMLElement>();
@@ -129,6 +133,7 @@ watch(locale, () => {
   }
 });
 watch([locked, () => props.active], ([locked, active]) => {
+  if (!active) historyIndex = null;
   if (!active || locked) resetAttachmentDrag();
   if (!active || locked) sender?.disable();
   else sender?.enable();
@@ -143,6 +148,88 @@ function getDraftContent() {
     if (tag.type === "Write") return tag.text;
     return sender?.chatEditor.NODES[lineIndex]?.children[tagIndex]?.$el.textContent ?? "";
   }).join("")).join("\n").replace(/[\ufeff\u200b]/g, "") ?? "";
+}
+
+// ACT: 只有完全空的草稿才允许进入历史；仅有附件或仅有提及都算有内容。
+function draftEmpty() {
+  return (sender?.getText().trim() ?? "") === "" && draftMentions.value.length === 0 && draftAttachments.value.length === 0;
+}
+
+// ACT: 历史还原不能复用 fillRewind——它会清 editingId，和“编辑消息”互相打断。
+async function restoreHistory(item?: AgentMessage) {
+  const instance = sender;
+  if (!instance || locked.value) return;
+  const mentions = item?.mentions ?? [];
+  const content = item?.content ?? "";
+  draftMentions.value = [...mentions];
+  draftAttachments.value = [...(item?.attachments ?? [])];
+  mentionMenuRef.value?.closeMenu();
+  skillQuery.value = undefined;
+  const model: AnyTagProps[][] = content.split("\n").map(line => mentionParts(line, mentions).map(part => part.mention
+    ? { type: "Mention", id: part.mention.id, name: mentionName(part.mention) } : { type: "Write", text: part.text }));
+  historyFilling = true;
+  try {
+    await instance.reset({ clearHistory: false, chatNode: model });
+    // ACT: reset 之后还可能有排队到下一 tick 的 change 回调，多等一帧再放开标记，避免被当成用户编辑。
+    await new Promise<void>(resolve => instance.nextTick(() => resolve()));
+  } finally { historyFilling = false; }
+  if (sender === instance) instance.focus("last");
+}
+
+// ACT: 索引同步推进、只在队列里做还原，连按方向键不会因为 reset 未完成而丢键。
+function stepHistory(direction: -1 | 1) {
+  const list = props.history ?? [];
+  if (historyIndex === null) {
+    if (direction !== -1 || !list.length || !draftEmpty()) return false;
+    historyIndex = list.length - 1;
+  } else {
+    // 消息列表可能被压缩/删除缩短，先把索引夹回有效范围，避免按旧索引还原错消息。
+    if (historyIndex >= list.length) historyIndex = list.length ? list.length - 1 : null;
+    if (historyIndex === null) return false;
+    const next = historyIndex + direction;
+    if (next < 0) return true;
+    if (next >= list.length) historyIndex = null;
+    else historyIndex = next;
+  }
+  const index = historyIndex;
+  // ACT: 记下消息 id 而不是位置；排队期间列表被替换时据此找回或直接退出。
+  const expectedId = index === null ? undefined : list[index]?.id;
+  historyQueue = historyQueue.then(async () => {
+    if (!sender || !props.active || locked.value) return;
+    if (expectedId === undefined) { await restoreHistory(); return; }
+    const item = (props.history ?? []).find(message => message.id === expectedId);
+    if (!item) { historyIndex = null; return; }
+    await restoreHistory(item);
+  }).catch(() => {});
+  return true;
+}
+
+// ACT: x-sender 会拦截不带 Shift 的左右键做自定义跳转；带 ⌘/Ctrl/Alt 时必须放行给原生编辑（行首、文首、按词）。
+function handleModifiedArrow(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229) return false;
+  if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return false;
+  if (!(event.metaKey || event.ctrlKey || event.altKey)) return false;
+  event.stopPropagation();
+  return true;
+}
+
+function handleHistoryKey(event: KeyboardEvent) {
+  // ACT: 输入法组合期间方向键用于候选词，不能拿来翻历史。
+  if (event.isComposing || event.keyCode === 229) return false;
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
+  if (props.disabled || props.busy || props.deletingId !== undefined || restoringAttachment.value || voiceActive.value || editingId.value !== undefined) return false;
+  if (historyIndex === null) {
+    if (event.key !== "ArrowUp" || !draftEmpty() || !props.history?.length) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    stepHistory(-1);
+    return true;
+  }
+  // 已在历史模式内不再要求草稿为空，否则翻出第一条后就无法继续上下浏览。
+  event.preventDefault();
+  event.stopPropagation();
+  stepHistory(event.key === "ArrowUp" ? -1 : 1);
+  return true;
 }
 
 function captureMentionPosition() {
@@ -160,6 +247,7 @@ function updateMentionQuery() {
 }
 
 function handleSenderKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") historyIndex = null;
   const id = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-agent-mention]")?.dataset.agentMention : undefined;
   if (id && ["Enter", " "].includes(event.key)) {
     event.preventDefault();
@@ -169,6 +257,9 @@ function handleSenderKeydown(event: KeyboardEvent) {
   }
   if (mentionMenuRef.value?.handleKeydown(event)) return;
   skillMenuRef.value?.handleKeydown(event);
+  if (event.defaultPrevented) return;
+  if (handleModifiedArrow(event)) return;
+  handleHistoryKey(event);
 }
 
 // ACT: 同一画布输出或素材只允许出现一次；重复加入时提示而不是再插入一个标签。
@@ -445,8 +536,10 @@ watch(senderElement, (element, _previous, onCleanup) => {
   });
   sender = instance;
   if (!props.active || locked.value) instance.disable();
-  instance.bus.on("agentConversation", xSender.EventSet.EVENT_COMMON_SEND, () => emit("submit"));
+  instance.bus.on("agentConversation", xSender.EventSet.EVENT_COMMON_SEND, () => { historyIndex = null; emit("submit"); });
   instance.bus.on("agentConversation", xSender.EventSet.EVENT_COMMON_CHANGE, () => {
+    // ACT: 程序填充历史同样会触发 change，用 historyFilling 区分；用户真正编辑后退出历史模式。
+    if (!historyFilling && historyIndex !== null) historyIndex = null;
     skillQuery.value = /^\/([^\s/]*)$/.exec(instance.getText())?.[1];
     const targets: typeof draftMentionTargets.value = [];
     for (const line of instance.chatEditor.NODES) for (const tag of line.children) {
@@ -525,6 +618,7 @@ function getDraft() {
 }
 
 async function clearDraft() {
+  historyIndex = null;
   draftAttachments.value = [];
   draftMentions.value = [];
   await sender?.reset();

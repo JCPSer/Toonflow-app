@@ -66,6 +66,7 @@
       :remoteRunning="remoteRunning"
       :deletingId="deletingId"
       :directory="directory"
+      :history="historyMessages"
       :contextUsage="contextUsage"
       :stats="stats"
       :contextWindow="contextWindow"
@@ -107,6 +108,24 @@ const workspaceStore = useWorkspaceStore();
 const directory = workspaceStore.project?.directory;
 const createCanvasContext = inject<(() => CanvasContext | undefined) | undefined>("canvas", undefined);
 const messages = ref<AgentMessage[]>((props.initialSession?.messages ?? []).map(message => ({ ...message })));
+// ACT: 历史只取当前会话里有内容的用户消息；相邻重复按内容+提及+附件去重，避免翻出两条一模一样的。
+const historyMessages = computed(() => {
+  const list: AgentMessage[] = [];
+  let previousKey = "";
+  for (const message of messages.value) {
+    if (message.role !== "user" || message.error) continue;
+    if (!message.content.trim() && !message.attachments?.length && !message.mentions?.length) continue;
+    const key = JSON.stringify([
+      message.content,
+      message.mentions?.map(mention => mention.id) ?? [],
+      message.attachments?.map(attachment => [attachment.name, attachment.mimeType, attachment.file?.size ?? 0]) ?? [],
+    ]);
+    if (key === previousKey) continue;
+    previousKey = key;
+    list.push(message);
+  }
+  return list;
+});
 const stream = createConversationStream(messages);
 const remoteRunning = ref(props.initialSession?.running ?? false);
 const stats = ref(props.initialSession?.stats);

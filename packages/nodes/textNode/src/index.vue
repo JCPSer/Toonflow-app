@@ -1,6 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
+    :running="generating"
     :bottomVisible="node.selected"
     :topVisible="node.selected"
     topWidth="max-content"
