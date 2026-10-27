@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { treeAssetEntries } from "@/utils/assets/library";
+import { treeAssetEntries } from "@/modules/assetLibrary/assets/library";
 import { success } from "@/lib/responseFormat";
-import { validateAssetFields, directoryField, libraryField, optionalPathField, requestLibrary } from "@/utils/assets/routeSchema";
+import { validateAssetFields, directoryField, libraryField, optionalPathField, requestLibrary } from "@/modules/assetLibrary/assets/routeSchema";
 
 const router = Router();
 

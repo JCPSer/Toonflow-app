@@ -3,9 +3,9 @@ import { existsSync, mkdir, readFile, realpath, stat } from "@toonflow/file";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { loadSkills, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { SkillContext, SkillLocation, SkillScope } from "@toonflow/tools-scaffold/runtime";
-import conf from "@/utils/conf";
-import { directory, isEnabled } from "@/utils/skills/files";
-import { isWithin, lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
+import conf from "@/modules/platformCore/conf";
+import { directory, isEnabled } from "@/modules/pluginMarket/skills/files";
+import { isWithin, lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/modules/localRuntime/workspace/files";
 
 export function loadAgentSkills(cwd: string, scope?: SkillScope) {
   if (scope !== undefined && scope !== "workspace" && scope !== "global") throw new Error("技能范围无效");

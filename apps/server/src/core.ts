@@ -2,6 +2,15 @@ import fg from "fast-glob";
 import path from "node:path";
 import { readFile, writeAtomic } from "@toonflow/file";
 
+// ACT: 路由分组只用于可读性；URL 由文件路径生成，分段归属决定注释里的模块名。
+const segmentOwner: Record<string, string> = {
+  agent: "agentAccess", agents: "pluginMarket", ai: "mediaGeneration", assets: "assetLibrary", browser: "agentAccess",
+  desktop: "localRuntime", exec: "localRuntime", ext: "pluginMarket", ffmpeg: "mediaGeneration", mcp: "mcpIntegration",
+  mobileLink: "localRuntime", monitor: "platformCore", nodes: "pluginMarket", plugins: "pluginMarket", providers: "mediaGeneration",
+  sessionState: "agentAccess", settings: "platformCore", singleAgent: "agentAccess", skills: "pluginMarket", tools: "pluginMarket",
+  workspaces: "localRuntime",
+};
+
 function fileNameToRoutePath(fileName: string): string {
   let routePath = fileName.replace(/\.(ts)$/, "");
   routePath = routePath.split(path.sep).join("/");
@@ -20,6 +29,7 @@ export default async function generateRouter(): Promise<void> {
   const importLines: string[] = [];
   const routeLines: string[] = [];
 
+  let currentSegment = "";
   entries.forEach((entry: string, i: number) => {
     const varName = `route${i + 1}`;
     let importPath = entry.replace(/\\/g, "/");
@@ -27,6 +37,11 @@ export default async function generateRouter(): Promise<void> {
     importPath = importPath.replace(/\.ts$/, "");
     importLines.push(`import ${varName} from "${importPath}";`);
     const routeKey = path.relative("routes", entry).replace(/\\/g, "/");
+    const segment = routeKey.split("/")[0].replace(/\.ts$/, "");
+    if (segment !== currentSegment) {
+      currentSegment = segment;
+      routeLines.push(`  // ${segmentOwner[segment] ?? "unassigned"} · /api/${segment}`);
+    }
     const routePath = fileNameToRoutePath(routeKey);
     routeLines.push(`  app.use("/api${routePath}", ${varName});`);
   });

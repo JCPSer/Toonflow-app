@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { validateAssetFields, directoryField, libraryField, requestLibrary } from "@/utils/assets/routeSchema";
-import { subscribeLibraryChanges, type LibraryChangeEvent } from "@/utils/assets/watch";
+import { validateAssetFields, directoryField, libraryField, requestLibrary } from "@/modules/assetLibrary/assets/routeSchema";
+import { subscribeLibraryChanges, type LibraryChangeEvent } from "@/modules/assetLibrary/assets/watch";
 
 const router = Router();
 

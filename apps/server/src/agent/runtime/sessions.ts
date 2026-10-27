@@ -7,9 +7,9 @@ import type { AgentEvent, AgentMention, AgentSubAgent, AgentToolCall } from "@/a
 import { agentMentionsSchema } from "@/agent/runtime/mentions";
 import { createAgentModel } from "@/agent/runtime/model";
 import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
-import conf from "@/utils/conf";
-import { providerSchema, getModelLimits } from "@/utils/ai";
-import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
+import conf from "@/modules/platformCore/conf";
+import { providerSchema, getModelLimits } from "@/modules/mediaGeneration/ai";
+import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/modules/localRuntime/workspace/files";
 import { getReadableFileMimeType } from "@/lib/documentFormats";
 import { thinkingLevels } from "@/lib/modelReasoning";
 

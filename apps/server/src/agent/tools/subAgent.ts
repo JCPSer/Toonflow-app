@@ -5,7 +5,7 @@ import { teamNameSchema } from "@toonflow/teams-scaffold/runtime";
 import { addUsage, emptyUsage, type SubAgentModel, type SubAgentResult } from "@/agent/runtime/subAgent";
 import { createTeamRunner } from "@/agent/teams";
 import { runRemoteTeam } from "@/agent/teams/remote";
-import { listTeams, getRemoteTeam } from "@/utils/teams";
+import { listTeams, getRemoteTeam } from "@/modules/pluginMarket/teams";
 
 const parameters = z.strictObject({
   tasks: z.array(z.strictObject({

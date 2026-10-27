@@ -109,16 +109,23 @@ apps/server/
   tsconfig.json
   src/
     index.ts                 # 独立服务启动
-    app.ts                   # Express 应用装配
-    core.ts                  # 根据文件目录生成路由
+    app.ts                   # 组合根：参数归一 → 动态装配 7 个模块入口 → 15 步装配
+    core.ts                  # 根据文件目录生成路由（含模块分组注释）
     router.ts                # 自动生成的路由注册文件
     utils.ts                 # 通用工具统一出口，默认导出对象
-    utils/
-      conf/index.ts          # conf 实例与配置
-      mcp/                   # MCP 控制、工具和资源
+    types/module.ts          # 模块契约：ServerModule / ModuleContext / PluginRoots
+    modules/                 # 7 个应用子模块，每个模块一个 index.ts 入口
+      assetLibrary/          # assets/**（素材库根、索引、缩略图、用量）
+      mediaGeneration/       # ai/** media/** ffmpeg/** documents.ts
+      pluginMarket/          # plugins/** skills/** teams/**
+      mcpIntegration/        # mcp/**（含 /mcp 网关）
+      localRuntime/          # workspace/** desktop/ mobileLink/ exec.ts remoteConnection.ts
+      agentAccess/           # singleAgent/** sessionState/** browser/**（含 /a2a 网关）
+      platformCore/          # conf/ monitor.ts personalization.ts fileHttp.ts
     lib/
       middleware.ts          # 参数校验等 HTTP 中间件
       responseFormat.ts      # 统一响应格式
+      mentionSources.ts      # 素材提及的共享类型与类型判定
     routes/
       hello.ts               # 单个接口
       settings/              # 按业务分类
@@ -129,7 +136,34 @@ apps/server/
 - 文件、目录、变量和函数统一小驼峰命名。业务按文件夹分层，层级已有语义时，文件名不重复堆叠业务名称，例如 `settings/get.ts`。
 - **一个接口一个文件。** 每个路由文件只注册一个 HTTP 方法与路径，默认导出对应 Express Router；读取、保存等接口必须拆开。
 - `routes/` 下的 `.ts` 文件都会被当作路由模块扫描，不能把工具、类型、配置或单纯的目录聚合文件放进去。
-- 工具实现按业务模块放到 `utils/*/`，例如 `utils/mcp/control.ts`；文件名不重复模块前缀，通过 `utils.ts` 暴露。HTTP 中间件及响应格式放 `lib/`。不为简单接口额外搭建 controller、service、repository 等层。
+- 工具实现按业务模块放到 `modules/<模块>/<域>/`，例如 `modules/mcpIntegration/mcp/control.ts`；文件名不重复模块前缀，通过 `utils.ts` 暴露。HTTP 中间件及响应格式放 `lib/`。不为简单接口额外搭建 controller、service、repository 等层。
+- 模块之间优先经模块入口、`ModuleContext` 或 `app.ts` 装配交互：模块入口对自家域内文件用相对路径（`./mcp/control`），入口内不出现 `@/modules/**`；跨模块引用统一用 alias（`@/modules/pluginMarket`），不用 `../` 穿透。
+- 跨模块引用现状（2026-10-27 实测）：57 条 import 中 4 条经入口（`mcpIntegration→pluginMarket` 3、`pluginMarket→mediaGeneration` 1），其余 53 条分布在 36 个域文件、属既有深引。这 53 条按 E10 冻结清单保留，**不新增 source→target 模块对、不新增深引文件**；确需新增时在方案中登记并同步本表与地图子图。
+
+### 模块入口与契约
+
+- 每个子模块有唯一入口 `src/modules/<模块>/index.ts`（≤60 行），`export default` 一个 `ServerModule`：`id`、`routePrefixes`、`gateways?`、`dependencies`、`exports` 与初始化钩子。`app.ts` 只做组合根：归一参数 → 动态 `import()` 7 个入口 → 按 15 步装配，不内联任何业务实现。
+- 入口固定三段：① 静态面（`import` / `export … from "./<自家域>/…"`；允许纯 `import type`，对外面以契约对象的 `exports` 为准）；② 动态块（**9 处冻结**：`platformCore.prepare`→`./conf`、`assetLibrary.warmup`→`./assets/thumb`、`mediaGeneration.refreshModels`→`./ai/initialize`、`pluginMarket.initializeExt`→`./plugins/initializeExt`、`agentAccess.mount`→`@/agent/a2a`，以及 `mcpIntegration.mount` 的 4 条 `Promise.all` 并发加载）；③ 契约对象。入口可含 ≤35 行装配胶水（目录同步、修订哈希、CORS 判定这类跨路由复用的小函数，当前最大 33 行：`pluginMarket`），路由处理与业务流程仍留在 `modules/<模块>/<域>/` 文件内。
+- **`app.ts` 不静态 import 入口**：入口静态面会传递求值 `conf`，静态化会让配置早于 `TOONFLOW_DATA_DIR` 求值（三宿主显式传入的数据目录会被静默降级）。因此 A.3③ 的深路径计数为「静态 245 + `app.ts` 动态 7 = 252」。
+- 插件根目录唯一翻译点在 `app.ts`：`pluginRoots = { tool, node, ext, skill, provider, agent }`，键名即插件类型词表，扫描与安装零映射。
+
+| 模块（`id`） | 职责 | `routePrefixes` | `gateways` | L1 文件 | L2 | L3 文件 | `dependencies` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `bootstrap` | 组合根、路由表生成、聚合出口、模块契约 | — | — | 8 | 1 | 9 | 全部 7 个入口（组合契约，不算域边） |
+| `assetLibrary` | 素材库根解析、索引分页、增删改移、回收站、缩略图、用量 | `/api/assets` | — | 27 | 1 | 28 | localRuntime、mediaGeneration、platformCore |
+| `mediaGeneration` | 供应商配置、文本生成、媒体生成与计费、ffmpeg、文档转 Markdown | `/api/ai` `/api/ffmpeg` `/api/providers` | — | 42 | 1 | 43 | localRuntime、platformCore |
+| `pluginMarket` | tool/node/ext/skill/agent 五类插件与团队的安装、读取、启停、卸载 | `/api/tools` `/api/nodes` `/api/ext` `/api/skills` `/api/agents` `/api/plugins` | — | 49 | 1 | 50 | localRuntime、mediaGeneration、platformCore |
+| `mcpIntegration` | MCP 服务器配置、DXT/JSON 导入、对外 MCP 端点、控制通道、技能资源 | `/api/mcp` | `/mcp` | 20 | 1 | 21 | localRuntime、mediaGeneration、platformCore、pluginMarket |
+| `localRuntime` | 工作区文件 CRUD 与越界防护、命令执行、桌面桥、设备配对与远端代理 | `/api/workspaces` `/api/desktop` `/api/exec` `/api/mobileLink` | — | 45 | 1 | 46 | platformCore |
+| `agentAccess` | Agent 流式会话、单 Agent 运行与工具回调、浏览器输入输出、会话状态、A2A | `/api/agent` `/api/browser` `/api/sessionState` `/api/singleAgent` | `/a2a` | 26 | 1 | 27 | platformCore、pluginMarket |
+| `platformCore` | i18n、字段校验、统一响应/错误、平台判定、conf 持久化、设置与监控 | `/api/settings` `/api/monitor` | — | 20 | 2 | 22 | localRuntime |
+
+- `dependencies` 是该模块**实测出边**，不是“可能用到”的愿望清单（7/7 复核口径：扫描 `@/modules/<id>` 与入口动态 `import()`）。改跨模块 import 时同步入口 `dependencies`、本表与地图子图边；`localRuntime` 只出边到 `platformCore`，`platformCore` 只出边到 `localRuntime`，`assetLibrary→localRuntime` 与 `mediaGeneration→localRuntime` 是反方向的既有边（E10），不要按直觉回填。
+- `routePrefixes` 并集 = 21 个 `/api/*` 前缀且两两无交集；`/mcp`、`/a2a` 只登记在 `gateways`（塞进 `routePrefixes` 会让并集变 23 项）。
+- 归属台账（2026-10-27 复核，地图重算口径）：`server-api` = **246 文件 / 14,584 行** = bootstrap 9（`app/index/core/router/utils` 5 + `scripts/**` 3 + `types/module.ts` 1）+ 7 个域模块 66 + `lib/**` 9 + `types/desktop.ts` 1 + `routes/**` 161；`routes/agent.ts` 按 `/api/agent` 归 `agentAccess`。`platformCore` 的 20 个存量文件 = **4 个移动**（`conf/` + `monitor/personalization/fileHttp`）+ **16 个不移动**（`lib/**` 8 + `types/desktop.ts` 1 + `routes/{settings,monitor}/**` 7）；本次新增的 `lib/mentionSources.ts` 与入口 `index.ts` 单列为新增 2 文件，计入 `platformCore` 的 L3 22。
+- 两处归属更正（不是漏算）：`documents.ts` 归 `mediaGeneration`（模型读取文档能力，无工作区语义）；`fileHttp.ts` 归 `platformCore`（被 6 个路由复用的响应横切工具）。主地图与子图已于 2026-10-27 按 `src/modules/**` 重算（`server-api` 246 文件、子图 8 子模块），新增或移动文件后按同一 glob 重算，不要保留旧路径。
+- `src/types/module.ts` 是 bootstrap 的组合契约（L2 #8），不计入域边；`src/routes/**` 不移动，URL 由文件路径生成。
+- 模块级 SCC 不承诺无环：`assetLibrary / localRuntime / mediaGeneration / platformCore / pluginMarket` 互为强连通是既有事实；约束是「不新增 source→target 对、7 条弱边不增长」。file 级仅保留 `mcpIntegration/mcp/{dxt,servers}.ts` 两文件环（互为兜底清理）。
 
 ### 路由与路径规则
 
@@ -148,7 +182,7 @@ apps/server/
 
 ### 引用与代码风格
 
-- server 的 `@/` 指向 `apps/server/src/`，业务代码优先使用该别名，例如 `@/utils`、`@/lib/middleware`。不要把 `@/` 当作仓库根目录，也不要使用本机绝对路径或长串 `../../` 引用业务模块。
+- server 的 `@/` 指向 `apps/server/src/`，业务代码优先使用该别名，例如 `@/utils`、`@/modules/platformCore/conf`、`@/lib/middleware`。不要把 `@/` 当作仓库根目录，也不要使用本机绝对路径或长串 `../../` 引用业务模块。
 - 通用工具统一使用 `import u from "@/utils"`，例如 `u.conf`；具体工具的引入与导出由 `utils.ts` 管理，接口不绕过统一入口重复初始化工具。
 - 跨工作区包使用包名及其声明的 exports，例如 `@toonflow/server/app`，不要直接穿透其他包的 `src/` 路径。
 - 第三方库使用包名导入，新增 Node 内置模块引用使用 `node:` 前缀；仅用于类型的引用使用 `import type`。
@@ -165,7 +199,7 @@ apps/server/
 
 ### 配置与持久化
 
-- `conf` 只在 `src/utils/conf/index.ts` 初始化，通过 `src/utils.ts` 统一导出，接口使用 `u.conf`。不要在每个接口或每次请求中创建实例。
+- `conf` 只在 `src/modules/platformCore/conf/index.ts` 初始化，通过 `src/utils.ts` 统一导出，接口使用 `u.conf`；配置层拥有 `RemoteTeam` / `MobileLinkConfig` 类型，业务侧只 re-export。不要在每个接口或每次请求中创建实例。
 - 配置统一存为数据目录下的 `settings.json`，保持 `configName: "settings"`、`configFileMode: 0o600`。开发环境使用仓库根目录 `data/`，该目录必须被 Git 忽略；生产环境使用安装目录下的 `data/`，不再使用默认用户配置目录。
 - 启动入口通过 `createApp` 在路由加载前确定 `TOONFLOW_DATA_DIR`，读写必须使用同一目录。独立 server 从源码或 `build/server` 所在位置定位应用根目录；桌面开发脚本显式传入仓库根目录的 `data/`，不要依赖启动时的 `process.cwd()`。
 - Windows 桌面使用实际安装根目录的 `data/`（与可更新的 `app/` 同级），macOS 使用 `.app` 所在目录的 `data/`。不要写入可被更新替换的程序资源或应用包内部。

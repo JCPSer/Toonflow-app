@@ -2,9 +2,9 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { realpath, stat } from "@toonflow/file";
 import { dirname, isAbsolute, resolve } from "node:path";
 import type { Request } from "express";
-import conf from "@/utils/conf";
-import { getAppOrigin } from "@/utils/mcp/control";
-import { isWithin } from "@/utils/workspace/files";
+import conf from "@/modules/platformCore/conf";
+import { getAppOrigin } from "@/modules/mcpIntegration/mcp/control";
+import { isWithin } from "@/modules/localRuntime/workspace/files";
 import { getRuntimePlatform } from "@/lib/platform";
 import { thinkingLevels, type ThinkingLevel } from "@/lib/modelReasoning";
 

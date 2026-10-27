@@ -1,7 +1,7 @@
 import { Router } from "express";
 import u from "@/utils";
 import { success } from "@/lib/responseFormat";
-import { getSessionState } from "@/utils/sessionState";
+import { getSessionState } from "@/modules/agentAccess/sessionState";
 
 const router = Router();
 

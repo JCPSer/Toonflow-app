@@ -4,11 +4,11 @@ import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/lib/middleware";
 import { error } from "@/lib/responseFormat";
-import { sendFile } from "@/utils/fileHttp";
-import { assertAssetRequest } from "@/utils/assets/guard";
-import { ensureAssetThumbnail } from "@/utils/assets/thumb";
-import { mentionAssetType } from "@/agent/mentionSources";
-import { getStatus } from "@/utils/ffmpeg";
+import { sendFile } from "@/modules/platformCore/fileHttp";
+import { assertAssetRequest } from "@/modules/assetLibrary/assets/guard";
+import { ensureAssetThumbnail } from "@/modules/assetLibrary/assets/thumb";
+import { mentionAssetType } from "@/lib/mentionSources";
+import { getStatus } from "@/modules/mediaGeneration/ffmpeg";
 
 const router = Router();
 

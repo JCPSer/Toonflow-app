@@ -6,9 +6,9 @@ import { getAgentImageReference, getOffloadedImageText, readAgentImage, saveAgen
 import { offloadToolContent } from "@/agent/runtime/toolOutput";
 import { getAgentPreferences } from "@/agent/runtime/preferences";
 import type { AgentImageReference } from "@/agent/runtime/imageAttachments";
-import { getRequestFiles, type RequestFile } from "@/utils/ai/requestFiles";
-import { createFileTransport, FileRequestLimitError } from "@/utils/ai/files";
-import conf from "@/utils/conf";
+import { getRequestFiles, type RequestFile } from "@/modules/mediaGeneration/ai/requestFiles";
+import { createFileTransport, FileRequestLimitError } from "@/modules/mediaGeneration/ai/files";
+import conf from "@/modules/platformCore/conf";
 
 function contentHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");

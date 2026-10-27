@@ -3,7 +3,7 @@ import { mkdir, realpath, writeAtomic } from "@toonflow/file";
 import { createHash } from "node:crypto";
 import { relative, sep } from "node:path";
 import { agentArtifactsDirectory, getAgentPreferences } from "@/agent/runtime/preferences";
-import { resolveWorkspacePath } from "@/utils/workspace/files";
+import { resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
 
 type ToolContent = TextContent | ImageContent;
 

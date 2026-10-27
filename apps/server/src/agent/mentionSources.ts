@@ -1,12 +1,13 @@
 import type { AgentMention } from "./runtime/types";
-import { getDocumentMimeType, getTextMimeType } from "../lib/documentFormats";
 
 export type MentionNode = { id: string; name: string; outputCount: number; available: boolean; dataType?: string; thumbnail?: { url: string; mimeType: string } };
 export type MentionOutput = { id: string; name: string; dataType: string; preview: string; available: boolean; thumbnail?: { url: string; mimeType: string } };
 export type MentionAsset = { path: string; name: string; type: "file" | "directory"; dataType?: string; preview?: string };
 export type MentionPage<T> = { items: T[]; nextCursor?: string };
 export type MentionCanvasNode = { id: string; type?: string; label?: unknown; data?: unknown };
-export type MentionQuery = { query?: string; cursor?: string; limit?: number; signal?: AbortSignal };
+import type { MentionQuery } from "../lib/mentionSources";
+
+export type { MentionQuery };
 export type MentionCanvasSource = {
   currentCanvasId(): string;
   canvases(signal?: AbortSignal): Promise<{ id: string; name: string }[]>;
@@ -131,18 +132,4 @@ export function createNodeMention(node: MentionCanvasNode, canvasId: string): Ag
   return { id: crypto.randomUUID(), label: nodeName, source: { kind: "canvas", canvasId, canvasName, nodeId: node.id, nodeName }, dataType: "NODE", value: null };
 }
 
-export function mentionAssetType(path: string) {
-  const documentMimeType = getDocumentMimeType(path);
-  if (documentMimeType) return { mimeType: documentMimeType, dataType: "FILE" };
-  const textMimeType = getTextMimeType(path);
-  if (textMimeType) return { mimeType: textMimeType, dataType: "STRING" };
-  const extension = path.split(".").pop()?.toLowerCase() ?? "";
-  const types: Record<string, string> = {
-    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", avif: "image/avif", apng: "image/apng", bmp: "image/bmp", svg: "image/svg+xml", ico: "image/x-icon",
-    mp4: "video/mp4", m4v: "video/mp4", webm: "video/webm", mov: "video/quicktime", mkv: "video/x-matroska", avi: "video/x-msvideo", ogv: "video/ogg",
-    mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", opus: "audio/ogg", flac: "audio/flac", m4a: "audio/mp4", aac: "audio/aac",
-  };
-  const mimeType = types[extension] ?? "application/octet-stream";
-  const dataType = !types[extension] ? "FILE" : mimeType.startsWith("image/") ? "IMAGE" : mimeType.startsWith("video/") ? "VIDEO" : mimeType.startsWith("audio/") ? "AUDIO" : "STRING";
-  return { mimeType, dataType };
-}
+export { mentionAssetType } from "../lib/mentionSources";

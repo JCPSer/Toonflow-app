@@ -3,7 +3,7 @@ import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
-import { patchSessionState } from "@/utils/sessionState";
+import { patchSessionState } from "@/modules/agentAccess/sessionState";
 
 const router = Router();
 

@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { assertAssetRequest } from "@/utils/assets/guard";
-import { getAssetsDirectory, getProjectLibraryLayout } from "@/utils/assets/roots";
-import { resolveWorkspace } from "@/utils/workspace";
+import { assertAssetRequest } from "@/modules/assetLibrary/assets/guard";
+import { getAssetsDirectory, getProjectLibraryLayout } from "@/modules/assetLibrary/assets/roots";
+import { resolveWorkspace } from "@/modules/localRuntime/workspace";
 import { success } from "@/lib/responseFormat";
-import { directoryField, validateAssetFields } from "@/utils/assets/routeSchema";
+import { directoryField, validateAssetFields } from "@/modules/assetLibrary/assets/routeSchema";
 
 const router = Router();
 

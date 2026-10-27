@@ -5,9 +5,9 @@ import { DefaultResourceLoader, SettingsManager, type ToolDefinition } from "@ea
 import { buildSystemPrompt } from "@/agent/runtime/prompt";
 import { autoCompactStrategy, getAgentPreferences } from "@/agent/runtime/preferences";
 import { loadAgentSkills } from "@/agent/skills";
-import { resolveWorkspacePath } from "@/utils/workspace/files";
-import { isMemoryEnabled, readDocument } from "@/utils/personalization";
-import conf from "@/utils/conf";
+import { resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
+import { isMemoryEnabled, readDocument } from "@/modules/platformCore/personalization";
+import conf from "@/modules/platformCore/conf";
 import { getRuntimePlatform } from "@/lib/platform";
 
 /**

@@ -148,7 +148,7 @@ bun run dev:desktop
 - **一个接口一个文件**：`src/routes/` 下的每个 `.ts` 都会被扫描为路由，文件默认导出 Router，只注册一个 HTTP 方法与路径，接口内使用 `"/"`。工具、类型和配置不要放进路由目录，也不为简单接口增加 controller、service、repository 层。
 - 路由按文件相对路径生成 `/api` 前缀，大小写与路径一致，`index.ts` 对应所在目录。例如 `routes/settings/get.ts` 对应 `/api/settings/get`，HTTP 方法由文件内的注册语句决定。
 - 新增、移动、重命名或删除路由后，执行 `bun run --cwd apps/server routes`。**不要手改 `src/router.ts` 的 imports、注册项或 hash**，也不要依赖构建或文件监听自动补齐；更改 URL 或 HTTP 方法前搜索并同步所有调用方。
-- Server 的 `@/` 指向 `apps/server/src/`；业务工具放在 `utils/` 对应模块，通过 `src/utils.ts` 统一导出，接口使用 `import u from "@/utils"`。
+- Server 的 `@/` 指向 `apps/server/src/`；业务实现按域放在 `modules/<模块>/<域>/`（模块清单见 `AGENTS.md`），通过 `src/utils.ts` 统一导出，接口使用 `import u from "@/utils"`。
 - 外部输入复用 `validateFields` 与 Zod，查询参数和路径参数显式指定来源。该中间件只校验，不把默认值、转换或裁剪结果写回请求；需要规范化时显式处理。
 - JSON 响应复用 `success`、`error`，保持 `{ code, data, message }`。包装函数不会设置 HTTP 状态，需要时显式调用 `res.status(...)`；普通异常交给统一错误处理中间件，流式响应沿用流内错误处理和资源清理。
 

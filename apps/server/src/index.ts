@@ -21,8 +21,8 @@ const app = await createApp({
   providersRoot: resolve(appDirectory, fromSource ? "packages/providers/src" : "build/providers"),
   skillsRoot: resolve(appDirectory, fromSource ? "packages/skills" : "build/skills"),
 });
-const { initializeMcpRuntime } = await import("./utils/mcp/runtime");
-const { startMobileLinkRuntime } = await import("./utils/mobileLink");
+const { initializeMcpRuntime } = await import("@/modules/mcpIntegration/mcp/runtime");
+const { startMobileLinkRuntime } = await import("@/modules/localRuntime/mobileLink");
 app.listen(realPort, async (error?: Error) => {
   if (error) throw error;
   await initializeMcpRuntime(app, `http://127.0.0.1:${realPort}`, resolve(appDirectory, fromSource ? "packages/mcp/src/stdio.ts" : "build/mcp/stdio.js"));

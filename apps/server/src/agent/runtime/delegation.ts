@@ -7,7 +7,7 @@ import { createAgentConversation, getToolResultText, trackAgentEvent, updateSubA
 import { addUsage, emptyUsage, type SubAgentResult } from "@/agent/runtime/subAgent";
 import { createCanvasContext } from "@/agent/bridge/canvas";
 import { createQuestionContext } from "@/agent/bridge/question";
-import { resolveWorkspacePath } from "@/utils/workspace/files";
+import { resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
 import { translateError, translateMessage } from "@/lib/i18n";
 import type { ThinkingLevel } from "@/lib/modelReasoning";
 

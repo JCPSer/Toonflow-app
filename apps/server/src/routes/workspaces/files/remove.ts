@@ -2,7 +2,7 @@ import { lstat, rm, rmdir } from "@toonflow/file";
 import { Router } from "express";
 import { z } from "zod";
 import u from "@/utils";
-import { scheduleThumbnailSweep } from "@/utils/assets/thumb";
+import { scheduleThumbnailSweep } from "@/modules/assetLibrary/assets/thumb";
 import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
 

@@ -353,7 +353,7 @@
     "apps/web/src/components/settings/tfRechargeDialog.vue",
     "apps/web/src/main.ts",
     "apps/web/src/pages/workspace/panels/document/components/extView.vue",
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "不支持": [
     "apps/web/src/components/agent/mentionMenu.vue"
@@ -390,7 +390,7 @@
   "文本": [
     "apps/web/src/components/agent/mentionMenu.vue",
     "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
-    "apps/server/src/utils/ai/initialize.ts"
+    "apps/server/src/modules/mediaGeneration/ai/initialize.ts"
   ],
   "整数": [
     "apps/web/src/components/agent/mentionMenu.vue"
@@ -405,8 +405,8 @@
     "apps/web/src/components/agent/mentionMenu.vue",
     "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
     "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue",
-    "apps/server/src/utils/ai/initialize.ts",
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/ai/initialize.ts",
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "遮罩": [
     "apps/web/src/components/agent/mentionMenu.vue"
@@ -415,15 +415,15 @@
     "apps/web/src/components/agent/mentionMenu.vue",
     "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
     "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue",
-    "apps/server/src/utils/ai/initialize.ts",
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/ai/initialize.ts",
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "音频": [
     "apps/web/src/components/agent/mentionMenu.vue",
     "apps/web/src/components/settings/panels/mediaModel/editProviderDialog.vue",
     "apps/web/src/components/settings/panels/mediaModel/modelEditorDialog.vue",
-    "apps/server/src/utils/ai/initialize.ts",
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/ai/initialize.ts",
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "文件": [
     "apps/web/src/components/agent/mentionMenu.vue",
@@ -446,7 +446,7 @@
     "apps/web/src/components/settings/panels/developer/index.vue",
     "apps/web/src/components/settings/panels/pluginMarket/index.vue",
     "apps/web/src/lib/desktopProtocol.ts",
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "搜索该节点的输出": [
     "apps/web/src/components/agent/mentionMenu.vue"
@@ -750,7 +750,7 @@
   "断开并独立运行": [
     "apps/web/src/components/mobileConnect.vue",
     "apps/web/src/components/settings/panels/deviceLink.vue",
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "连接目标": [
     "apps/web/src/components/mobileConnect.vue"
@@ -1112,7 +1112,7 @@
   ],
   "当前客户端不支持应用内更新，请下载安装包。": [
     "apps/web/src/components/settings/panels/about.vue",
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "请在桌面客户端中检查更新。": [
     "apps/web/src/components/settings/panels/about.vue"
@@ -1296,7 +1296,7 @@
     "apps/web/src/components/settings/panels/pluginMarket/index.vue",
     "apps/web/src/lib/desktopProtocol.ts",
     "apps/web/src/pages/workspace/panels/document/components/openWithDialog.vue",
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "选择扩展脚手架打包的 ext-*.umd.js 文件。": [
     "apps/web/src/components/settings/panels/developer/index.vue"
@@ -1305,7 +1305,7 @@
     "apps/web/src/components/settings/panels/developer/index.vue",
     "apps/web/src/components/settings/panels/pluginMarket/index.vue",
     "apps/web/src/lib/desktopProtocol.ts",
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "支持包含技能与资源的 .zip 包、SKILL.md，以及 .tar、.tar.gz、.tgz 包。": [
     "apps/web/src/components/settings/panels/developer/index.vue"
@@ -1314,7 +1314,7 @@
     "apps/web/src/components/settings/panels/developer/index.vue",
     "apps/web/src/components/settings/panels/pluginMarket/index.vue",
     "apps/web/src/lib/desktopProtocol.ts",
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "选择脚手架打包的 .tool.js 文件。": [
     "apps/web/src/components/settings/panels/developer/index.vue"
@@ -1509,7 +1509,7 @@
   ],
   "请输入提示词": [
     "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue",
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "请检查供应商配置": [
     "apps/web/src/components/settings/panels/developer/providerDebugDialog.vue"
@@ -2036,7 +2036,7 @@
   ],
   "供应商配置已变更，请重试": [
     "apps/web/src/components/settings/panels/languageModel/index.vue",
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "获取模型列表失败，请重试": [
     "apps/web/src/components/settings/panels/languageModel/index.vue"
@@ -3598,7 +3598,7 @@
   ],
   "供应商": [
     "apps/web/src/lib/desktopProtocol.ts",
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "待确认的安装请求过多，请稍后重试": [
     "apps/web/src/lib/desktopProtocol.ts",
@@ -5465,7 +5465,7 @@
   ],
   "服务器部署只能使用服务器工作区": [
     "apps/server/src/agent/a2a/settings.ts",
-    "apps/server/src/utils/workspace/index.ts"
+    "apps/server/src/modules/localRuntime/workspace/index.ts"
   ],
   "A2A 设置已修改，当前任务已取消": [
     "apps/server/src/agent/a2a/settings.ts"
@@ -5475,7 +5475,7 @@
   ],
   "素材文件不能超过 100 MB": [
     "apps/server/src/agent/assets.ts",
-    "apps/server/src/utils/assets/index.ts"
+    "apps/server/src/modules/assetLibrary/assets/index.ts"
   ],
   "只能读取本次已授权的素材快照": [
     "apps/server/src/agent/assets.ts"
@@ -5518,7 +5518,7 @@
   ],
   "分页已失效，请重新搜索": [
     "apps/server/src/agent/mentionSources.ts",
-    "apps/server/src/utils/assets/index.ts"
+    "apps/server/src/modules/assetLibrary/assets/index.ts"
   ],
   "这个输出暂无内容，请重新选择": [
     "apps/server/src/agent/mentionSources.ts"
@@ -5582,11 +5582,11 @@
   "模型请求失败": [
     "apps/server/src/agent/runtime/index.ts",
     "apps/server/src/routes/ai/generate.ts",
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "模型回复因长度限制被截断，未能完整生成回答。": [
     "apps/server/src/agent/runtime/index.ts",
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "引用内容须为深度不超过 32、长度不超过 100000 的 JSON 值": [
     "apps/server/src/agent/runtime/mentions.ts"
@@ -5776,10 +5776,10 @@
   ],
   "工具名称重复：{0}": [
     "apps/server/src/agent/tools/index.ts",
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "全局记忆": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "设备互联启动失败：": [
     "apps/server/src/index.ts",
@@ -5821,55 +5821,55 @@
     "apps/server/src/lib/responseFormat.ts"
   ],
   "连接地址无效": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "请使用局域网 HTTP 地址或公网 HTTPS 地址，且不包含路径": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "设备连接配置无效": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "正在切换连接，请稍候": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "请扫描 Toonflow 的互联二维码": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "请输入 12 位数字配对码": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "二维码无效": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "连接失败，请刷新二维码重试": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "服务器返回了无效的连接凭据": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "无法连接服务器": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "连接已失效，请切回本机后重新扫码。": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "服务器暂时不可用。": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "服务器返回了其他地址，请重新扫码连接。": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "连接服务器超时": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "无法连接服务器，请检查电脑是否运行、网络和防火墙设置。": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "连接未完成": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "切换失败，请重试": [
-    "apps/server/src/remoteConnection.ts"
+    "apps/server/src/modules/localRuntime/remoteConnection.ts"
   ],
   "查询已取消": [
     "apps/server/src/routes/agent/mentionSource.ts"
@@ -6012,7 +6012,7 @@
     "apps/server/src/routes/nodes/files.ts",
     "apps/server/src/routes/nodes/setEnabled.ts",
     "apps/server/src/routes/nodes/uninstall.ts",
-    "apps/server/src/utils/plugins/nodes.ts"
+    "apps/server/src/modules/pluginMarket/plugins/nodes.ts"
   ],
   "节点已禁用": [
     "apps/server/src/routes/nodes/files.ts"
@@ -6062,7 +6062,7 @@
   ],
   "技能不存在": [
     "apps/server/src/routes/plugins/export.ts",
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "技能最多包含 2000 个文件和目录": [
     "apps/server/src/routes/plugins/export.ts"
@@ -6103,8 +6103,8 @@
   "已存在同名文件或目录": [
     "apps/server/src/routes/skills/create.ts",
     "apps/server/src/routes/skills/move.ts",
-    "apps/server/src/utils/skills/files.ts",
-    "apps/server/src/utils/workspace/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts",
+    "apps/server/src/modules/localRuntime/workspace/files.ts"
   ],
   "文件已创建": [
     "apps/server/src/routes/skills/create.ts"
@@ -6136,9 +6136,9 @@
   "技能文件不能超过 20 MB": [
     "apps/server/src/routes/skills/read.ts",
     "apps/server/src/routes/skills/save.ts",
-    "apps/server/src/utils/mcp/resources.ts",
-    "apps/server/src/utils/plugins/install.ts",
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/resources.ts",
+    "apps/server/src/modules/pluginMarket/plugins/install.ts",
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "该文件不是文本内容，无法在编辑器中打开": [
     "apps/server/src/routes/skills/read.ts"
@@ -6188,7 +6188,7 @@
   "工具文件无效": [
     "apps/server/src/routes/tools/setEnabled.ts",
     "apps/server/src/routes/tools/uninstall.ts",
-    "apps/server/src/utils/plugins/tools.ts"
+    "apps/server/src/modules/pluginMarket/plugins/tools.ts"
   ],
   "工具状态文件无效": [
     "apps/server/src/routes/tools/setEnabled.ts"
@@ -6227,1285 +6227,1285 @@
     "apps/server/src/routes/workspaces/selectDirectory.ts"
   ],
   "请先在设置中配置模型供应商": [
-    "apps/server/src/utils/ai/index.ts"
+    "apps/server/src/modules/mediaGeneration/ai/index.ts"
   ],
   "所选模型不存在，请重新选择": [
-    "apps/server/src/utils/ai/index.ts"
+    "apps/server/src/modules/mediaGeneration/ai/index.ts"
   ],
   "媒体参考需要工作目录": [
-    "apps/server/src/utils/ai/index.ts"
+    "apps/server/src/modules/mediaGeneration/ai/index.ts"
   ],
   "未获取到文本模型，保留原有列表": [
-    "apps/server/src/utils/ai/initialize.ts"
+    "apps/server/src/modules/mediaGeneration/ai/initialize.ts"
   ],
   "未知错误": [
-    "apps/server/src/utils/ai/initialize.ts"
+    "apps/server/src/modules/mediaGeneration/ai/initialize.ts"
   ],
   "媒体": [
-    "apps/server/src/utils/ai/initialize.ts"
+    "apps/server/src/modules/mediaGeneration/ai/initialize.ts"
   ],
   "获取模型列表失败（HTTP {0}），请检查 API 地址、协议和密钥": [
-    "apps/server/src/utils/ai/models.ts"
+    "apps/server/src/modules/mediaGeneration/ai/models.ts"
   ],
   "模型列表包含无效的模型 ID": [
-    "apps/server/src/utils/ai/models.ts"
+    "apps/server/src/modules/mediaGeneration/ai/models.ts"
   ],
   "模型列表缺少分页游标": [
-    "apps/server/src/utils/ai/models.ts"
+    "apps/server/src/modules/mediaGeneration/ai/models.ts"
   ],
   "模型列表分页游标重复": [
-    "apps/server/src/utils/ai/models.ts"
+    "apps/server/src/modules/mediaGeneration/ai/models.ts"
   ],
   "只能读取普通素材文件": [
-    "apps/server/src/utils/assets/index.ts"
+    "apps/server/src/modules/assetLibrary/assets/index.ts"
   ],
   "素材已被修改，请重新读取后再更新": [
-    "apps/server/src/utils/assets/index.ts"
+    "apps/server/src/modules/assetLibrary/assets/index.ts"
   ],
   "不能把素材文件夹移动到自身的子目录": [
-    "apps/server/src/utils/assets/index.ts"
+    "apps/server/src/modules/assetLibrary/assets/index.ts"
   ],
   "只能删除普通素材文件或空文件夹": [
-    "apps/server/src/utils/assets/index.ts"
+    "apps/server/src/modules/assetLibrary/assets/index.ts"
   ],
   "素材分页游标关闭失败": [
-    "apps/server/src/utils/assets/index.ts"
+    "apps/server/src/modules/assetLibrary/assets/index.ts"
   ],
   "上一页仍在读取，请稍后重试": [
-    "apps/server/src/utils/assets/index.ts"
+    "apps/server/src/modules/assetLibrary/assets/index.ts"
   ],
   "素材查询及游标关闭失败": [
-    "apps/server/src/utils/assets/index.ts"
+    "apps/server/src/modules/assetLibrary/assets/index.ts"
   ],
   "清理无效更新核验记录失败：": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "清理已取消更新核验记录失败：": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "清理已完成更新核验记录失败：": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "更新重启后的版本或构建号与目标不一致，请下载完整安装包重新安装。": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "保存更新核验失败信息失败：": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "请选择 .ts 供应商文件": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "请重新选择并授权供应商文件": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "供应商文件已被移动或删除，请重新选择": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "供应商文件不能超过 2 MB": [
-    "apps/server/src/utils/desktop/index.ts",
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts",
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "更新操作正在执行，请稍后再试。": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "更新源已切换，请重新检查更新。": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "请先检查并确认有可用更新。": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "更新包尚未准备完成，请重试。": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "请先下载更新。": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "更新包缺少目标版本或构建号，请重新下载。": [
-    "apps/server/src/utils/desktop/index.ts"
+    "apps/server/src/modules/localRuntime/desktop/index.ts"
   ],
   "当前操作需要 FFmpeg，请在插件市场下载安装或配置可用版本后重试。": [
-    "apps/server/src/utils/ffmpeg/index.ts"
+    "apps/server/src/modules/mediaGeneration/ffmpeg/index.ts"
   ],
   "正在下载，请等待完成或取消后再试": [
-    "apps/server/src/utils/ffmpeg/index.ts"
+    "apps/server/src/modules/mediaGeneration/ffmpeg/index.ts"
   ],
   "此下载源暂不可用，请选择其他下载源": [
-    "apps/server/src/utils/ffmpeg/index.ts",
+    "apps/server/src/modules/mediaGeneration/ffmpeg/index.ts",
     "packages/ffmpeg/src/index.ts"
   ],
   "暂不支持自动下载 {0} 版本": [
-    "apps/server/src/utils/ffmpeg/index.ts",
+    "apps/server/src/modules/mediaGeneration/ffmpeg/index.ts",
     "packages/ffmpeg/src/index.ts"
   ],
   "只允许 Toonflow 页面访问控制连接": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "页面来源无效": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "页面来源与服务地址不一致": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "MCP 未开启或访问凭证无效": [
-    "apps/server/src/utils/mcp/control.ts",
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts",
     "packages/mcp/src/index.ts"
   ],
   "Toonflow 页面已断开，请重新调用 getAppState": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "存在多个 Toonflow 页面，请用 target.connectionId 指定操作目标": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "控制连接已存在": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "Toonflow 页面已断开，操作已取消": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "控制命令已取消或不存在": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "此页面正在执行另一条控制命令，请等待完成": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "工作区已切换，请重新调用 getAppState": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "控制命令已取消或超时": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "MCP 设置已修改，控制命令已取消": [
-    "apps/server/src/utils/mcp/control.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/control.ts"
   ],
   "列出已安装节点的元数据、说明和启用状态。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "启用或禁用已安装节点。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "通过 fileName/source 安装节点 UMD，或使用 url 下载；force 显式允许覆盖。下载和版本检查沿用现有安装接口。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "提供 url 或 fileName/source，不能同时提供 url 和 source": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "卸载指定节点插件，不删除工作区的画布和节点输出。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "列出已安装工具、说明、启用状态和配置。访问凭证由 MCP 输出统一脱敏。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "启用或禁用工具；启用时沿用工具配置校验。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "保存指定工具的完整 config，按该工具的配置规则校验。不要回写脱敏占位符。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "通过 fileName/source 安装 .tool.js，或使用 url 下载；force 显式允许覆盖。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "卸载指定工具并删除其配置。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "列出全局已安装技能的元数据；工作区技能复用 skillOperator 工具。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "列出指定全局技能的文件及主文件路径。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "读取指定全局技能的 UTF-8 文件；省略 path 时读取主 SKILL.md。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "在已安装技能内新建空白文件，不覆盖已有文件；新技能请使用 installSkill 或 skillOperator。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "保存已有技能文件；主 SKILL.md 必须保留相同的 frontmatter name 和有效 description。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "在指定技能内移动或重命名文件，不覆盖已有目标。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "使用 fileName/base64 安装技能文件或压缩包，或使用 url 下载；force 显式允许覆盖。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "提供 url 或 fileName/base64，不能同时提供 url 和 base64": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "卸载全局技能及其文件，不影响工作区内的同名技能。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "读取媒体供应商及预置 models、配置 revision；保存与删除时使用最新 revision。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "从完整 TypeScript source 添加媒体供应商，沿用现有供应商结构检查。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "修改供应商 TS 中的 models；revision 不匹配时拒绝覆盖。API Key 等凭证通过 updateSettings 配置。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "删除指定媒体供应商及其保存的配置；必须提供当前 revision。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "列出全局素材库的文件和文件夹树；与工作区 assets 目录不同。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "在全局素材库创建文件夹，path 为素材库内相对路径。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "在全局素材库移动或重命名文件、文件夹，不覆盖已有目标。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "从全局素材库删除文件或空文件夹，不递归删除内容。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "读取不超过 20 MB 的全局素材文件，返回 base64 和 MIME 类型。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "以 base64 上传不超过 20 MB 的文件到全局素材库；不覆盖已有文件，父文件夹须存在。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "列出目标工作区的内置 Agent 历史对话。directory 由 target.directory 注入。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "在目标工作区创建新的内置 Agent 对话，不启动生成。directory 由 target.directory 注入。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "读取内置 Agent 对话历史，sessionFile 来自 listAgentSessions。directory 由 target.directory 注入。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "修改内置 Agent 对话名称；directory 由 target.directory 注入。": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "未知应用操作：{0}": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "Toonflow 服务尚未就绪": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "素材文件不能超过 20 MB": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "不能保存脱敏占位符，请填写实际值": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "应用操作失败（{0}）": [
-    "apps/server/src/utils/mcp/operations.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/operations.ts"
   ],
   "技能资源地址无效": [
-    "apps/server/src/utils/mcp/resources.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/resources.ts"
   ],
   "技能已禁用": [
-    "apps/server/src/utils/mcp/resources.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/resources.ts"
   ],
   "技能资源不存在": [
-    "apps/server/src/utils/mcp/resources.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/resources.ts"
   ],
   "清理 MCP 运行信息失败：": [
-    "apps/server/src/utils/mcp/runtime.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/runtime.ts"
   ],
   "MCP 端口 {0}–{1} 均已占用，请修改首选端口": [
-    "apps/server/src/utils/mcp/runtime.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/runtime.ts"
   ],
   "，继续使用原地址": [
-    "apps/server/src/utils/mcp/runtime.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/runtime.ts"
   ],
   "重载 MCP 失败：": [
-    "apps/server/src/utils/mcp/runtime.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/runtime.ts"
   ],
   "请在 target.directory 指定绝对工作目录，或先打开项目": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "工作目录不是文件夹": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "服务器部署只能使用 data/workspaces 内的工作区": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "目标页面的工作区已切换，请重新获取 getAppState": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "目标画布已切换，请重新获取 getAppState": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "不能通过 MCP 修改连接凭证或项目列表": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "在目标 Toonflow 页面打开已有工作目录，并等待工作区就绪；操作前获取 getAppState 的 connectionId。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "切换工作区的 canvas 画布或 document 文档面板，先保存当前编辑。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "读取当前文档内容和选择状态。writeDocument 必须携带本次读取的 text 作为 expectedText。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "打开工作区中的文档文件(path)，或画布中的文本节点(canvasPath、nodeId，可选handleId)。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "通过文档编辑器保存当前文档；expectedText 必须匹配当前内容，防止覆盖用户新输入。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "读取页面当前设置，访问凭证脱敏。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "合并保存指定顶层设置项，同时更新页面；不修改 mcp 凭证与 stores 项目列表，嵌套设置应先读取再合并。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "文件正在 Toonflow 中打开，请使用画布或文档工具修改，关闭后再执行文件操作": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "列出连接的 Toonflow 页面及其 connectionId、工作目录、画布、项目列表和节点能力。多个页面时必须用 target.connectionId 明确操作对象；无页面连接时只有显式 target.directory 的服务端工具可用。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "请先打开 Toonflow 桌面或网页": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "尚未绑定画布": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "MCP 工具名称重复：{0}": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "工具已禁用，或所需 Toonflow 页面未连接，请重新读取工具列表": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "MCP 不提供内置 Agent 会话能力：{0}": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "列出、创建目录、重命名或删除工作区文件；readBinary/writeBinary通过base64传输不超过20MB的媒体，写入默认不覆盖。文本读写复用已启用的文件工具；打开中的画布或文档必须通过专门工具修改。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "工作区文件工具未启用或加载失败": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "当前工作区文件工具为只读模式": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "文件必须是不超过20MB的普通文件": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "重命名需要提供 args.target": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "写入二进制文件需要 base64": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "文件不能超过20MB": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "按需查询插件、媒体供应商、素材库和 Agent 历史管理操作及其参数。先查询 schema，再调用 appOperation。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "执行 listAppOperations 公布的应用管理操作，parameters 必须符合对应 schema。文件与节点操作使用专门工具；安装来源、覆盖和卸载须符合用户请求。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "应用操作不存在，请查询 listAppOperations": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "按用户请求调用 Toonflow 内置 Agent，等待本轮完成并返回对话文件与回复；会使用配置的模型。外部 Agent 可直接操作其他工具，仅需要委托内置 Agent 时调用。支持 MCP 取消，历史保存到工作区。": [
-    "apps/server/src/utils/mcp/tools.ts"
+    "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
   ],
   "音频输入必须是 Uint8Array": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "音频输入大小无效": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "输出格式仅支持 wav 或 mp3": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "裁剪起点无效": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "裁剪终点无效": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "裁剪区间无效": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "采样率无效": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "MP3 比特率无效": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "音频输入不是有效的 WAV 数据": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "仅支持单声道或双声道音频": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "音频采样率无效": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "音频时长无效或超出限制": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "裁剪区间超出音频长度": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "MP3 编码失败": [
-    "apps/server/src/utils/media/audioProcessor.ts"
+    "apps/server/src/modules/mediaGeneration/media/audioProcessor.ts"
   ],
   "[{0} 个字符]": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "[二进制或表单请求体]": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "[请求体 {0} 个字符]": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "\n…响应已截断": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "模型已变更，请重新选择模型": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "供应商没有实现此模型的媒体生成方法": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "供应商未返回媒体数组": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "返回的媒体类型与模型不一致": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "媒体结果需要 HTTP 或 HTTPS 地址": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "媒体结果格式无效": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "调试预览的媒体总量不能超过 32 MB": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "媒体编码或 MIME 类型无效": [
-    "apps/server/src/utils/media/debug.ts"
+    "apps/server/src/modules/mediaGeneration/media/debug.ts"
   ],
   "参考媒体须为不超过 100 MB 的文件": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "参考媒体为空或超过 100 MB": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "参考媒体类型须为 {0}": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "生成结果必须使用 HTTP 或 HTTPS 地址": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "下载生成结果失败（HTTP {0}）": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "生成文件不能超过 100 MB": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "生成结果为空": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "供应商返回的媒体类型不正确": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "生成结果的 base64 内容无效或超过 100 MB": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "供应商返回了无效的媒体结果": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "生成文件为空或超过 100 MB": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "生成结果不是支持的图片、视频或音频格式": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "请输入生成提示词": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "所选媒体模型不存在或类型不匹配，请重新选择": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "此供应商不支持{0}生成": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "请先在媒体模型设置中配置供应商 API Key": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "供应商未返回生成结果": [
-    "apps/server/src/utils/media/generation.ts"
+    "apps/server/src/modules/mediaGeneration/media/generation.ts"
   ],
   "供应商 ID 不能是系统保留文件名": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商文件名无效": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "模型 ID 不能重复": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "读取图片失败：HTTP {0}": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "图片缩放至少需要指定宽度或高度": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商对象和模型配置不能使用展开或计算属性": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商对象和模型配置包含无效或重复属性": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "models 数值必须有限": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "models 仅支持 JSON 字面量": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商元数据和 models 必须直接使用字面量": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商 TypeScript 语法错误：{0}": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "检测到旧版 Toonflow 供应商 TS，无法在 Toonflow 2.0 中使用。请在「添加自定义媒体供应商」中点击「一键复制提示词」，结合旧代码和接口资料重新生成新版代码后再导入。": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商须通过 export default 导出对象": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商须直接导出对象字面量": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "{0} 必须直接使用字面量": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "{0} 必须使用字面量或顶层 const 常量": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商 ID 必须为小驼峰文件名": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商名称无效": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商图标必须为字符串": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商版本必须为非空字符串": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商说明必须为字符串": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "模型列表地址须为不含凭据或片段的 HTTP URL": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商 rules 必须为表单配置对象数组": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商 ID 与文件名不一致": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商目录不能是符号链接或文件": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商文件不能是符号链接或目录": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商 ID 无效": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "请先在媒体模型设置中添加供应商": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商文件无法读取": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "媒体供应商“{0}”已安装，请在「设置 → 媒体模型」中编辑，或先删除后重新安装。": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商文件不存在": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商文件已被修改，请刷新页面后再编辑": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商文件已被修改，请刷新页面后再获取": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商未配置 modelsUrl": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "获取媒体模型列表失败（HTTP {0}）": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "未获取到媒体模型，保留原有列表": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "模型 {0} 缺少 type，请在返回数据或 modelsUrl 的 type 参数中指定": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "模型 {0} 的 type 与请求类型不一致": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商文件已被修改，请刷新页面后再删除": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "供应商不能导入模块，请使用 this.tool 中的宿主工具": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "当前操作没有工作目录，无法使用 FFmpeg": [
-    "apps/server/src/utils/media/provider.ts"
+    "apps/server/src/modules/mediaGeneration/media/provider.ts"
   ],
   "设备互联尚未初始化": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "只允许本机 Toonflow 页面管理设备互联": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "当前运行环境不支持共享后端": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "共享连接不能访问本机管理接口": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "设备未配对或授权已撤销": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "设备互联配置正在保存，请稍后重试": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "公网地址必须是 HTTPS 根地址，不能包含路径、账号或参数": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "共享目录必须是绝对路径": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "共享路径必须是文件夹": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "设备互联已停止": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "请先开启设备互联": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "请选择当前共享地址生成配对码": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "请连接设备互联共享端口进行配对": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "配对码尝试过于频繁，请稍后重试或扫描二维码": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "配对码无效或已使用，请重新获取": [
-    "apps/server/src/utils/mobileLink/index.ts"
+    "apps/server/src/modules/localRuntime/mobileLink/index.ts"
   ],
   "全局 AGENTS.md": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "个性化文档类型无效": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "不能通过符号链接访问个性化文档": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "个性化文档所在路径不是目录": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "个性化文档必须是普通文件": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "个性化文档不能超过 {0} 个字符": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "个性化文档": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "读取{0}失败：{1}": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "保存{0}失败：{1}": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "文档已被其他操作更新，请重新加载后再保存，避免覆盖最新内容": [
-    "apps/server/src/utils/personalization.ts"
+    "apps/server/src/modules/platformCore/personalization.ts"
   ],
   "文件扩展元数据无效，请使用扩展脚手架重新构建，且文件名必须与扩展 ID 一致": [
-    "apps/server/src/utils/plugins/ext.ts"
+    "apps/server/src/modules/pluginMarket/plugins/ext.ts"
   ],
   "文件扩展必须是普通文件": [
-    "apps/server/src/utils/plugins/ext.ts"
+    "apps/server/src/modules/pluginMarket/plugins/ext.ts"
   ],
   "文件扩展不能超过 20 MB": [
-    "apps/server/src/utils/plugins/ext.ts",
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/ext.ts",
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}必须为数字": [
-    "apps/server/src/utils/plugins/ext.ts"
+    "apps/server/src/modules/pluginMarket/plugins/ext.ts"
   ],
   "{0}不能小于{1}": [
-    "apps/server/src/utils/plugins/ext.ts"
+    "apps/server/src/modules/pluginMarket/plugins/ext.ts"
   ],
   "{0}不能大于{1}": [
-    "apps/server/src/utils/plugins/ext.ts"
+    "apps/server/src/modules/pluginMarket/plugins/ext.ts"
   ],
   "{0}的开关值无效": [
-    "apps/server/src/utils/plugins/ext.ts"
+    "apps/server/src/modules/pluginMarket/plugins/ext.ts"
   ],
   "文件扩展目录不能是符号链接": [
-    "apps/server/src/utils/plugins/initializeExt.ts",
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/initializeExt.ts",
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}已安装，但现有或待安装版本缺失或无效，无法判断更新顺序；请在开发者设置中使用强制安装": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}已安装版本 {1}，待安装版本 {2} 不高于现有版本；如需覆盖或降级，请在开发者设置中使用强制安装": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "下载地址格式无效，请提供完整的 HTTP / HTTPS 文件地址": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "仅支持不含账号密码的 HTTP / HTTPS 地址": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}下载失败：服务器重定向响应缺少 Location 地址": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}下载失败：重定向超过 5 次，请使用文件的直接下载地址": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}下载失败：重定向目标不是有效的 HTTP / HTTPS 地址": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "下载被拒绝，链接可能已过期、签名无效或没有访问权限，请重新生成下载链接": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "文件不存在，请确认上传路径和文件名；改名后需要重新生成下载链接": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "文件已失效，请获取新的下载链接": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "下载请求过于频繁，请稍后重试": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "下载服务器暂时异常，请稍后重试": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "服务器未返回文件，请检查下载地址": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}下载失败（HTTP {1}）：{2}": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}下载失败：服务器没有返回文件内容": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}文件不能超过 {1} MB": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}下载失败：文件内容为空，请重新上传文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}下载超时（30 秒），请检查网络或重新获取下载链接": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "{0}下载连接失败，请检查网络、下载域名和 HTTPS 证书后重试": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "下载地址无效": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "插件文本内容不是有效的 UTF-8 编码，请检查文件编码后重新上传": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "文件名需为小驼峰格式，例如 imageNode.umd.js": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "节点文件内容为空，请重新上传节点脚本": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "节点文件不能超过 20 MB": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "节点文件实际是 HTML 网页，不是节点脚本，请重新上传构建生成的 .umd.js 文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "文件不是兼容的 Toonflow 节点，请使用节点脚手架构建生成的 .umd.js 文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "文件名与节点导出名不一致：{0} 需要导出 toonflowNodes.{1}，请按实际节点名修改文件名": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "节点脚本语法无效，请重新构建并上传完整的 .umd.js 文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "节点目录不能是符号链接": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "现有节点必须是普通文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "文件名需为 ext-小驼峰格式，例如 ext-image.umd.js": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "文件扩展内容为空，请重新上传扩展脚本": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "文件不是兼容的 Toonflow 文件扩展，请使用扩展脚手架构建并保留原文件名": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "文件扩展脚本语法无效，请重新构建完整的 .umd.js 文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "现有文件扩展必须是普通文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "工具文件名无效，请选择小驼峰命名的 .tool.js 文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "工具文件内容为空，请重新上传工具脚本": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "工具文件不能超过 20 MB": [
-    "apps/server/src/utils/plugins/install.ts",
-    "apps/server/src/utils/plugins/tools.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts",
+    "apps/server/src/modules/pluginMarket/plugins/tools.ts"
   ],
   "工具脚本语法无效或缺少默认导出": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "工具目录不能是符号链接": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "现有工具必须是普通文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包包含不安全的文件路径": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包包含重名文件或目录": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包最多包含 2000 个文件和目录": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包包含冲突的文件或目录路径": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包结尾无效": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "请使用未分卷的普通 ZIP 技能包，不支持 ZIP64": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包目录无效": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包文件头无效": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包不能加密，仅支持存储或 Deflate 压缩": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包不能包含链接、设备或其他特殊文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包解压后不能超过 20 MB": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包文件大小无效": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包条目不一致": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包条目大小或校验值不一致": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包目录长度不一致": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包包含重叠条目": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包损坏或实际解压大小超过声明值": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "ZIP 技能包文件大小或校验值错误": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能压缩包损坏": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能压缩包无效或解压后超过 20 MB": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包结尾包含额外数据": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包文件头无效": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包不能包含链接、设备或 PAX/GNU 扩展条目，请使用普通 tar 格式": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包文件大小无效": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能压缩包无法读取": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包条目不一致": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包条目不完整": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "请选择 .zip、.md、.tar、.tar.gz 或 .tgz 技能文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能文件不能为空": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能包必须包含且仅包含一个 SKILL.md": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能资源必须位于 SKILL.md 所在目录内": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "SKILL.md 前言格式无效": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能 name 必须为不超过 64 字符的小驼峰或短横线名称": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能 description 必须为 1 至 1024 字符": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能目录不能是符号链接": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能目录“{0}”与“{1}”大小写冲突，请先统一名称": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "现有技能必须是独立的普通目录": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "现有技能主文件必须是普通文件": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "目录中包含其他技能，不能整体替换": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能暂存目录无效": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "技能资源路径无效": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "下载地址中的文件名编码无效，请重新生成下载链接": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "example.zip、SKILL.md、example.tar、example.tar.gz 或 example.tgz": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "不支持此插件类型，可选值为 node、ext、tool、skill、provider、agent": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "下载地址缺少文件名，请使用指向文件的地址，例如 {0}": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "插件文件名无效，不能包含目录路径或超过 128 字符": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "下载文件名“{0}”不符合 {1} 类型规范，文件名示例：{2}；改名后请重新生成下载链接": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "团队": [
-    "apps/server/src/utils/plugins/install.ts"
+    "apps/server/src/modules/pluginMarket/plugins/install.ts"
   ],
   "节点文件无效": [
-    "apps/server/src/utils/plugins/nodes.ts"
+    "apps/server/src/modules/pluginMarket/plugins/nodes.ts"
   ],
   "节点配置表单规则无效，请重新构建节点": [
-    "apps/server/src/utils/plugins/nodes.ts"
+    "apps/server/src/modules/pluginMarket/plugins/nodes.ts"
   ],
   "请填写{0}": [
-    "apps/server/src/utils/plugins/nodes.ts"
+    "apps/server/src/modules/pluginMarket/plugins/nodes.ts"
   ],
   "工具元数据无效，或文件名与工具名称不一致": [
-    "apps/server/src/utils/plugins/tools.ts"
+    "apps/server/src/modules/pluginMarket/plugins/tools.ts"
   ],
   "工具声明了组件但缺少客户端界面": [
-    "apps/server/src/utils/plugins/tools.ts"
+    "apps/server/src/modules/pluginMarket/plugins/tools.ts"
   ],
   "工具客户端界面格式或脚本语法无效": [
-    "apps/server/src/utils/plugins/tools.ts"
+    "apps/server/src/modules/pluginMarket/plugins/tools.ts"
   ],
   "工具文件无法读取": [
-    "apps/server/src/utils/plugins/tools.ts"
+    "apps/server/src/modules/pluginMarket/plugins/tools.ts"
   ],
   "{0} 未导出有效的工具插件": [
-    "apps/server/src/utils/plugins/tools.ts"
+    "apps/server/src/modules/pluginMarket/plugins/tools.ts"
   ],
   "工具配置无效": [
-    "apps/server/src/utils/plugins/tools.ts"
+    "apps/server/src/modules/pluginMarket/plugins/tools.ts"
   ],
   "临时对话不存在或已关闭": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "临时对话已结束": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "工具调用已取消": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "临时对话未在运行": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "工具插件 {0} 未安装或未启用": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "插件 {0} 未提供所选工具": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "插件返回了无效的工具": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "此对话正在运行，请等待当前回复完成": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "用户取消了提问": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "模型未返回回复": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "本次回复已停止": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "临时对话执行失败": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "当前回复已变化，控制请求已失效": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "工具调用不存在或已结束": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "提问不属于此对话或已结束": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "浏览器会话不属于此临时对话": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "请通过临时对话身份访问此浏览器": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "临时对话已关闭": [
-    "apps/server/src/utils/singleAgent/index.ts"
+    "apps/server/src/modules/agentAccess/singleAgent/index.ts"
   ],
   "技能根目录必须是非符号链接目录": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "文件不存在": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "技能路径无效": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "技能路径不能包含符号链接、特殊文件或越界目录": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "文件路径无效": [
-    "apps/server/src/utils/skills/files.ts",
-    "apps/server/src/utils/workspace/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts",
+    "apps/server/src/modules/localRuntime/workspace/files.ts"
   ],
   "技能文件超出目录范围": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "目录中包含其他技能，不能整体卸载": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "该技能没有可编辑的附属文件": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "该文件由系统管理，不能直接编辑": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "文件路径超出技能目录": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "不能创建或移动为该保留文件名": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "不能移动主文件": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "技能文件过多，无法列出": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "顺序列表包含重复路径": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "顺序列表包含无效或不存在的文件": [
-    "apps/server/src/utils/skills/files.ts"
+    "apps/server/src/modules/pluginMarket/skills/files.ts"
   ],
   "团队名称须为不超过 96 字符的小驼峰名称，且不能使用保留字": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队包缺少 team.json": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "team.json 无效：{0}": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队名称、目录及安装文件名必须一致": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队包包含不支持的文件：{0}": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队包含大小写冲突的文件路径": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "私有工具语法无效或缺少默认导出：{0}": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队包最多包含 2000 个文件，文件总大小不能超过 20 MB": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队目录必须是普通目录": [
-    "apps/server/src/utils/teams/files.ts",
-    "apps/server/src/utils/teams/install.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts",
+    "apps/server/src/modules/pluginMarket/teams/install.ts"
   ],
   "团队目录超出范围": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队最多包含 2000 个文件和目录": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队目录包含大小写冲突的路径": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队文件不能包含链接或越界路径": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队不能包含特殊文件": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "团队文件总大小不能超过 20 MB": [
-    "apps/server/src/utils/teams/files.ts"
+    "apps/server/src/modules/pluginMarket/teams/files.ts"
   ],
   "已存在同名团队或远端连接": [
-    "apps/server/src/utils/teams/index.ts"
+    "apps/server/src/modules/pluginMarket/teams/index.ts"
   ],
   "团队状态文件无效": [
-    "apps/server/src/utils/teams/index.ts"
+    "apps/server/src/modules/pluginMarket/teams/index.ts"
   ],
   "只能编辑团队配置、成员说明、技能或知识文件": [
-    "apps/server/src/utils/teams/index.ts"
+    "apps/server/src/modules/pluginMarket/teams/index.ts"
   ],
   "文件内容不能包含空字符": [
-    "apps/server/src/utils/teams/index.ts"
+    "apps/server/src/modules/pluginMarket/teams/index.ts"
   ],
   "团队文件不能超过 20 MB": [
-    "apps/server/src/utils/teams/index.ts"
+    "apps/server/src/modules/pluginMarket/teams/index.ts"
   ],
   "请选择小驼峰命名的 .agent.zip 团队包": [
-    "apps/server/src/utils/teams/install.ts"
+    "apps/server/src/modules/pluginMarket/teams/install.ts"
   ],
   "团队包不能为空且不能超过 20 MB": [
-    "apps/server/src/utils/teams/install.ts"
+    "apps/server/src/modules/pluginMarket/teams/install.ts"
   ],
   "团队包须在根目录或同名目录下包含 team.json，所有文件须位于该目录内": [
-    "apps/server/src/utils/teams/install.ts"
+    "apps/server/src/modules/pluginMarket/teams/install.ts"
   ],
   "已存在同名远端团队连接": [
-    "apps/server/src/utils/teams/install.ts"
+    "apps/server/src/modules/pluginMarket/teams/install.ts"
   ],
   "团队目录名称大小写冲突": [
-    "apps/server/src/utils/teams/install.ts"
+    "apps/server/src/modules/pluginMarket/teams/install.ts"
   ],
   "团队存在本地修改或缺少安装记录，请先导出备份；确定覆盖时使用开发者强制安装": [
-    "apps/server/src/utils/teams/install.ts"
+    "apps/server/src/modules/pluginMarket/teams/install.ts"
   ],
   "团队文件路径无效": [
-    "apps/server/src/utils/teams/install.ts"
+    "apps/server/src/modules/pluginMarket/teams/install.ts"
   ],
   "图片地址无效，请使用完整的 HTTP/HTTPS 地址": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "图片仅支持不含账号密码的 HTTP/HTTPS 地址": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "不能下载本机、内网或特殊网络地址的图片": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "无法解析图片的真实公网地址，请稍后重试": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "不能下载解析到本机、内网或特殊网络地址的图片": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "暂不支持网络 SVG 图片，请使用 PNG、JPEG、WebP、GIF、AVIF 或 BMP": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "下载内容不是支持的图片，可能返回了网页或登录页面": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "图片重定向无效或超过 5 次，请使用图片直接地址": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "下载图片失败（HTTP {0}），链接可能失效或需要登录": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "聊天图片不能超过 20 MB": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "图片重定向无效": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "图片下载超时（30 秒），请检查网络后重试": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "图片下载连接失败，请检查图片地址、网络或 HTTPS 证书": [
-    "apps/server/src/utils/workspace/chatImages.ts"
+    "apps/server/src/modules/localRuntime/workspace/chatImages.ts"
   ],
   "只能复制普通文件或文件夹": [
-    "apps/server/src/utils/workspace/files.ts"
+    "apps/server/src/modules/localRuntime/workspace/files.ts"
   ],
   "不能把文件夹复制到自身或子目录": [
-    "apps/server/src/utils/workspace/files.ts"
+    "apps/server/src/modules/localRuntime/workspace/files.ts"
   ],
   "不能复制包含符号链接或特殊文件的文件夹": [
-    "apps/server/src/utils/workspace/files.ts"
+    "apps/server/src/modules/localRuntime/workspace/files.ts"
   ],
   "请检查文件权限后重试": [
-    "apps/server/src/utils/workspace/files.ts"
+    "apps/server/src/modules/localRuntime/workspace/files.ts"
   ],
   "不能通过符号链接操作文件": [
-    "apps/server/src/utils/workspace/files.ts"
+    "apps/server/src/modules/localRuntime/workspace/files.ts"
   ],
   "只能操作当前工作区内的文件": [
-    "apps/server/src/utils/workspace/files.ts"
+    "apps/server/src/modules/localRuntime/workspace/files.ts"
   ],
   "文件正在使用，请等待操作完成": [
-    "apps/server/src/utils/workspace/files.ts"
+    "apps/server/src/modules/localRuntime/workspace/files.ts"
   ],
   "不能修改工作区根目录": [
-    "apps/server/src/utils/workspace/files.ts"
+    "apps/server/src/modules/localRuntime/workspace/files.ts"
   ],
   "工作目录必须是绝对路径": [
-    "apps/server/src/utils/workspace/index.ts"
+    "apps/server/src/modules/localRuntime/workspace/index.ts"
   ],
   "工作目录不存在，请重新选择文件夹": [
-    "apps/server/src/utils/workspace/index.ts"
+    "apps/server/src/modules/localRuntime/workspace/index.ts"
   ],
   "工作目录不是文件夹，请重新选择": [
-    "apps/server/src/utils/workspace/index.ts"
+    "apps/server/src/modules/localRuntime/workspace/index.ts"
   ],
   "不能连接当前设备自己的服务地址": [
     "apps/desktop/src/connection.ts"

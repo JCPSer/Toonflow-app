@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { isMemoryEnabled, maxDocumentLength, readDocument, saveDocument } from "@/utils/personalization";
+import { isMemoryEnabled, maxDocumentLength, readDocument, saveDocument } from "@/modules/platformCore/personalization";
 
 const parameters = z.strictObject({
   action: z.enum(["read", "save"]).describe("read 读取最新全局记忆；save 保存合并后的完整 Markdown"),

@@ -1,8 +1,8 @@
 import { t } from "@/lib/i18n";
-import { listMediaModels, generateMedia } from "@/utils/media/generation";
-import { createWorkspaceFfmpeg } from "@/utils/ffmpeg";
-import { createBrowserContext } from "@/utils/browser";
-import { importImage } from "@/utils/workspace/chatImages";
+import { listMediaModels, generateMedia } from "@/modules/mediaGeneration/media/generation";
+import { createWorkspaceFfmpeg } from "@/modules/mediaGeneration/ffmpeg";
+import { createBrowserContext } from "@/modules/agentAccess/browser";
+import { importImage } from "@/modules/localRuntime/workspace/chatImages";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { access, constants, copyFile, lstat, mkdir, readFile, readdir, rm, rmdir, stat, withFileAccess } from "@toonflow/file";
 import {
@@ -11,13 +11,13 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { CanvasContext, QuestionContext, ToolContext, ToolFiles } from "@toonflow/tools-scaffold/runtime";
 import { asrRequestSchema } from "@toonflow/tools-scaffold/runtime";
-import conf from "@/utils/conf";
-import { isWithin, isHiddenWorkspaceEntry, resolveWorkspacePath, writeWorkspaceFile, renameWorkspaceFile, lockWorkspaceFiles, protectWorkspaceRoot, protectWorkspaceLibraryPath } from "@/utils/workspace/files";
-import { listTools, loadTool, validateToolConfig } from "@/utils/plugins/tools";
+import conf from "@/modules/platformCore/conf";
+import { isWithin, isHiddenWorkspaceEntry, resolveWorkspacePath, writeWorkspaceFile, renameWorkspaceFile, lockWorkspaceFiles, protectWorkspaceRoot, protectWorkspaceLibraryPath } from "@/modules/localRuntime/workspace/files";
+import { listTools, loadTool, validateToolConfig } from "@/modules/pluginMarket/plugins/tools";
 import { createSkillContext } from "@/agent/skills";
 import { createAssetContext } from "@/agent/assets";
-import { readDocument } from "@/utils/documents";
-import { createMcpAgentTools } from "@/utils/mcp/servers";
+import { readDocument } from "@/modules/mediaGeneration/documents";
+import { createMcpAgentTools } from "@/modules/mcpIntegration/mcp/servers";
 import { z } from "zod";
 import { isAgentFullAccess, resolveAgentReadPath } from "@/agent/runtime/permissions";
 

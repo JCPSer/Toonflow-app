@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { error, success } from "@/lib/responseFormat";
 import u from "@/utils";
-import { cachedStatus, friendlyMonitorError, type JsonRecord, parseMonitorBase, readMonitorJson, record } from "@/utils/monitor";
+import { cachedStatus, friendlyMonitorError, type JsonRecord, parseMonitorBase, readMonitorJson, record } from "@/modules/platformCore/monitor";
 
 const router = Router();
 

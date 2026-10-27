@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
-import { assertAssetRequest } from "@/utils/assets/guard";
-import { assertAssetExists, importFileIntoLibrary } from "@/utils/assets/library";
-import { openAssetLibrary } from "@/utils/assets/roots";
-import { resolveWorkspace } from "@/utils/workspace";
-import { resolveWorkspacePath } from "@/utils/workspace/files";
+import { assertAssetRequest } from "@/modules/assetLibrary/assets/guard";
+import { assertAssetExists, importFileIntoLibrary } from "@/modules/assetLibrary/assets/library";
+import { openAssetLibrary } from "@/modules/assetLibrary/assets/roots";
+import { resolveWorkspace } from "@/modules/localRuntime/workspace";
+import { resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
 import { success } from "@/lib/responseFormat";
-import { directoryField, libraryField, pathField, requestLibrary, validateAssetFields } from "@/utils/assets/routeSchema";
+import { directoryField, libraryField, pathField, requestLibrary, validateAssetFields } from "@/modules/assetLibrary/assets/routeSchema";
 
 const router = Router();
 

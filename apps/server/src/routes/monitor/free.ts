@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { error, success } from "@/lib/responseFormat";
 import u from "@/utils";
-import { friendlyMonitorError, invalidateStatus, parseMonitorBase } from "@/utils/monitor";
+import { friendlyMonitorError, invalidateStatus, parseMonitorBase } from "@/modules/platformCore/monitor";
 
 const router = Router();
 

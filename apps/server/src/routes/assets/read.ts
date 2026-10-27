@@ -1,11 +1,11 @@
 import { lstat } from "@toonflow/file";
-import { sendFile } from "@/utils/fileHttp";
+import { sendFile } from "@/modules/platformCore/fileHttp";
 import { basename } from "node:path";
 import { Router } from "express";
 import { z } from "zod";
-import { assertAssetRelativePath } from "@/utils/assets/roots";
-import { protectWorkspaceRoot, resolveWorkspacePath } from "@/utils/workspace/files";
-import { validateAssetFields, directoryField, libraryField, pathField, requestLibrary } from "@/utils/assets/routeSchema";
+import { assertAssetRelativePath } from "@/modules/assetLibrary/assets/roots";
+import { protectWorkspaceRoot, resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
+import { validateAssetFields, directoryField, libraryField, pathField, requestLibrary } from "@/modules/assetLibrary/assets/routeSchema";
 
 const router = Router();
 

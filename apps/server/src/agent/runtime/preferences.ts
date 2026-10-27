@@ -1,4 +1,4 @@
-import conf from "@/utils/conf";
+import conf from "@/modules/platformCore/conf";
 
 /**
  * ACT: 上下文与权限相关的用户偏好集中在这里读取，避免各调用点各自解析 settings 结构。

@@ -3,13 +3,13 @@ import { lstat, readFile, realpath } from "@toonflow/file";
 import { assetRequestSchema } from "@toonflow/tool-asset-operator/runtime";
 import type { ToolContext } from "@toonflow/tools-scaffold/runtime";
 import { resolve } from "node:path";
-import { createAssetDirectory, importAssetFile, importFileIntoLibrary, moveAsset, openAssetLibrary, readAssetFile, removeAsset, writeAssetFile } from "@/utils/assets";
-import type { AssetLibrarySelector } from "@/utils/assets/roots";
-import { lockWorkspaceFiles, protectWorkspaceRoot, resolveWorkspacePath } from "@/utils/workspace/files";
+import { createAssetDirectory, importAssetFile, importFileIntoLibrary, moveAsset, openAssetLibrary, readAssetFile, removeAsset, writeAssetFile } from "@/modules/assetLibrary/assets";
+import type { AssetLibrarySelector } from "@/modules/assetLibrary/assets/roots";
+import { lockWorkspaceFiles, protectWorkspaceRoot, resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
 import { queryMentionAssets } from "./mentionFiles";
 import { mentionAssetType } from "./mentionSources";
 import { getDocumentMimeType } from "@/lib/documentFormats";
-import { readDocument } from "@/utils/documents";
+import { readDocument } from "@/modules/mediaGeneration/documents";
 
 async function readWorkspaceSource(cwd: string, path: string, signal?: AbortSignal) {
   const directory = await realpath(cwd);

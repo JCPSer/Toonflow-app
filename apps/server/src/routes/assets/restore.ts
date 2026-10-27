@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { restoreAssetEntry } from "@/utils/assets/library";
+import { restoreAssetEntry } from "@/modules/assetLibrary/assets/library";
 import { success } from "@/lib/responseFormat";
-import { validateAssetFields, directoryField, libraryField, requestLibrary } from "@/utils/assets/routeSchema";
+import { validateAssetFields, directoryField, libraryField, requestLibrary } from "@/modules/assetLibrary/assets/routeSchema";
 
 const router = Router();
 

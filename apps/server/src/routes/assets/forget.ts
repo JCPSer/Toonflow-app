@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { Router } from "express";
 import { z } from "zod";
 import { success } from "@/lib/responseFormat";
-import { flushLibraryIndex, removeLibraryEntries } from "@/utils/assets/libraryMeta";
-import { directoryField, libraryField, requestLibrary, validateAssetFields } from "@/utils/assets/routeSchema";
+import { flushLibraryIndex, removeLibraryEntries } from "@/modules/assetLibrary/assets/libraryMeta";
+import { directoryField, libraryField, requestLibrary, validateAssetFields } from "@/modules/assetLibrary/assets/routeSchema";
 
 const router = Router();
 

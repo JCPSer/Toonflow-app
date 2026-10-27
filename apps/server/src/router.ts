@@ -163,6 +163,7 @@ import route160 from "./routes/workspaces/list";
 import route161 from "./routes/workspaces/selectDirectory";
 
 export default (app: Express) => {
+  // agentAccess · /api/agent
   app.use("/api/agent", route1);
   app.use("/api/agent/answer", route2);
   app.use("/api/agent/canvasResult", route3);
@@ -176,6 +177,7 @@ export default (app: Express) => {
   app.use("/api/agent/rename", route11);
   app.use("/api/agent/rewind", route12);
   app.use("/api/agent/skills", route13);
+  // pluginMarket · /api/agents
   app.use("/api/agents/a2a/get", route14);
   app.use("/api/agents/a2a/save", route15);
   app.use("/api/agents/connect", route16);
@@ -185,6 +187,7 @@ export default (app: Express) => {
   app.use("/api/agents/save", route20);
   app.use("/api/agents/setEnabled", route21);
   app.use("/api/agents/uninstall", route22);
+  // mediaGeneration · /api/ai
   app.use("/api/ai/generate", route23);
   app.use("/api/ai/generate/stop", route24);
   app.use("/api/ai/media/balance", route25);
@@ -195,6 +198,7 @@ export default (app: Express) => {
   app.use("/api/ai/media/tasks/cancel", route30);
   app.use("/api/ai/media/tasks/status", route31);
   app.use("/api/ai/models", route32);
+  // assetLibrary · /api/assets
   app.use("/api/assets/events", route33);
   app.use("/api/assets/forget", route34);
   app.use("/api/assets/import", route35);
@@ -213,8 +217,10 @@ export default (app: Express) => {
   app.use("/api/assets/trash", route48);
   app.use("/api/assets/tree", route49);
   app.use("/api/assets/usage", route50);
+  // agentAccess · /api/browser
   app.use("/api/browser/input", route51);
   app.use("/api/browser/stream", route52);
+  // localRuntime · /api/desktop
   app.use("/api/desktop/clipboard/read", route53);
   app.use("/api/desktop/clipboard/write", route54);
   app.use("/api/desktop/devtools", route55);
@@ -230,20 +236,24 @@ export default (app: Express) => {
   app.use("/api/desktop/update/check", route65);
   app.use("/api/desktop/update/download", route66);
   app.use("/api/desktop/update", route67);
+  // localRuntime · /api/exec
   app.use("/api/exec/cancel", route68);
   app.use("/api/exec", route69);
+  // pluginMarket · /api/ext
   app.use("/api/ext/install", route70);
   app.use("/api/ext/list", route71);
   app.use("/api/ext/read", route72);
   app.use("/api/ext/save", route73);
   app.use("/api/ext/setEnabled", route74);
   app.use("/api/ext/uninstall", route75);
+  // mediaGeneration · /api/ffmpeg
   app.use("/api/ffmpeg/cancel", route76);
   app.use("/api/ffmpeg/download", route77);
   app.use("/api/ffmpeg/events", route78);
   app.use("/api/ffmpeg/execute", route79);
   app.use("/api/ffmpeg/progress", route80);
   app.use("/api/ffmpeg/status", route81);
+  // mcpIntegration · /api/mcp
   app.use("/api/mcp/control/events", route82);
   app.use("/api/mcp/control/result", route83);
   app.use("/api/mcp/control/state", route84);
@@ -257,21 +267,26 @@ export default (app: Express) => {
   app.use("/api/mcp/servers/test", route92);
   app.use("/api/mcp/skill", route93);
   app.use("/api/mcp/status", route94);
+  // localRuntime · /api/mobileLink
   app.use("/api/mobileLink/config", route95);
   app.use("/api/mobileLink/heartbeat", route96);
   app.use("/api/mobileLink/pair", route97);
   app.use("/api/mobileLink/pairing", route98);
   app.use("/api/mobileLink/revoke", route99);
   app.use("/api/mobileLink/status", route100);
+  // platformCore · /api/monitor
   app.use("/api/monitor/free", route101);
   app.use("/api/monitor/status", route102);
+  // pluginMarket · /api/nodes
   app.use("/api/nodes/files", route103);
   app.use("/api/nodes/get", route104);
   app.use("/api/nodes/install", route105);
   app.use("/api/nodes/save", route106);
   app.use("/api/nodes/setEnabled", route107);
   app.use("/api/nodes/uninstall", route108);
+  // pluginMarket · /api/plugins
   app.use("/api/plugins/export", route109);
+  // mediaGeneration · /api/providers
   app.use("/api/providers/debug/inspect", route110);
   app.use("/api/providers/debug/run", route111);
   app.use("/api/providers/media/add", route112);
@@ -281,18 +296,22 @@ export default (app: Express) => {
   app.use("/api/providers/media/save", route116);
   app.use("/api/providers/media/validate", route117);
   app.use("/api/providers/models", route118);
+  // agentAccess · /api/sessionState
   app.use("/api/sessionState/get", route119);
   app.use("/api/sessionState/patch", route120);
+  // platformCore · /api/settings
   app.use("/api/settings/get", route121);
   app.use("/api/settings/personalization/get", route122);
   app.use("/api/settings/personalization/save", route123);
   app.use("/api/settings/save", route124);
   app.use("/api/settings/systemPrompt", route125);
+  // agentAccess · /api/singleAgent
   app.use("/api/singleAgent/answer", route126);
   app.use("/api/singleAgent/control", route127);
   app.use("/api/singleAgent/create", route128);
   app.use("/api/singleAgent/run", route129);
   app.use("/api/singleAgent/toolResult", route130);
+  // pluginMarket · /api/skills
   app.use("/api/skills/create", route131);
   app.use("/api/skills/get", route132);
   app.use("/api/skills/install", route133);
@@ -303,6 +322,7 @@ export default (app: Express) => {
   app.use("/api/skills/save", route138);
   app.use("/api/skills/setEnabled", route139);
   app.use("/api/skills/uninstall", route140);
+  // pluginMarket · /api/tools
   app.use("/api/tools/client", route141);
   app.use("/api/tools/get", route142);
   app.use("/api/tools/install", route143);
@@ -310,6 +330,7 @@ export default (app: Express) => {
   app.use("/api/tools/save", route145);
   app.use("/api/tools/setEnabled", route146);
   app.use("/api/tools/uninstall", route147);
+  // localRuntime · /api/workspaces
   app.use("/api/workspaces/check", route148);
   app.use("/api/workspaces/clone", route149);
   app.use("/api/workspaces/files/copy", route150);

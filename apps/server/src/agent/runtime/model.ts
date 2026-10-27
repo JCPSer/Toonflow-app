@@ -1,7 +1,7 @@
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@/lib/modelReasoning";
-import { getConfiguredModel } from "@/utils/ai";
+import { getConfiguredModel } from "@/modules/mediaGeneration/ai";
 
 export function getAgentModelConfiguration(providerId: string, modelId: string, thinkingLevel?: ThinkingLevel) {
   const configured = getConfiguredModel(providerId, modelId);

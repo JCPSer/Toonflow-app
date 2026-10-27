@@ -3,10 +3,10 @@ import { join, relative, sep } from "node:path";
 import { Router } from "express";
 import { z } from "zod";
 import u from "@/utils";
-import { assertAssetRequest } from "@/utils/assets/guard";
-import { listAssetEntries } from "@/utils/assets/library";
+import { assertAssetRequest } from "@/modules/assetLibrary/assets/guard";
+import { listAssetEntries } from "@/modules/assetLibrary/assets/library";
 import { success } from "@/lib/responseFormat";
-import { validateAssetFields, directoryField, libraryField, optionalPathField, requestLibrary } from "@/utils/assets/routeSchema";
+import { validateAssetFields, directoryField, libraryField, optionalPathField, requestLibrary } from "@/modules/assetLibrary/assets/routeSchema";
 
 type AssetEntry = { name: string; path: string; type: "file" | "directory" };
 

@@ -8,7 +8,7 @@ import {
 import type { CanvasContext, QuestionContext } from "@toonflow/tools-scaffold/runtime";
 import type { AgentEvent, AgentMention, AgentToolCall } from "@/agent/runtime/types";
 import { agentMentionsSchema, mentionPrompt, snapshotMentions, validateMentionTokens } from "@/agent/runtime/mentions";
-import { readAiReferences, referenceContent } from "@/utils/ai";
+import { readAiReferences, referenceContent } from "@/modules/mediaGeneration/ai";
 import { createAgentTools } from "@/agent/tools";
 import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
 import { createAgentModel, getAgentModelConfiguration } from "@/agent/runtime/model";
@@ -23,8 +23,8 @@ import {
   getToolResultText, hasPendingAgentQuestion, registerAgentSession, updateSubAgent,
   type ActiveAgentSession,
 } from "@/agent/runtime/sessions";
-import { isMemoryEnabled } from "@/utils/personalization";
-import { lockWorkspaceFiles, resolveWorkspacePath } from "@/utils/workspace/files";
+import { isMemoryEnabled } from "@/modules/platformCore/personalization";
+import { lockWorkspaceFiles, resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
 import { t } from "@/lib/i18n";
 import { decodeTextFile } from "@/lib/documentFormats";
 import type { ThinkingLevel } from "@/lib/modelReasoning";

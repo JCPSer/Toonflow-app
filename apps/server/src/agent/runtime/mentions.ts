@@ -4,9 +4,9 @@ import { extname } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import type { AgentMention } from "@/agent/runtime/types";
-import { getAssetsDirectory, openAssetLibrary } from "@/utils/assets";
-import { assertAssetRelativePath } from "@/utils/assets/roots";
-import { lockWorkspaceFiles, resolveWorkspacePath } from "@/utils/workspace/files";
+import { getAssetsDirectory, openAssetLibrary } from "@/modules/assetLibrary/assets";
+import { assertAssetRelativePath } from "@/modules/assetLibrary/assets/roots";
+import { lockWorkspaceFiles, resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
 import { getReadableFileExtension } from "@/lib/documentFormats";
 
 const mediaTypes = new Set(["IMAGE", "MASK", "VIDEO", "AUDIO", "FILE"]);

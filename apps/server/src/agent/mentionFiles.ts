@@ -5,8 +5,8 @@ import { createCanvasMention, createNodeMention, mentionAssetType, mentionNodeOu
   type MentionCanvasNode, type MentionQuery } from "./mentionSources";
 import type { AgentMention } from "./runtime/types";
 import { decodeTextFile } from "@/lib/documentFormats";
-import { assertAssetRelativePath, openAssetLibrary } from "@/utils/assets/roots";
-export { queryAssets as queryMentionAssets } from "@/utils/assets";
+import { assertAssetRelativePath, openAssetLibrary } from "@/modules/assetLibrary/assets/roots";
+export { queryAssets as queryMentionAssets } from "@/modules/assetLibrary/assets";
 
 type StoredCanvas = { revision: string; nodes: MentionCanvasNode[]; byId: Map<string, MentionCanvasNode> };
 const canvasCache = new Map<string, { revision: string; bytes: number; value: Promise<StoredCanvas> }>();

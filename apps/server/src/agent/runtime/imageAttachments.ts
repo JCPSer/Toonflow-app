@@ -3,7 +3,7 @@ import { formatDimensionNote, resizeImage } from "@earendil-works/pi-coding-agen
 import { mkdir, readFile, realpath, stat, writeAtomic } from "@toonflow/file";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { resolveWorkspacePath } from "@/utils/workspace/files";
+import { resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
 
 export type AgentImageReference = { id: string; path: string; sourcePath: string; mimeType: string; bytes: number; note?: string };
 export type AgentImagePart = TextContent & { toonflowImage: AgentImageReference };

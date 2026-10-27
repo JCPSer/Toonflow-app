@@ -1,6 +1,6 @@
 import { lstat, readFile } from "@toonflow/file";
 import { createHash } from "node:crypto";
-import { sendFile } from "@/utils/fileHttp";
+import { sendFile } from "@/modules/platformCore/fileHttp";
 import { Router } from "express";
 import { z } from "zod";
 import u from "@/utils";

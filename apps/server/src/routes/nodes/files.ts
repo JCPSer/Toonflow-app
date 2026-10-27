@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { lstat } from "@toonflow/file";
-import { sendFile } from "@/utils/fileHttp";
+import { sendFile } from "@/modules/platformCore/fileHttp";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import u from "@/utils";

@@ -1,8 +1,8 @@
 import { lstat, realpath } from "@toonflow/file";
 import { dirname, relative, resolve } from "node:path";
-import conf from "@/utils/conf";
+import conf from "@/modules/platformCore/conf";
 import { getAgentPreferences } from "./preferences";
-import { isWithin, resolveWorkspacePath } from "@/utils/workspace/files";
+import { isWithin, resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
 
 /** 开发者选项「开放 Agent 全部权限」：每次实时读取设置，切换后无需重启。 */
 export function isAgentFullAccess() {

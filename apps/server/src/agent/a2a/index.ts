@@ -5,8 +5,8 @@ import type { CanvasContext } from "@toonflow/tools-scaffold/runtime";
 import { createAgentModel } from "@/agent/runtime/model";
 import { createAgentTools } from "@/agent/tools";
 import { createTeamRunner } from "@/agent/teams";
-import { readTeam } from "@/utils/teams";
-import { callControl, getConnection } from "@/utils/mcp/control";
+import { readTeam } from "@/modules/pluginMarket/teams";
+import { callControl, getConnection } from "@/modules/mcpIntegration/mcp/control";
 import { authenticateA2a, getA2aSettings, getA2aSignal, getA2aUrl, resolveA2aWorkspace } from "./settings";
 
 export function createA2aRouter() {

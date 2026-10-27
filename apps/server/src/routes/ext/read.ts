@@ -2,7 +2,7 @@ import { lstat } from "@toonflow/file";
 import { resolve } from "node:path";
 import { Router } from "express";
 import u from "@/utils";
-import { sendFile } from "@/utils/fileHttp";
+import { sendFile } from "@/modules/platformCore/fileHttp";
 import { validateFields } from "@/lib/middleware";
 import { error } from "@/lib/responseFormat";
 

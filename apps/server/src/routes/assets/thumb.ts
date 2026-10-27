@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
-import { sendFile } from "@/utils/fileHttp";
-import { assertAssetExists, ensureAssetThumbnail } from "@/utils/assets";
+import { sendFile } from "@/modules/platformCore/fileHttp";
+import { assertAssetExists, ensureAssetThumbnail } from "@/modules/assetLibrary/assets";
 import { error, success } from "@/lib/responseFormat";
-import { directoryField, libraryField, pathField, requestLibrary, validateAssetFields } from "@/utils/assets/routeSchema";
+import { directoryField, libraryField, pathField, requestLibrary, validateAssetFields } from "@/modules/assetLibrary/assets/routeSchema";
 
 const router = Router();
 

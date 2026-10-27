@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
-import { assertAssetRequest } from "@/utils/assets/guard";
-import { patchAssetMetadata } from "@/utils/assets/library";
+import { assertAssetRequest } from "@/modules/assetLibrary/assets/guard";
+import { patchAssetMetadata } from "@/modules/assetLibrary/assets/library";
 import { success } from "@/lib/responseFormat";
-import { directoryField, libraryField, operationFailure, pathField, requestLibrary } from "@/utils/assets/routeSchema";
+import { directoryField, libraryField, operationFailure, pathField, requestLibrary } from "@/modules/assetLibrary/assets/routeSchema";
 
 const router = Router();
 

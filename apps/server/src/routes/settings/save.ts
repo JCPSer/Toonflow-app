@@ -5,7 +5,7 @@ import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
 import { maxSystemPromptLength } from "@/agent/runtime/prompt";
 import { t } from "@/lib/i18n";
-import { providerSchema } from "@/utils/ai";
+import { providerSchema } from "@/modules/mediaGeneration/ai";
 
 const router = Router();
 

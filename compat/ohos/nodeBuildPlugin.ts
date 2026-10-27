@@ -1,4 +1,5 @@
 import { readFile } from "@toonflow/file";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, relative, resolve } from "node:path";
 import type { BunPlugin } from "bun";
@@ -13,19 +14,24 @@ const dependencies = new Map(["@babel/parser", "@babel/traverse", "@babel/types"
 dependencies.set("typescript", scaffoldRequire.resolve("typescript").replaceAll("\\", "/"));
 
 const memberReplacements: Record<string, Record<string, string>> = {
-  "apps/server/src/remoteConnection.ts": { "Bun.escapeHTML": "escapeHtml" },
-  "apps/server/src/utils/desktop/index.ts": { "Bun.semver.order": "semverOrder", "Bun.sleep": "sleep" },
+  "apps/server/src/modules/localRuntime/remoteConnection.ts": { "Bun.escapeHTML": "escapeHtml" },
+  "apps/server/src/modules/localRuntime/desktop/index.ts": { "Bun.semver.order": "semverOrder", "Bun.sleep": "sleep" },
   "apps/server/src/routes/desktop/clipboard/write.ts": { "Bun.Image": "runtimeImage" },
-  "apps/server/src/utils/media/provider.ts": { "new Bun.Transpiler": "createTranspiler", "Bun.Image": "runtimeImage", "Bun.hash": "hash" },
-  "apps/server/src/utils/media/priceReference.ts": { "Bun.Image": "runtimeImage", "Bun.spawn": "spawnProcess" },
-  "apps/server/src/utils/plugins/install.ts": { "new Bun.Transpiler": "createTranspiler", "Bun.semver.order": "semverOrder" },
-  "apps/server/src/utils/plugins/tools.ts": { "new Bun.Transpiler": "createTranspiler" },
-  "apps/server/src/utils/plugins/ext.ts": { "Bun.hash": "hash" },
-  "apps/server/src/utils/plugins/initializeExt.ts": { "Bun.hash": "hash" },
-  "apps/server/src/utils/teams/files.ts": { "new Bun.Transpiler": "createTranspiler" },
+  "apps/server/src/modules/mediaGeneration/media/provider.ts": { "new Bun.Transpiler": "createTranspiler", "Bun.Image": "runtimeImage", "Bun.hash": "hash" },
+  "apps/server/src/modules/mediaGeneration/media/priceReference.ts": { "Bun.Image": "runtimeImage", "Bun.spawn": "spawnProcess" },
+  "apps/server/src/modules/pluginMarket/plugins/install.ts": { "new Bun.Transpiler": "createTranspiler", "Bun.semver.order": "semverOrder" },
+  "apps/server/src/modules/pluginMarket/plugins/tools.ts": { "new Bun.Transpiler": "createTranspiler" },
+  "apps/server/src/modules/pluginMarket/plugins/ext.ts": { "Bun.hash": "hash" },
+  "apps/server/src/modules/pluginMarket/plugins/initializeExt.ts": { "Bun.hash": "hash" },
+  "apps/server/src/modules/pluginMarket/teams/files.ts": { "new Bun.Transpiler": "createTranspiler" },
   "packages/ffmpeg/src/index.ts": { "Bun.spawn": "spawnProcess", "Bun.which": "which" },
 };
-const specialFiles = new Set(["apps/mobile/src/server.ts", "apps/server/src/utils/mcp/resources.ts", "packages/file/src/index.ts"]);
+const specialFiles = new Set(["apps/mobile/src/server.ts", "apps/server/src/modules/mcpIntegration/mcp/resources.ts", "packages/file/src/index.ts"]);
+
+// ACT: 源文件一旦移动，字面路径会静默失配并丢掉 Bun→Node 转换；构建开始前先校验所有目标存在。
+for (const file of [...Object.keys(memberReplacements), ...specialFiles]) {
+  if (!existsSync(resolve(root, file))) throw new Error("OHOS 构建转换目标不存在：" + file);
+}
 
 function replaceOnce(source: string, before: string, after: string, file: string) {
   if (source.indexOf(before) < 0 || source.indexOf(before) !== source.lastIndexOf(before)) {
@@ -68,19 +74,19 @@ const nodeBuildPlugin: BunPlugin = {
       if (file === "packages/file/src/index.ts") {
         change('process.platform === "android" ||', '(process.platform as string) === "openharmony" || process.platform === "android" ||');
       }
-      if (file === "apps/server/src/utils/plugins/tools.ts") {
+      if (file === "apps/server/src/modules/pluginMarket/plugins/tools.ts") {
         change('Bun.plugin({\n  name: "toolHost",\n  setup(build) {\n    build.module("toonflow:tool-zod", () => ({ exports: zod, loader: "object" }));\n  },\n});', "registerToolZod(zod);");
         change("const { path, metadata } = await readTool(name, directory);", "const { path, metadata, revision } = await readTool(name, directory);");
         change("import(pathToFileURL(path).href)", 'import(pathToFileURL(path).href + "?revision=" + revision)');
         change("安装成功后由安装器清除模块缓存。", "Node 按源码 revision 区分模块缓存，更新后重新加载。");
         imports.add("registerToolZod");
       }
-      if (file === "apps/server/src/utils/plugins/install.ts") {
+      if (file === "apps/server/src/modules/pluginMarket/plugins/install.ts") {
         change("const entries = new Map<string, { size: number; directory: boolean }>();", "const entries = new Map<string, { size: number; directory: boolean }>();\n  const files = new Map<string, File>();");
         change("entries.set(path.toLowerCase(), { size, directory });", "entries.set(path.toLowerCase(), { size, directory });\n    if (!directory) files.set(original, new File([tar.slice(offset + 512, offset + 512 + size)], original));");
         change('  let files: Map<string, File>;\n  try { files = await new Bun.Archive(tar).files(); }\n  catch { return invalid("技能压缩包无法读取"); }\n', "");
       }
-      if (file === "apps/server/src/utils/desktop/index.ts") {
+      if (file === "apps/server/src/modules/localRuntime/desktop/index.ts") {
         change('import { file } from "@toonflow/file/bun";', 'import { stat, readFile } from "@toonflow/file";');
         change("const providerFile = file(selected.path);", 'const providerFile = await stat(selected.path).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error; });');
         change("if (!(await providerFile.exists()))", "if (!providerFile)");
@@ -90,7 +96,7 @@ const nodeBuildPlugin: BunPlugin = {
         change('import { file } from "@toonflow/file/bun";', 'import { existsSync } from "@toonflow/file";');
         change("await file(downloaded).exists()", "existsSync(downloaded)");
       }
-      if (file === "apps/server/src/utils/mcp/resources.ts") {
+      if (file === "apps/server/src/modules/mcpIntegration/mcp/resources.ts") {
         change('import { file } from "@toonflow/file/bun";', "");
         change('file(main ? skill.filePath : resolve(skill.baseDir, path)).type || "application/octet-stream"', "fileMime(main ? skill.filePath : resolve(skill.baseDir, path))");
         change('file(target).type || "application/octet-stream"', "fileMime(target)");

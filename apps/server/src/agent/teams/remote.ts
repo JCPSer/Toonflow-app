@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Usage } from "@earendil-works/pi-ai";
 import { createTeamA2aClient, SendMessageRequest, GetTaskRequest, CancelTaskRequest, TaskState, Role, type Message, type Task, type Artifact } from "@toonflow/teams-scaffold/a2a";
 import { emptyUsage, type SubAgentResult } from "@/agent/runtime/subAgent";
-import { getRemoteTeam } from "@/utils/teams";
+import { getRemoteTeam } from "@/modules/pluginMarket/teams";
 
 export async function runRemoteTeam(options: {
   name: string;

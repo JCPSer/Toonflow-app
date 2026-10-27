@@ -6,8 +6,8 @@ import type { CanvasContext } from "@toonflow/tools-scaffold/runtime";
 import { teamResourcePathSchema } from "@toonflow/teams-scaffold/runtime";
 import { createAgentToolContext } from "@/agent/tools";
 import { addUsage, emptyUsage, runSubAgent, type SubAgentModel } from "@/agent/runtime/subAgent";
-import { readTeam, saveTeamFile } from "@/utils/teams";
-import { loadTool, validateToolConfig } from "@/utils/plugins/tools";
+import { readTeam, saveTeamFile } from "@/modules/pluginMarket/teams";
+import { loadTool, validateToolConfig } from "@/modules/pluginMarket/plugins/tools";
 
 const resourceSchema = z.strictObject({
   action: z.enum(["list", "read", "write"]),
