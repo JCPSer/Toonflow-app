@@ -31,23 +31,39 @@ export function getMcpSettings() {
   };
 }
 
-function allowedHost(req: Request) {
-  return isMobileLinkRequest(req) || !getRuntimePlatform().requiresLocalHost || ["localhost", "127.0.0.1", "[::1]"].includes(req.hostname);
+// ACT: 页面来源判定是路由与 agent 共用的唯一实现；入参是普通对象，agent 因此不需要 express Request。
+export type AppOriginRequest = { origin?: string | null; referer?: string | null; host?: string | null; hostname?: string; mobileLink?: boolean };
+
+function allowedHost(request: AppOriginRequest) {
+  return request.mobileLink === true || !getRuntimePlatform().requiresLocalHost || ["localhost", "127.0.0.1", "[::1]"].includes(request.hostname ?? "");
 }
 
-export function getAppOrigin(req: Request) {
-  const source = req.get("origin") ?? req.get("referer");
-  if (!source || !allowedHost(req)) throw Object.assign(new Error("只允许 Toonflow 页面访问控制连接"), { status: 403 });
+export function resolveAppOrigin(request: AppOriginRequest) {
+  const source = request.origin ?? request.referer;
+  if (!source || !allowedHost(request)) throw Object.assign(new Error("只允许 Toonflow 页面访问控制连接"), { status: 403 });
   let url: URL;
   try { url = new URL(source); }
   catch { throw Object.assign(new Error("页面来源无效"), { status: 403 }); }
-  if (!["http:", "https:"].includes(url.protocol) || url.host !== req.get("host")) throw Object.assign(new Error("页面来源与服务地址不一致"), { status: 403 });
+  if (!["http:", "https:"].includes(url.protocol) || url.host !== request.host) throw Object.assign(new Error("页面来源与服务地址不一致"), { status: 403 });
   return url.origin;
+}
+
+// ACT: Express Request → 判定入参的唯一转换点。入参是普通对象后，任何调用方漏掉 mobileLink
+// 都会让设备互联的 Host 豁免静默失效，因此所有判定都走这里，不再各自拼装。
+function appOriginRequest(req: Request): AppOriginRequest {
+  return {
+    origin: req.get("origin"), referer: req.get("referer"), host: req.get("host"), hostname: req.hostname,
+    mobileLink: isMobileLinkRequest(req),
+  };
+}
+
+export function getAppOrigin(req: Request) {
+  return resolveAppOrigin(appOriginRequest(req));
 }
 
 export function authorizeMcp(req: Request) {
   const { enabled, token } = getMcpSettings();
-  if (!enabled || token.length < 32 || !allowedHost(req)) return false;
+  if (!enabled || token.length < 32 || !allowedHost(appOriginRequest(req))) return false;
   const actual = Buffer.from(req.get("authorization") ?? "");
   const expected = Buffer.from(`Bearer ${token}`);
   if (req.get("origin")) {

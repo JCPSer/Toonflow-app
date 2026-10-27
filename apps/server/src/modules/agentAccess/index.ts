@@ -2,8 +2,9 @@ import type { Application } from "express";
 import type { ModuleContext, ServerModule } from "@/types/module";
 
 // ACT: 步骤 12：A2A 路由必须保持动态 import（静态化会让 agentAccess→agent 的边增加并提前求值）。
+// 取用经 agentRuntime 门面，模块入口不再直接指向 agent 内部路径。
 export async function mount(app: Application, _context: ModuleContext) {
-  const { createA2aRouter } = await import("@/agent/a2a");
+  const { createA2aRouter } = await import("@/agentRuntime");
   app.use("/a2a", createA2aRouter());
 }
 
