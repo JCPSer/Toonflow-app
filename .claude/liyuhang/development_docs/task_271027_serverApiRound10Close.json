@@ -1,0 +1,16 @@
+{
+  "task": "server-api 子模块拆分 · 第 10 轮审查闭环（B-2/B-3）",
+  "created_at": "2026-10-27T06:10:00+08:00",
+  "source": "EASYVIBE-REVIEW round-3 verdict=fail（review-task-1793021002827）",
+  "constraint": "只修审查意见内条目，不碰无关文件；代码侧零业务行为变更",
+  "tasks": [
+    {"id": "t1", "title": "B-2 事实1：修正 localRuntime / platformCore 的 dependencies 与实测出边一致", "owner": "main", "files": ["apps/server/src/modules/localRuntime/index.ts", "apps/server/src/modules/platformCore/index.ts"], "acceptance": "V9 复算 7/7 入口声明=实测出边"},
+    {"id": "t2", "title": "B-2 事实2/3：重写 AGENTS.md 跨模块引用、入口形态、契约不变量三条规则并与代码一致", "owner": "main", "files": ["AGENTS.md"], "acceptance": "模块表 dependencies 同步；53 条深引/9 处入口动态导入/装配胶水口径与代码逐条对得上"},
+    {"id": "t3", "title": "B-3：重算主地图 server-api 归属（src/modules/** 入 glob、key_entries/health/edges 更新）", "owner": "main", "files": [".easyvibe/map/**"], "acceptance": "V12：server-api.files 不含 src/utils/** 与 remoteConnection.ts 顶层、含 src/modules/**；coverage 100%"},
+    {"id": "t4", "title": "B-3：重算子图 modules/server-api.json 为 8 子模块 / 246 文件", "owner": "main", "files": [".easyvibe/map/modules/server-api.json"], "acceptance": "sub_modules=8，files_snapshot=246，edges 有真实 import 证据"},
+    {"id": "t5", "title": "P 级建议：i18n 生成物重生成 / CONTRIBUTING 路径 / 单处相对穿透", "owner": "main", "files": ["packages/i18n/src/messageSources.json", "CONTRIBUTING.md", "apps/server/src/modules/agentAccess/singleAgent/types.ts"], "acceptance": "生成物 0 条 apps/server/src/utils/；无 `../../../` 穿透"},
+    {"id": "t6", "title": "自检与证据：typecheck×3、启动冒烟、routes 幂等、facade 37 key、V9/V12 复算", "owner": "main", "acceptance": "全部命令与输出写入 3_test_results 新文档"},
+    {"id": "t7", "title": "过程文档归档：测试报告 / 记忆 / 操作台账 / 索引状态同步", "owner": "main", "acceptance": "规则 2.3.1/2.4/2.5 齐备，矩阵 INDEX 不再标“待评审未实施”"}
+  ],
+  "notes": "并行评估：t3/t4 依赖 t1/t2 完成后的最终代码状态，故串行执行；t5 与 t1/t2 文件集不相交，可与文档撰写并行。"
+}

@@ -1,0 +1,71 @@
+{
+  "task": "server-api 应用子模块拆分（REQ-2026-10-26-06 / SOL-2026-10-27-04）",
+  "createdAt": "2026-10-27",
+  "mode": "single-tree coupled refactor (sequential, no subagent parallel edits on same tree)",
+  "milestones": [
+    {
+      "id": "M0",
+      "name": "基线冻结",
+      "status": "done",
+      "outputs": "/tmp/m0/{head,status,size,endpoints,router}.txt"
+    },
+    {
+      "id": "M1",
+      "name": "B0 语义探针（f*/g*/n*/k*/d4v）",
+      "status": "done"
+    },
+    {
+      "id": "M2",
+      "name": "骨架落地（7 入口 + types/module.ts + lib/mentionSources.ts）",
+      "status": "done"
+    },
+    {
+      "id": "M3",
+      "name": "59 文件迁移 + 246 说明符改写 + R-07 A-D",
+      "status": "done"
+    },
+    {
+      "id": "M4",
+      "name": "app.ts 组合根瘦身（≤80 行）+ conf 锚点深度补偿",
+      "status": "done"
+    },
+    {
+      "id": "M5",
+      "name": "AGENTS.md / package.json exports / core.ts 分组注释",
+      "status": "done"
+    },
+    {
+      "id": "M6",
+      "name": "台账与判据自审（n1/n2/k1-k5/A-29）",
+      "status": "done"
+    },
+    {
+      "id": "M7",
+      "name": "F 相探针 + 接口测试 + 测试报告",
+      "status": "done"
+    }
+  ],
+  "result": {
+    "verdict": "done",
+    "tests": "TEST-2026-10-27-01",
+    "memory": "MEM-2026-10-27-01",
+    "metrics": {
+      "files": 246,
+      "lines": 14584,
+      "app_lines": 78,
+      "entries": 7,
+      "endpoints": 162,
+      "prefixes": 21,
+      "k1_static": 245,
+      "k2_dynamic": 7,
+      "k4_normalized": 252,
+      "scc": {
+        "count": 1,
+        "size": 2
+      },
+      "domain_pairs": 19,
+      "new_source_target_pairs": 0,
+      "exemptions": "E1–E15"
+    }
+  }
+}
