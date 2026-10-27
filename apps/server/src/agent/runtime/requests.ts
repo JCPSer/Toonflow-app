@@ -9,6 +9,7 @@ import type { AgentImageReference } from "@/agent/runtime/imageAttachments";
 import { getRequestFiles, type RequestFile } from "@/modules/mediaGeneration/ai/requestFiles";
 import { createFileTransport, FileRequestLimitError } from "@/modules/mediaGeneration/ai/files";
 import conf from "@/modules/platformCore/conf";
+import { agentLog } from "@/lib/agentLog";
 
 function contentHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -113,6 +114,7 @@ function createRequestGuard(limits: AgentRequestLimits) {
     state.phase = phase;
     const seconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
     failure = new Error(timeoutMessage(phase, seconds, state.visible));
+    agentLog("model.request.timeout", { phase, seconds, visible: state.visible });
     rejectExpired?.(failure);
     controller.abort(failure);
   };

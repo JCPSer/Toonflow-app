@@ -17,10 +17,14 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
   const input = inputSchema.parse(req.body);
   getAgentModelConfiguration(input.providerId, input.modelId, input.thinkingLevel);
   const controller = new AbortController();
-  const abort = () => controller.abort();
-  res.once("close", abort);
-  req.once("aborted", abort);
-  req.socket.once("close", abort);
+  // ACT: 中止必须带具体原因，否则客户端工具只能看到「工具调用已取消」，无法判断是页面断开还是网络中断。
+  const abortWith = (reason: string) => () => { if (!controller.signal.aborted) controller.abort(new Error(reason)); };
+  const onResponseClose = abortWith("对话连接已关闭");
+  const onRequestAborted = abortWith("请求已中断");
+  const onSocketClose = abortWith("网络连接已断开");
+  res.once("close", onResponseClose);
+  req.once("aborted", onRequestAborted);
+  req.socket.once("close", onSocketClose);
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   try {
     await u.singleAgent.run(input, event => {
@@ -33,8 +37,8 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
     if (!res.destroyed) res.end();
   } finally {
     clearInterval(heartbeat);
-    res.off("close", abort);
-    req.off("aborted", abort);
-    req.socket.off("close", abort);
+    res.off("close", onResponseClose);
+    req.off("aborted", onRequestAborted);
+    req.socket.off("close", onSocketClose);
   }
 });

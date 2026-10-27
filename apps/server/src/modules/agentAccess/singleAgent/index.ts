@@ -12,6 +12,7 @@ import { createQuestionContext, answerQuestion } from "@/agent/bridge/question";
 import { listTools, loadTool, validateToolConfig } from "@/modules/pluginMarket/plugins/tools";
 import { browserRuntime } from "@/modules/agentAccess/browser";
 import conf from "@/modules/platformCore/conf";
+import { agentLog } from "@/lib/agentLog";
 import type { ThinkingLevel } from "@/lib/modelReasoning";
 import type { SingleAgentEvent, SingleAgentResult, SingleAgentStatus, SingleAgentToolDescriptor, SingleAgentToolReference, SingleAgentToolResult } from "./types";
 
@@ -47,6 +48,21 @@ type SingleSession = {
 
 // ACT: 临时对话只保存在当前进程内，关闭后销毁；多进程部署需共享会话及回调通道。
 const sessions = new Map<string, SingleSession>();
+
+// 客户端工具回传丢失时会一直挂到整轮被中止；硬超时只兜这种异常，静态检查实际只需毫秒级。
+const CLIENT_TOOL_TIMEOUT_MS = 600_000;
+
+// ACT: 中止原因必须原样透传，否则工具结果只有「已取消」，用户与模型都无法判断是关闭对话、停止回复还是断网。
+function abortDetail(signal?: AbortSignal) {
+  const reason: unknown = signal?.reason;
+  const detail = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
+  return detail.replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
+function clientToolAbortError(signal?: AbortSignal) {
+  const detail = abortDetail(signal);
+  return Object.assign(new Error(detail ? `工具调用被中止：${detail}` : "工具调用被中止：对话已关闭或已停止"), { code: "TOOL_ABORTED" });
+}
 
 function getSession(sessionId: string) {
   const session = sessions.get(sessionId);
@@ -88,16 +104,24 @@ function createClientTool(session: SingleSession, descriptor: SingleAgentToolDes
       if (!active || session.closed) throw new Error("临时对话已结束");
       signal?.throwIfAborted();
       const callId = crypto.randomUUID();
+      const startedAt = Date.now();
+      agentLog("clientTool.dispatch", { session: session.id, run: active.id, callId, tool: descriptor.name,
+        bytes: JSON.stringify(args ?? {}).length });
       return new Promise<SingleAgentToolResult>((resolve, reject) => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
         const finish = (result: SingleAgentToolResult | Error) => {
           if (!active.clientCalls.delete(callId)) return;
+          if (timer) clearTimeout(timer);
           signal?.removeEventListener("abort", abort);
+          agentLog("clientTool.result", { session: session.id, run: active.id, callId, tool: descriptor.name,
+            ms: Date.now() - startedAt, outcome: result instanceof Error ? result : "ok", controllerAborted: active.controller.signal.aborted });
           if (result instanceof Error) reject(result);
           else resolve(result);
         };
-        const abort = () => finish(new Error("工具调用已取消"));
+        const abort = () => finish(clientToolAbortError(signal));
         active.clientCalls.set(callId, { finish, onUpdate });
         signal?.addEventListener("abort", abort, { once: true });
+        timer = setTimeout(() => finish(new Error(`客户端工具在 ${CLIENT_TOOL_TIMEOUT_MS / 1000} 秒内没有返回结果，已中止本次调用`)), CLIENT_TOOL_TIMEOUT_MS);
         active.send({ type: "clientTool", callId, toolCallId, name: descriptor.name, args: args as Record<string, unknown> });
       });
     },
@@ -174,11 +198,19 @@ export async function run(options: {
     finished: Promise.withResolvers<void>(), send, questionIds: new Set(), clientCalls: new Map(),
   };
   state.active = active;
-  const abort = () => { active.controller.abort(signal?.reason); };
+  const startedAt = Date.now();
+  agentLog("run.start", { session: state.id, run: active.id, provider: options.providerId, model: options.modelId,
+    tools: state.tools.map(tool => tool.name) });
+  // ACT: 外部信号必须带上原始原因，否则客户端工具只能看到「已取消」，无法区分关闭对话、停止回复和断网。
+  const abort = () => { active.controller.abort(signal?.reason ?? new Error("对话连接已关闭")); };
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted) abort();
   const stopSdk = () => { void active.session?.abort(); };
   active.controller.signal.addEventListener("abort", stopSdk, { once: true });
+  active.controller.signal.addEventListener("abort", () => {
+    agentLog("run.abort", { session: state.id, run: active.id, ms: Date.now() - startedAt,
+      reason: active.controller.signal.reason, status: active.status });
+  }, { once: true });
   const toolResults: SingleAgentResult["toolResults"] = [];
   const imageToolResults = new Map<string, SingleAgentToolResult>();
   try {
@@ -195,6 +227,11 @@ export async function run(options: {
         await waitForResume(active);
         active.activeActions++;
         const signal = args[2] ? AbortSignal.any([args[2], active.controller.signal]) : active.controller.signal;
+        // ACT: 运行信号（SDK）与整轮控制器是两条独立信号，只有分别记录才能判断中止到底来自哪里。
+        args[2]?.addEventListener("abort", () => {
+          if (active.controller.signal.aborted) return;
+          agentLog("run.signal.abort", { session: state.id, run: active.id, tool: tool.name, reason: args[2]?.reason });
+        }, { once: true });
         try {
           const result = await tool.execute(args[0], args[1], signal, args[3], args[4]);
           // 对外工具结果保留图片；会话内部由共享图片入口保存附件引用。
@@ -284,8 +321,11 @@ export async function run(options: {
     if (reply.stopReason === "length") throw new Error("模型回复因长度限制被截断，未能完整生成回答。");
     send({ type: "complete", text: reply.content.filter(part => part.type === "text").map(part => part.text).join("\n"), toolResults });
   } catch (error) {
+    agentLog("run.failed", { session: state.id, run: active.id, ms: Date.now() - startedAt, aborted: active.controller.signal.aborted,
+      reason: active.controller.signal.reason, error: error instanceof Error ? error : "临时对话执行失败" });
     send({ type: "error", message: active.controller.signal.aborted ? "本次回复已停止" : error instanceof Error ? error.message : "临时对话执行失败" });
   } finally {
+    agentLog("run.end", { session: state.id, run: active.id, ms: Date.now() - startedAt });
     active.controller.signal.removeEventListener("abort", stopSdk);
     signal?.removeEventListener("abort", abort);
     active.questions?.dispose();
@@ -304,6 +344,8 @@ export async function run(options: {
 }
 
 export async function control(sessionId: string, action: "pause" | "resume" | "stop" | "close", runId?: string) {
+  // ACT: 前端只有这里能主动中止整轮，落日志才能区分「用户点了停止/关了对话框」与「服务端自己断的」。
+  agentLog("control", { session: sessionId, action, runId });
   if (action === "close") { await close(sessionId); return { status: "idle" as const }; }
   const active = getSession(sessionId).active;
   if (!active) return { status: "idle" as const };
@@ -358,9 +400,11 @@ export async function close(sessionId: string) {
   if (session.closing) return session.closing;
   session.closed = true;
   const active = session.active;
-  active?.controller.abort(new Error("临时对话已关闭"));
+  agentLog("session.close", { session: sessionId, active: !!active });
+  // ACT: 先给挂起的客户端工具最具体的原因，再中止整轮；否则 abort 监听器会抢先把它改写成通用中止原因。
   active?.questions?.dispose();
   if (active) for (const call of active.clientCalls.values()) call.finish(new Error("临时对话已关闭"));
+  active?.controller.abort(new Error("临时对话已关闭"));
   session.closing = (async () => {
     try {
       try { await browserRuntime.closeOwner(session.cwd, session.history.getSessionId()); }
