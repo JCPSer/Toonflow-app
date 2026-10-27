@@ -109,7 +109,7 @@ apps/server/
   tsconfig.json
   src/
     index.ts                 # 独立服务启动
-    app.ts                   # 组合根：参数归一 → 动态装配 7 个模块入口 → 15 步装配
+    app.ts                   # 组合根：参数归一 → 动态装配 7 个模块入口 → 步骤 0–15（含 9.5 注入 AgentHost）
     core.ts                  # 根据文件目录生成路由（含模块分组注释）
     router.ts                # 自动生成的路由注册文件
     utils.ts                 # 通用工具统一出口，默认导出对象
@@ -142,8 +142,8 @@ apps/server/
 
 ### 模块入口与契约
 
-- 每个子模块有唯一入口 `src/modules/<模块>/index.ts`（≤60 行），`export default` 一个 `ServerModule`：`id`、`routePrefixes`、`gateways?`、`dependencies`、`exports` 与初始化钩子。`app.ts` 只做组合根：归一参数 → 动态 `import()` 7 个入口 → 按 15 步装配，不内联任何业务实现。
-- 入口固定三段：① 静态面（`import` / `export … from "./<自家域>/…"`；允许纯 `import type`，对外面以契约对象的 `exports` 为准）；② 动态块（**9 处冻结**：`platformCore.prepare`→`./conf`、`assetLibrary.warmup`→`./assets/thumb`、`mediaGeneration.refreshModels`→`./ai/initialize`、`pluginMarket.initializeExt`→`./plugins/initializeExt`、`agentAccess.mount`→`@/agent/a2a`，以及 `mcpIntegration.mount` 的 4 条 `Promise.all` 并发加载）；③ 契约对象。入口可含 ≤35 行装配胶水（目录同步、修订哈希、CORS 判定这类跨路由复用的小函数，当前最大 33 行：`pluginMarket`），路由处理与业务流程仍留在 `modules/<模块>/<域>/` 文件内。
+- 每个子模块有唯一入口 `src/modules/<模块>/index.ts`（≤60 行），`export default` 一个 `ServerModule`：`id`、`routePrefixes`、`gateways?`、`dependencies`、`exports` 与初始化钩子。`app.ts` 只做组合根：归一参数 → 动态 `import()` 7 个入口 → 按步骤 0–15 装配（步骤 9.5 注入 AgentHost），不内联任何业务实现。
+- 入口固定三段：① 静态面（`import` / `export … from "./<自家域>/…"`；允许纯 `import type`，对外面以契约对象的 `exports` 为准）；② 动态块（**9 处冻结**：`platformCore.prepare`→`./conf`、`assetLibrary.warmup`→`./assets/thumb`、`mediaGeneration.refreshModels`→`./ai/initialize`、`pluginMarket.initializeExt`→`./plugins/initializeExt`、`agentAccess.mount`→`@/agentRuntime`（门面再导出 `@/agent/a2a`），以及 `mcpIntegration.mount` 的 4 条 `Promise.all` 并发加载）；③ 契约对象。入口可含 ≤35 行装配胶水（目录同步、修订哈希、CORS 判定这类跨路由复用的小函数，当前最大 33 行：`pluginMarket`），路由处理与业务流程仍留在 `modules/<模块>/<域>/` 文件内。
 - **`app.ts` 不静态 import 入口**：入口静态面会传递求值 `conf`，静态化会让配置早于 `TOONFLOW_DATA_DIR` 求值（三宿主显式传入的数据目录会被静默降级）。因此 A.3③ 的深路径计数为「静态 245 + `app.ts` 动态 7 = 252」。
 - 插件根目录唯一翻译点在 `app.ts`：`pluginRoots = { tool, node, ext, skill, provider, agent }`，键名即插件类型词表，扫描与安装零映射。
 
@@ -162,6 +162,7 @@ apps/server/
 - `routePrefixes` 并集 = 21 个 `/api/*` 前缀且两两无交集；`/mcp`、`/a2a` 只登记在 `gateways`（塞进 `routePrefixes` 会让并集变 23 项）。
 - 归属台账（2026-10-27 复核，地图重算口径）：`server-api` = **246 文件 / 14,584 行** = bootstrap 9（`app/index/core/router/utils` 5 + `scripts/**` 3 + `types/module.ts` 1）+ 7 个域模块 66 + `lib/**` 9 + `types/desktop.ts` 1 + `routes/**` 161；`routes/agent.ts` 按 `/api/agent` 归 `agentAccess`。`platformCore` 的 20 个存量文件 = **4 个移动**（`conf/` + `monitor/personalization/fileHttp`）+ **16 个不移动**（`lib/**` 8 + `types/desktop.ts` 1 + `routes/{settings,monitor}/**` 7）；本次新增的 `lib/mentionSources.ts` 与入口 `index.ts` 单列为新增 2 文件，计入 `platformCore` 的 L3 22。
 - 两处归属更正（不是漏算）：`documents.ts` 归 `mediaGeneration`（模型读取文档能力，无工作区语义）；`fileHttp.ts` 归 `platformCore`（被 6 个路由复用的响应横切工具）。主地图与子图已于 2026-10-27 按 `src/modules/**` 重算（`server-api` 246 文件、子图 8 子模块），新增或移动文件后按同一 glob 重算，不要保留旧路径。
+- **agent 只能经 `agent/host.ts` 契约获取应用能力**：契约（14 组、纯类型 + 注册表）由组合根在步骤 9.5 经 `src/agentHost.ts` 注入，注入点固定在 `platform.prepare` 之后、`await import("@/router")` 之前（agent 首次求值的唯一窗口）。`src/agentRuntime.ts` 是应用访问 agent 的唯一门面（`utils.ts` 保留 5 个旧键并新增 `agentRuntime` 键）；`agent/**` 内不得出现 `@/modules`、`@/lib`、`@/utils` 静态 import，新增能力要先加契约符号再在 `agentHost.ts` 装配。
 - `src/types/module.ts` 是 bootstrap 的组合契约（L2 #8），不计入域边；`src/routes/**` 不移动，URL 由文件路径生成。
 - 模块级 SCC 不承诺无环：`assetLibrary / localRuntime / mediaGeneration / platformCore / pluginMarket` 互为强连通是既有事实；约束是「不新增 source→target 对、7 条弱边不增长」。file 级仅保留 `mcpIntegration/mcp/{dxt,servers}.ts` 两文件环（互为兜底清理）。
 

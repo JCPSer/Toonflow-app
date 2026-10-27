@@ -6,9 +6,9 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import type { CanvasContext, QuestionContext } from "@toonflow/tools-scaffold/runtime";
+import { getAgentHost, type AgentHost } from "@/agent/host";
 import type { AgentEvent, AgentMention, AgentToolCall } from "@/agent/runtime/types";
 import { agentMentionsSchema, mentionPrompt, snapshotMentions, validateMentionTokens } from "@/agent/runtime/mentions";
-import { readAiReferences, referenceContent } from "@/modules/mediaGeneration/ai";
 import { createAgentTools } from "@/agent/tools";
 import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
 import { createAgentModel, getAgentModelConfiguration } from "@/agent/runtime/model";
@@ -23,11 +23,8 @@ import {
   getToolResultText, hasPendingAgentQuestion, registerAgentSession, updateSubAgent,
   type ActiveAgentSession,
 } from "@/agent/runtime/sessions";
-import { isMemoryEnabled } from "@/modules/platformCore/personalization";
-import { lockWorkspaceFiles, resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
-import { t } from "@/lib/i18n";
-import { decodeTextFile } from "@/lib/documentFormats";
-import type { ThinkingLevel } from "@/lib/modelReasoning";
+import { decodeTextFile } from "@toonflow/formats/documentFormats";
+import type { ThinkingLevel } from "@toonflow/formats/modelReasoning";
 
 type AgentOptions = {
   prompt: string;
@@ -63,6 +60,7 @@ export async function run(
   }: AgentOptions,
   send: (event: AgentEvent) => void
 ) {
+  const host = getAgentHost();
   attachments = agentAttachmentsSchema.parse(attachments);
   mentions = agentMentionsSchema.parse(mentions);
   validateMentionTokens(prompt, mentions);
@@ -70,7 +68,7 @@ export async function run(
   getAgentModelConfiguration(providerId, modelId, thinkingLevel);
   const attachmentContents: (z.infer<typeof agentAttachmentsSchema>[number] & { content?: string })[] = [];
   for (const attachment of attachments) {
-    const { path } = await resolveWorkspacePath(cwd, attachment.path);
+    const { path } = await host.workspace.resolveWorkspacePath(cwd, attachment.path);
     const info = await stat(path);
     if (!info.isFile() || !info.size || info.size > 100 * 1024 * 1024) {
       throw Object.assign(new Error("附件必须是工作区内非空且不超过 100 MB 的文件"), { status: 400 });
@@ -85,8 +83,8 @@ export async function run(
   }
   if (resendFrom && !sessionFile) throw Object.assign(new Error("重发需要指定原对话"), { status: 400 });
   signal?.throwIfAborted();
-  const { path: sessionsDir } = await resolveWorkspacePath(cwd, ".agent/sessions", true);
-  const sessionPath = sessionFile ? (await resolveWorkspacePath(sessionsDir, sessionFile)).path : undefined;
+  const { path: sessionsDir } = await host.workspace.resolveWorkspacePath(cwd, ".agent/sessions", true);
+  const sessionPath = sessionFile ? (await host.workspace.resolveWorkspacePath(sessionsDir, sessionFile)).path : undefined;
   const active = sessionPath ? getActiveAgentSession(sessionPath) : undefined;
   if (active && hasPendingAgentQuestion(active)) {
     // ACT: 新消息结束旧提问，必须等旧执行释放文件锁后再继续，避免并发写入同一会话。
@@ -111,7 +109,7 @@ export async function run(
   }
   // ACT: SDK 新会话先分配文件名、首条回复才落盘；只锁所属文件，允许不同对话同时运行。
   const newHistory = sessionPath ? undefined : SessionManager.create(cwd, sessionsDir);
-  const release = lockWorkspaceFiles([sessionPath ?? newHistory!.getSessionFile()!]);
+  const release = host.workspace.lockWorkspaceFiles([sessionPath ?? newHistory!.getSessionFile()!]);
   const controller = new AbortController();
   signal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
   const finished = Promise.withResolvers<void>();
@@ -140,7 +138,7 @@ export async function run(
     };
     unregister = registerAgentSession(history.getSessionFile()!, active);
     const tools = await createAgentTools(cwd, canvas, question);
-    if (isMemoryEnabled()) {
+    if (host.personalization.isMemoryEnabled()) {
       const memoryTool = createMemoryTool();
       if (tools.some(tool => tool.name === memoryTool.name)) throw new Error("工具名称 memory 已被内置全局记忆工具占用");
       tools.push(memoryTool);
@@ -152,7 +150,7 @@ export async function run(
     tools.push(await createSubAgentTool({
       cwd, tools, canvas, modelRuntime: runtime, model: runtime.getModel(providerId, modelId), thinkingLevel: effectiveThinkingLevel,
       runTask: (name, task, taskSignal, onProgress) => runDelegatedAgent({
-        cwd, parentFile: file, name, task, providerId, modelId, thinkingLevel, canvas, signal: taskSignal, send, onProgress,
+        cwd, parentFile: file, name, task, providerId, modelId, thinkingLevel, canvas, signal: taskSignal, send, onProgress, run,
       }),
     }));
     // ACT: 压缩阈值依赖模型窗口，必须先把模型配置带到设置里。
@@ -201,7 +199,7 @@ export async function run(
     };
 
     // ACT: 历史和本轮引用共用文件能力判断与协议转换，会话只保存工作区快照路径。
-    const mediaContents = new Map<string, ReturnType<typeof readAiReferences>>();
+    const mediaContents = new Map<string, ReturnType<AgentHost["models"]["readAiReferences"]>>();
     const onPayload = session.agent.onPayload;
     session.agent.onPayload = async (payload, requestModel) => {
       const body = (await onPayload?.(payload, requestModel) ?? payload) as Record<string, unknown>;
@@ -215,12 +213,12 @@ export async function run(
         const images = entry.type === "custom" && entry.customType === "toonflowImageOffload" ? (entry.data as { images?: unknown })?.images : undefined;
         return Array.isArray(images) ? images.filter((id): id is string => typeof id === "string") : [];
       }));
-      const mediaMessages = new Map<string, { id: string; references: Parameters<typeof readAiReferences>[1] }>();
+      const mediaMessages = new Map<string, { id: string; references: Parameters<AgentHost["models"]["readAiReferences"]>[1] }>();
       for (const entry of history.getBranch()) {
         if (entry.type !== "custom" || !["toonflowAttachments", "toonflowUserMessage"].includes(entry.customType)) continue;
         const parsed = z.object({ messageId: z.string(), attachments: agentAttachmentsSchema, mentions: agentMentionsSchema.optional() }).safeParse(entry.data);
         if (!parsed.success) continue;
-        const references: Parameters<typeof readAiReferences>[1] = [
+        const references: Parameters<AgentHost["models"]["readAiReferences"]>[1] = [
           ...parsed.data.attachments.filter(item => item.mimeType.startsWith("video/")).map(item => ({ dataType: "VIDEO" as const, value: { url: item.path, mimeType: item.mimeType } })),
           ...(parsed.data.mentions ?? []).filter(item => ["IMAGE", "MASK", "VIDEO"].includes(item.dataType)).map(item => ({
             dataType: item.dataType === "VIDEO" ? "VIDEO" as const : "IMAGE" as const, value: item.value as { url: string; mimeType: string },
@@ -244,7 +242,7 @@ export async function run(
         const content = await Promise.all(parts.map(async (part, partIndex) => {
           const source = part.type === textType && part.text ? mediaMessages.get(part.text) : undefined;
           if (!source) return [part];
-          const content = referenceContent(provider.protocol, part.text!, []);
+          const content = host.models.referenceContent(provider.protocol, part.text!, []);
           for (const [index, media] of source.references.entries()) {
             const id = `user:${source.id}:${partIndex}:${index}`;
             const saved = imageReferences.get(id);
@@ -256,8 +254,8 @@ export async function run(
             const key = saved ? saved.path : `${source.id}:${index}`;
             if (!mediaContents.has(key)) mediaContents.set(key, saved
               ? readAgentImage(cwd, saved, signal).then(image => [{ dataType: "IMAGE", value: `data:${image.mimeType};base64,${image.data}` }])
-              : readAiReferences(cwd, [media], signal, provider));
-            content.push(...referenceContent(provider.protocol, "", await mediaContents.get(key)!, index).slice(1).map(content =>
+              : host.models.readAiReferences(cwd, [media], signal, provider));
+            content.push(...host.models.referenceContent(provider.protocol, "", await mediaContents.get(key)!, index).slice(1).map(content =>
               ["image", "image_url", "input_image"].includes((content as { type: string }).type) ? { ...content, toonflowImageId: id } : content));
           }
           return content;
@@ -299,7 +297,7 @@ export async function run(
       if (event.type === "compaction_start" || event.type === "compaction_end") {
         send({ type: "compaction", active: event.type === "compaction_start" });
         if (event.type === "compaction_end" && event.errorMessage) {
-          compactionError = t`上下文压缩失败：${event.errorMessage}`;
+          compactionError = host.i18n.t`上下文压缩失败：${event.errorMessage}`;
         }
       }
       // ACT: 自动重试期间前端原本完全静默，透出后可以显示「正在重试（n/m）」。

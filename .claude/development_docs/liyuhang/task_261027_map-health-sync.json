@@ -1,0 +1,27 @@
+{
+  "task": "第 6 轮整改（审查 B-1）：架构地图 health 与生成源同步",
+  "created_at": "2026-10-27T22:20:00+08:00",
+  "inputs": {
+    "review": ".easyvibe/development_docs/liyuhang/3_test_results/review-task-1793073878481.md",
+    "requirements": ".easyvibe/development_docs/liyuhang/1_requirements_matrix/2026-10-27-13-57-agentHostPortCycleBreak-v5.md",
+    "solution": ".easyvibe/development_docs/liyuhang/2_requirements_solutions/2026-10-27-14-45-agentHostPortCycleBreak.md",
+    "previous_test": ".easyvibe/development_docs/liyuhang/3_test_results/2026-10-27-21-25-agentHostPortCycleBreak-impl.md"
+  },
+  "parallelism": "环境未提供子 agent 工具（仅 Bash/Edit/Read）；且 T1→T2→T3→T4→T5 是强依赖链（parts 内容 → 重算 → 校验 → 文档），并行只会互相覆盖，故全部串行。",
+  "tasks": [
+    {"id": "T0", "name": "复核审查报告与地图现状（map.json/parts/modules/growth.log/两份脚本）", "deps": [], "status": "done"},
+    {"id": "T1", "name": "刷新 parts：agent-runtime/server-api/shared-foundation health + files，_arch_health", "deps": ["T0"], "status": "done"},
+    {"id": "T2", "name": "子图 modules/server-api.json bootstrap 补 2 文件并去环断言", "deps": ["T1"], "status": "done"},
+    {"id": "T3", "name": "官方链路重算 map.json（init→emit→edges→append-log→finalize）", "deps": ["T1", "T2"], "status": "done"},
+    {"id": "T4", "name": "生成源同步：build_parts.py（health/ARCH_HEALTH/EDGES）+ build_modules.py（条目/edges）+ modules_built.json 重跑", "deps": ["T1"], "status": "done"},
+    {"id": "T5", "name": "新增 check_health_consistency.py 守卫并跑通（ok:true）", "deps": ["T3", "T4"], "status": "done"},
+    {"id": "T6", "name": "清尾：JSON 末尾换行（N-1）、删除 scan2/3.out（N-5）、状态回填（N-7）、口径说明（N-6）", "deps": ["T5"], "status": "done"},
+    {"id": "T7", "name": "回归复算：A2P/SCC/typecheck/无代码改动 + 文档（TEST/MEMORY/operation）", "deps": ["T6"], "status": "done"}
+  ],
+  "deferred": {
+    "N-2": "Host 契约 any → 结构类型（需改 14 组契约与 20 条装配，重跑全量探针，另行立项）",
+    "N-3": "mobileLink 双事实源收敛（需改运行期判定路径）",
+    "N-4": "getAgentHost() 调用风格统一（纯可读性）",
+    "N-8": "createAgentHost(_context) 形参（保持代码零 diff）"
+  }
+}

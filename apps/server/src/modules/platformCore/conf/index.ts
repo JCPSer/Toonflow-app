@@ -2,7 +2,7 @@ import conf from "conf";
 import { mkdirSync, readdirSync, realpathSync } from "@toonflow/file";
 import { resolve } from "node:path";
 import tfRouter from "@toonflow/providers/language/tfRouter";
-import type { A2aSettings } from "@/agent/a2a/settings";
+import type { A2aSettings } from "@toonflow/formats/a2a";
 import type { desktopUpdateAttempt } from "@/types/desktop";
 import { normalizeNodeMenu, serializeNodeMenu } from "@/lib/nodeMenu";
 import type { SavedMcpServer } from "@toonflow/mcp/client";

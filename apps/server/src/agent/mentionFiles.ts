@@ -1,18 +1,20 @@
 import { open, opendir, readFile, stat } from "@toonflow/file";
 import { basename } from "node:path";
-import u from "@/utils";
+import { getAgentHost } from "@/agent/host";
 import { createCanvasMention, createNodeMention, mentionAssetType, mentionNodeOutputs, mentionRecord, queryMentionNodes,
   type MentionCanvasNode, type MentionQuery } from "./mentionSources";
 import type { AgentMention } from "./runtime/types";
-import { decodeTextFile } from "@/lib/documentFormats";
-import { assertAssetRelativePath, openAssetLibrary } from "@/modules/assetLibrary/assets/roots";
-export { queryAssets as queryMentionAssets } from "@/modules/assetLibrary/assets";
+import { decodeTextFile } from "@toonflow/formats/documentFormats";
+
+export function queryMentionAssets(options: Record<string, unknown>) {
+  return getAgentHost().assets.queryAssets(options);
+}
 
 type StoredCanvas = { revision: string; nodes: MentionCanvasNode[]; byId: Map<string, MentionCanvasNode> };
 const canvasCache = new Map<string, { revision: string; bytes: number; value: Promise<StoredCanvas> }>();
 
 async function readMentionText(directory: string, relativePath: string) {
-  const { path } = await u.workspaceFile.resolveWorkspacePath(directory, relativePath);
+  const { path } = await getAgentHost().workspace.resolveWorkspacePath(directory, relativePath);
   const info = await stat(path);
   if (!info.isFile() || info.size > 400000) throw Object.assign(new Error("文本引用最多支持 100000 个字符，请缩小内容后重试"), { status: 400 });
   const bytes = await readFile(path);
@@ -23,7 +25,7 @@ async function readMentionText(directory: string, relativePath: string) {
 }
 
 async function readCanvas(directory: string, canvasId: string) {
-  const { path } = await u.workspaceFile.resolveWorkspacePath(directory, canvasId);
+  const { path } = await getAgentHost().workspace.resolveWorkspacePath(directory, canvasId);
   const info = await stat(path);
   if (!info.isFile() || info.size > 256 * 1024 * 1024) throw Object.assign(new Error("画布文件无效或超过 256 MB 的读取上限"), { status: 400 });
   const revision = `${info.mtimeMs}:${info.size}`;
@@ -56,7 +58,7 @@ export async function listMentionCanvases(directory: string, signal: AbortSignal
   const folders = [""];
   for (const folder of folders) {
     signal.throwIfAborted();
-    const resolved = await u.workspaceFile.resolveWorkspacePath(directory, folder);
+    const resolved = await getAgentHost().workspace.resolveWorkspacePath(directory, folder);
     const entries = await opendir(resolved.path);
     for await (const entry of entries) {
       signal.throwIfAborted();
@@ -68,7 +70,7 @@ export async function listMentionCanvases(directory: string, signal: AbortSignal
         continue;
       }
       if (!entry.isFile() || !/\.json$/i.test(entry.name)) continue;
-      const { path } = await u.workspaceFile.resolveWorkspacePath(directory, relativePath);
+      const { path } = await getAgentHost().workspace.resolveWorkspacePath(directory, relativePath);
       const file = await open(path, "r");
       try {
         const header = Buffer.alloc(4096);
@@ -107,10 +109,10 @@ export async function selectMentionAsset(relativePath: string, options: { librar
   const library = options.library ?? "global";
   if (library === "project" && !options.directory) throw Object.assign(new Error("项目素材库必须提供工作区目录"), { status: 400 });
   const root = library === "project"
-    ? (await openAssetLibrary({ library: "project", directory: options.directory })).root
-    : await u.assets.getAssetsDirectory();
-  assertAssetRelativePath(relativePath);
-  const { path } = await u.workspaceFile.resolveWorkspacePath(root, relativePath);
+    ? (await getAgentHost().assets.openAssetLibrary({ library: "project", directory: options.directory })).root
+    : await getAgentHost().assets.getAssetsDirectory();
+  getAgentHost().assets.assertAssetRelativePath(relativePath);
+  const { path } = await getAgentHost().workspace.resolveWorkspacePath(root, relativePath);
   const info = await stat(path);
   const type = mentionAssetType(relativePath);
   if (!info.isFile() || !info.size || info.size > 100 * 1024 * 1024) throw Object.assign(new Error("请选择非空且不超过 100 MB 的素材文件"), { status: 400 });

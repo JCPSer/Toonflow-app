@@ -59,6 +59,8 @@ export async function createApp({
   app.use("/api/desktop", desktopRequest);
 
   await media.refreshModels();
+  // 步骤 9.5：数据目录与 conf 已就绪、agent 尚未求值，是注入 AgentHost 的唯一窗口。
+  (await import("./agentHost")).initializeAgentHost(context);
   const router = await import("@/router");
   router.default(app);
   await mcp.mount(app, context);

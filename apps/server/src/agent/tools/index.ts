@@ -1,8 +1,4 @@
-import { t } from "@/lib/i18n";
-import { listMediaModels, generateMedia } from "@/modules/mediaGeneration/media/generation";
-import { createWorkspaceFfmpeg } from "@/modules/mediaGeneration/ffmpeg";
-import { createBrowserContext } from "@/modules/agentAccess/browser";
-import { importImage } from "@/modules/localRuntime/workspace/chatImages";
+import { getAgentHost } from "@/agent/host";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { access, constants, copyFile, lstat, mkdir, readFile, readdir, rm, rmdir, stat, withFileAccess } from "@toonflow/file";
 import {
@@ -11,13 +7,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { CanvasContext, QuestionContext, ToolContext, ToolFiles } from "@toonflow/tools-scaffold/runtime";
 import { asrRequestSchema } from "@toonflow/tools-scaffold/runtime";
-import conf from "@/modules/platformCore/conf";
-import { isWithin, isHiddenWorkspaceEntry, resolveWorkspacePath, writeWorkspaceFile, renameWorkspaceFile, lockWorkspaceFiles, protectWorkspaceRoot, protectWorkspaceLibraryPath } from "@/modules/localRuntime/workspace/files";
-import { listTools, loadTool, validateToolConfig } from "@/modules/pluginMarket/plugins/tools";
 import { createSkillContext } from "@/agent/skills";
 import { createAssetContext } from "@/agent/assets";
-import { readDocument } from "@/modules/mediaGeneration/documents";
-import { createMcpAgentTools } from "@/modules/mcpIntegration/mcp/servers";
 import { z } from "zod";
 import { isAgentFullAccess, resolveAgentReadPath } from "@/agent/runtime/permissions";
 
@@ -167,29 +158,30 @@ function createRunCommandTool(cwd: string): ToolDefinition {
 }
 
 export function createAgentToolContext(cwd: string, config: Record<string, unknown> = {}, canvas?: CanvasContext, question?: QuestionContext, workspaceAvailable = true): ToolContext {
-  const skillsDirectory = join(dirname(conf.path), "skills");
+  const host = getAgentHost();
+  const skillsDirectory = join(dirname(host.settings.settingsPath()), "skills");
   const requireWorkspace = () => { if (!workspaceAvailable) throw new Error("此对话未提供工作目录，无法使用文件或媒体操作"); };
   const resolvePath = async (path: string, readOnly = false) => {
     requireWorkspace();
     // ACT: 全部权限只放开只读路径；写路径继续走下面的工作区限制，避免项目外写入。
     if (readOnly && isAgentFullAccess()) return resolveAgentReadPath(cwd, path);
     const absolute = resolve(cwd, path);
-    const root = readOnly && isWithin(skillsDirectory, absolute) ? skillsDirectory : cwd;
-    const target = (await resolveWorkspacePath(root, relative(root, absolute), true)).path;
+    const root = readOnly && host.workspace.isWithin(skillsDirectory, absolute) ? skillsDirectory : cwd;
+    const target = (await host.workspace.resolveWorkspacePath(root, relative(root, absolute), true)).path;
     // ACT: .toonflow 是应用内部状态目录（上次画布等），Agent 的 ls/read/write 都不能访问。
-    if (isWithin(cwd, target) && relative(cwd, target).split(/[\\/]/)[0]?.toLocaleLowerCase() === ".toonflow") {
+    if (host.workspace.isWithin(cwd, target) && relative(cwd, target).split(/[\\/]/)[0]?.toLocaleLowerCase() === ".toonflow") {
       throw Object.assign(new Error("项目配置目录不可访问"), { code: "EPROTECTED" });
     }
     return target;
   };
   const withWritePaths = async (paths: string[], operation: (targets: string[]) => Promise<void>) => {
     const targets = await Promise.all(paths.map(path => resolvePath(path)));
-    const release = lockWorkspaceFiles(targets);
+    const release = host.workspace.lockWorkspaceFiles(targets);
     try { await operation(targets); }
     finally { release(); }
   };
   const files: ToolFiles = {
-    importImage: url => { requireWorkspace(); return importImage(cwd, url); },
+    importImage: url => { requireWorkspace(); return host.workspace.importImage(cwd, url); },
     readFile: async (path, readOnly = false) => readFile(await resolvePath(path, readOnly)),
     access: async (path, readOnly = false) => access(await resolvePath(path, readOnly)),
     stat: async (path, readOnly = false) => stat(await resolvePath(path, readOnly)),
@@ -197,52 +189,52 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
       const target = await resolvePath(path, readOnly);
       const entries = await readdir(target);
       // ACT: 项目根只隐藏应用管理的黑名单条目；用户自己的 .env、.gitignore 等点开头文件照常暴露给 Agent。
-      return target === cwd ? entries.filter(name => !isHiddenWorkspaceEntry(name)) : entries;
+      return target === cwd ? entries.filter(name => !host.workspace.isHiddenWorkspaceEntry(name)) : entries;
     },
     detectImageMimeType: async (path, readOnly = false) => {
       const target = await resolvePath(path, readOnly);
       return withFileAccess([target], "read", () => detectSupportedImageMimeTypeFromFile(target));
     },
     writeFile: (path, content, exclusive = false) => withWritePaths([path], async ([target]) => {
-      protectWorkspaceLibraryPath(cwd, target);
-      await writeWorkspaceFile(target, content, exclusive);
+      host.workspace.protectWorkspaceLibraryPath(cwd, target);
+      await host.workspace.writeWorkspaceFile(target, content, exclusive);
     }),
     mkdir: async (path, recursive = false) => {
       const target = await resolvePath(path);
       // ACT: 项目 library / library-assets 归素材库管理，文件工具不能先占位再让资产库 fallback。
-      protectWorkspaceLibraryPath(cwd, target);
+      host.workspace.protectWorkspaceLibraryPath(cwd, target);
       // ACT: 递归创建已有目录无需修改，锁父目录会与 Agent 自己持有的会话文件锁冲突。
       if (recursive && (await stat(target).catch((error: NodeJS.ErrnoException) => {
         if (error.code === "ENOENT") return null;
         throw error;
       }))?.isDirectory()) return;
-      const release = lockWorkspaceFiles([target]);
+      const release = host.workspace.lockWorkspaceFiles([target]);
       try { await mkdir(target, { recursive }); }
       finally { release(); }
     },
     rename: (path, target) => withWritePaths([path, target], async ([source, destination]) => {
-      protectWorkspaceRoot(cwd, source);
-      protectWorkspaceRoot(cwd, destination);
-      protectWorkspaceLibraryPath(cwd, source);
-      protectWorkspaceLibraryPath(cwd, destination);
-      await renameWorkspaceFile(source, resolve(dirname(destination), basename(resolve(cwd, target))));
+      host.workspace.protectWorkspaceRoot(cwd, source);
+      host.workspace.protectWorkspaceRoot(cwd, destination);
+      host.workspace.protectWorkspaceLibraryPath(cwd, source);
+      host.workspace.protectWorkspaceLibraryPath(cwd, destination);
+      await host.workspace.renameWorkspaceFile(source, resolve(dirname(destination), basename(resolve(cwd, target))));
     }),
     remove: (path, recursive = false) => withWritePaths([path], async ([target]) => {
-      protectWorkspaceRoot(cwd, target);
-      protectWorkspaceLibraryPath(cwd, target);
+      host.workspace.protectWorkspaceRoot(cwd, target);
+      host.workspace.protectWorkspaceLibraryPath(cwd, target);
       if ((await lstat(target)).isDirectory() && !recursive) await rmdir(target);
       else await rm(target, { recursive });
     }),
     copyFile: (path, target, exclusive = false) => withWritePaths([path, target], async ([source, destination]) => {
-      protectWorkspaceLibraryPath(cwd, source);
-      protectWorkspaceLibraryPath(cwd, destination);
+      host.workspace.protectWorkspaceLibraryPath(cwd, source);
+      host.workspace.protectWorkspaceLibraryPath(cwd, destination);
       await copyFile(source, destination, exclusive ? constants.COPYFILE_EXCL : 0);
     }),
   };
   return {
     cwd, config, files, resolvePath, writeFile: files.writeFile, canvas, question,
     skills: workspaceAvailable ? createSkillContext(cwd) : undefined, assets: workspaceAvailable ? createAssetContext(cwd) : undefined,
-    browser: createBrowserContext(cwd),
+    browser: host.browser.createBrowserContext(cwd),
     asr: {
       async transcribe(path, options = {}) {
         requireWorkspace();
@@ -256,12 +248,12 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
         return result;
       },
     },
-    ffmpeg: signal => { requireWorkspace(); return createWorkspaceFfmpeg(cwd, signal); },
+    ffmpeg: signal => { requireWorkspace(); return host.media.createWorkspaceFfmpeg(cwd, signal); },
     media: workspaceAvailable ? {
-      listModels: listMediaModels,
-      generateImage: (request, signal) => generateMedia(cwd, "image", request, signal),
-      generateVideo: (request, signal) => generateMedia(cwd, "video", request, signal),
-      generateAudio: (request, signal) => generateMedia(cwd, "audio", request, signal),
+      listModels: host.media.listMediaModels,
+      generateImage: (request, signal) => host.media.generateMedia(cwd, "image", request, signal),
+      generateVideo: (request, signal) => host.media.generateMedia(cwd, "video", request, signal),
+      generateAudio: (request, signal) => host.media.generateMedia(cwd, "audio", request, signal),
     } : undefined,
     sdk: {
       defineTool, createWriteToolDefinition, createEditToolDefinition, createLsToolDefinition,
@@ -273,7 +265,7 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
         };
         const tool = createReadToolDefinition(directory, { ...options, operations: {
           ...operations,
-          readFile: async path => readDocument(path, await operations.readFile(path)),
+          readFile: async path => host.documents.readDocument(path, await operations.readFile(path)),
         } });
         return { ...tool, description: `${tool.description}\nHTML、Markdown、JSON、XML、配置和代码文件读取原文；Office、OpenDocument、RTF、EPUB、CSV、PDF 在本地解析为 Markdown。offset/limit 对应读取后的行。扫描 PDF 需要先做 OCR。` };
       },
@@ -284,18 +276,19 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
 
 // ACT: origin 为 mcp/a2a 时不注册命令工具，避免外部客户端借全权限开关拿到本机 shell。
 export async function createAgentTools(cwd: string, canvas?: CanvasContext, question?: QuestionContext, includeMcp = true, allowCommand = true): Promise<ToolDefinition[]> {
+  const host = getAgentHost();
   const tools: ToolDefinition[] = [];
   const names = new Set<string>();
   const context = createAgentToolContext(cwd, {}, canvas, question);
-  for (const item of await listTools()) {
+  for (const item of await host.tools.listTools()) {
     if (!item.enabled) continue;
     if (item.loadError) throw new Error(`${item.displayName}：${item.loadError}`);
-    const { plugin, metadata } = await loadTool(item.name);
-    const config = validateToolConfig(plugin, item.config);
+    const { plugin, metadata } = await host.tools.loadTool(item.name);
+    const config = host.tools.validateToolConfig(plugin, item.config);
     const definitions = await plugin.createTools({ ...context, config });
     for (const tool of definitions) {
-      if (!tool.name || typeof tool.execute !== "function") throw new Error(t`${item.displayName} 返回了无效的工具`);
-      if (names.has(tool.name)) throw new Error(t`工具名称重复：${tool.name}`);
+      if (!tool.name || typeof tool.execute !== "function") throw new Error(host.i18n.t`${item.displayName} 返回了无效的工具`);
+      if (names.has(tool.name)) throw new Error(host.i18n.t`工具名称重复：${tool.name}`);
       names.add(tool.name);
       tools.push({
         ...tool,
@@ -316,6 +309,6 @@ export async function createAgentTools(cwd: string, canvas?: CanvasContext, ques
       tools.push(runCommand);
     }
   }
-  if (includeMcp) tools.push(...await createMcpAgentTools());
+  if (includeMcp) tools.push(...await host.mcp.createMcpAgentTools() as ToolDefinition[]);
   return tools;
 }

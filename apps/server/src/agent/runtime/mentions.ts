@@ -1,13 +1,10 @@
-import { t } from "@/lib/i18n";
+import { getAgentHost } from "@/agent/host";
 import { constants, copyFile, mkdir, stat, unlink } from "@toonflow/file";
 import { extname } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import type { AgentMention } from "@/agent/runtime/types";
-import { getAssetsDirectory, openAssetLibrary } from "@/modules/assetLibrary/assets";
-import { assertAssetRelativePath } from "@/modules/assetLibrary/assets/roots";
-import { lockWorkspaceFiles, resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
-import { getReadableFileExtension } from "@/lib/documentFormats";
+import { getReadableFileExtension } from "@toonflow/formats/documentFormats";
 
 const mediaTypes = new Set(["IMAGE", "MASK", "VIDEO", "AUDIO", "FILE"]);
 const mediaValueSchema = z.strictObject({ url: z.string().min(1).max(4096), mimeType: z.string().min(1).max(128).regex(/^[\w.+-]+\/[\w.+-]+$/) });
@@ -80,6 +77,7 @@ export function mentionPrompt(prompt: string, mentions: AgentMention[]) {
 }
 
 export async function snapshotMentions(cwd: string, mentions: AgentMention[], saved: AgentMention[] = [], signal?: AbortSignal) {
+  const host = getAgentHost();
   const result: AgentMention[] = [];
   const created: string[] = [];
   try {
@@ -94,32 +92,32 @@ export async function snapshotMentions(cwd: string, mentions: AgentMention[], sa
       if (newAsset && mention.source.kind === "asset") {
         // ACT: 旧会话没有 library 字段，按全局库处理；project 库始终绑定当前工作区，避免 source 指定任意目录。
         const library = mention.source.library ?? "global";
-        root = library === "project" ? (await openAssetLibrary({ library: "project", directory: cwd })).root : await getAssetsDirectory();
-        assertAssetRelativePath(mention.source.path);
+        root = library === "project" ? (await host.assets.openAssetLibrary({ library: "project", directory: cwd })).root : await host.assets.getAssetsDirectory();
+        host.assets.assertAssetRelativePath(mention.source.path);
       }
       const relativePath = newAsset && mention.source.kind === "asset" ? mention.source.path : media!.url;
       let source: string;
       try {
-        source = (await resolveWorkspacePath(root, relativePath)).path;
+        source = (await host.workspace.resolveWorkspacePath(root, relativePath)).path;
         const info = await stat(source);
         if (!info.isFile() || !info.size || info.size > 100 * 1024 * 1024) throw new Error("须为非空且不超过 100 MB 的文件");
       } catch (error) {
-        throw Object.assign(new Error(t`引用「${mention.label}」不可用：${error instanceof Error ? error.message : "文件读取失败"}`), { status: 400 });
+        throw Object.assign(new Error(host.i18n.t`引用「${mention.label}」不可用：${error instanceof Error ? error.message : "文件读取失败"}`), { status: 400 });
       }
       if (!media || previous) { result.push(mention); continue; }
       const documentExtension = mention.dataType === "FILE" ? getReadableFileExtension(source, media.mimeType) : undefined;
       const extension = documentExtension ? `.${documentExtension}` : extname(source);
       const path = `assets/chat/${crypto.randomUUID()}${/^\.[a-zA-Z0-9]{1,16}$/.test(extension) ? extension.toLowerCase() : ""}`;
-      const folder = await resolveWorkspacePath(cwd, "assets/chat", true);
-      const target = await resolveWorkspacePath(cwd, path, true);
-      const release = lockWorkspaceFiles([source, target.path]);
+      const folder = await host.workspace.resolveWorkspacePath(cwd, "assets/chat", true);
+      const target = await host.workspace.resolveWorkspacePath(cwd, path, true);
+      const release = host.workspace.lockWorkspaceFiles([source, target.path]);
       try {
         await mkdir(folder.path, { recursive: true });
         await copyFile(source, target.path, constants.COPYFILE_EXCL);
         created.push(target.path);
         signal?.throwIfAborted();
         const info = await stat(target.path);
-        if (!info.size || info.size > 100 * 1024 * 1024) throw new Error(t`引用「${mention.label}」复制后为空或超过 100 MB`);
+        if (!info.size || info.size > 100 * 1024 * 1024) throw new Error(host.i18n.t`引用「${mention.label}」复制后为空或超过 100 MB`);
       } finally { release(); }
       result.push({ ...mention, value: { url: path, mimeType: media.mimeType } });
     }

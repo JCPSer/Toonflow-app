@@ -34,6 +34,7 @@
     "@firecrawl/anydoc-wasm": "0.2.4",
     "@toonflow/ffmpeg": "workspace:*",
     "@toonflow/file": "workspace:*",
+    "@toonflow/formats": "workspace:*",
     "@toonflow/i18n": "workspace:*",
     "@toonflow/mcp": "workspace:*",
     "@toonflow/providers": "workspace:*",

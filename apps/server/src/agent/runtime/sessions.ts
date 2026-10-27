@@ -7,11 +7,9 @@ import type { AgentEvent, AgentMention, AgentSubAgent, AgentToolCall } from "@/a
 import { agentMentionsSchema } from "@/agent/runtime/mentions";
 import { createAgentModel } from "@/agent/runtime/model";
 import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
-import conf from "@/modules/platformCore/conf";
-import { providerSchema, getModelLimits } from "@/modules/mediaGeneration/ai";
-import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/modules/localRuntime/workspace/files";
-import { getReadableFileMimeType } from "@/lib/documentFormats";
-import { thinkingLevels } from "@/lib/modelReasoning";
+import { getAgentHost } from "@/agent/host";
+import { getReadableFileMimeType } from "@toonflow/formats/documentFormats";
+import { thinkingLevels } from "@toonflow/formats/modelReasoning";
 
 export const agentAttachmentsSchema = z
   .array(
@@ -86,10 +84,10 @@ export function getParentSessionFile(history: SessionManager) {
 
 async function updateAgentSession(cwd: string, file: string, update: (history: SessionManager, active?: ActiveAgentSession) => void | Promise<void>) {
   if (!/^[\w-]+\.jsonl$/.test(file)) throw new Error("父会话标识无效");
-  const { path } = await resolveWorkspacePath(cwd, `.agent/sessions/${file}`);
+  const { path } = await getAgentHost().workspace.resolveWorkspacePath(cwd, `.agent/sessions/${file}`);
   const active = getActiveAgentSession(path);
   if (active) return update(active.history, active);
-  const release = lockWorkspaceFiles([path]);
+  const release = getAgentHost().workspace.lockWorkspaceFiles([path]);
   try {
     const pending = update(SessionManager.open(path, dirname(path), cwd));
     if (pending) await pending;
@@ -158,7 +156,7 @@ async function readSessionEntriesStrict(path: string, action: string, enforceSiz
  */
 export async function compactAgentSession(cwd: string, path: string, signal?: AbortSignal) {
   if (getActiveAgentSession(path)) throw Object.assign(new Error("对话正在运行，请先停止后再压缩"), { status: 409 });
-  const release = lockWorkspaceFiles([path]);
+  const release = getAgentHost().workspace.lockWorkspaceFiles([path]);
   try {
     // ACT: 需要压缩的恰恰是超大历史，这里不设 32 MB 上限；只拒绝损坏行与非法结构。
     const entries = await readSessionEntriesStrict(path, "压缩", false);
@@ -217,7 +215,7 @@ export async function compactAgentSession(cwd: string, path: string, signal?: Ab
     // 需要把 compaction 的父节点改挂到最后一个已存在的条目上，否则会留下悬空 parentId。
     const lastId = entries.at(-1)?.id ?? null;
     const toWrite = appended.map((entry) => (entry.parentId && known.has(entry.parentId) ? entry : { ...entry, parentId: lastId }));
-    await writeWorkspaceFile(path, [...entries, ...toWrite].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    await getAgentHost().workspace.writeWorkspaceFile(path, [...entries, ...toWrite].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
     // ACT: 压缩已经落盘；之后读取会话失败不应让接口报失败，避免前端以为没压缩而重复触发。
     return await getAgentSession(cwd, path).catch(() => ({
       file: basename(path), name: history.getSessionName() ?? "新对话", messages: [], stats: getAgentStats(history),
@@ -242,7 +240,7 @@ export async function deleteAgentMessage(cwd: string, path: string, options: { e
   if (Boolean(options.entryIds) === Boolean(options.replyTo)) {
     throw Object.assign(new Error("请选择要删除的消息"), { status: 400 });
   }
-  const release = lockWorkspaceFiles([path]);
+  const release = getAgentHost().workspace.lockWorkspaceFiles([path]);
   try {
     let entries = await readSessionEntriesStrict(path, "删除消息", false);
     // ACT: SDK 会直接把条目写进传入的数组，必须给副本，否则写回时会把新增条目再拼一次。
@@ -309,7 +307,7 @@ export async function deleteAgentMessage(cwd: string, path: string, options: { e
           : entry
       ),
     ];
-    await writeWorkspaceFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    await getAgentHost().workspace.writeWorkspaceFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
     return await getAgentSession(cwd, path);
   } finally {
     release();
@@ -372,9 +370,9 @@ function parseSessionLines(text: string) {
 
 /** 子 Agent 会话可能单独开着；操作父会话前必须确认没有子会话在跑。 */
 async function assertNoActiveSubAgents(cwd: string, entries: SessionEntry[]) {
-  const { path: directory } = await resolveWorkspacePath(cwd, ".agent/sessions", true);
+  const { path: directory } = await getAgentHost().workspace.resolveWorkspacePath(cwd, ".agent/sessions", true);
   for (const file of subAgentFilesOf(entries)) {
-    const target = await resolveWorkspacePath(directory, file, true);
+    const target = await getAgentHost().workspace.resolveWorkspacePath(directory, file, true);
     if (getActiveAgentSession(target.path)) throw Object.assign(new Error("子 Agent 正在运行，请先停止后再操作"), { status: 409 });
   }
 }
@@ -385,14 +383,14 @@ async function assertNoActiveSubAgents(cwd: string, entries: SessionEntry[]) {
  * 正在运行或已不存在的直接跳过，删除失败不阻断已提交的回退。
  */
 async function removeSessionFiles(cwd: string, parentFile: string, files: Iterable<string>) {
-  const { path: directory } = await resolveWorkspacePath(cwd, ".agent/sessions", true);
+  const { path: directory } = await getAgentHost().workspace.resolveWorkspacePath(cwd, ".agent/sessions", true);
   const visited = new Set<string>();
   const queue = [...files];
   while (queue.length) {
     const file = queue.shift()!;
     if (visited.has(file) || file === parentFile || !sessionFileNamePattern.test(file)) continue;
     visited.add(file);
-    const target = await resolveWorkspacePath(directory, file, true);
+    const target = await getAgentHost().workspace.resolveWorkspacePath(directory, file, true);
     if (getActiveAgentSession(target.path)) continue;
     const text = await readFile(target.path, "utf8").catch(() => undefined);
     if (text === undefined) continue;
@@ -409,7 +407,7 @@ async function removeSessionFiles(cwd: string, parentFile: string, files: Iterab
 /** 回退：以用户消息为界，物理删除该条及其后的全部内容，并让叶指针回到上一轮末尾。 */
 export async function rewindAgentSession(cwd: string, path: string, entryId: string) {
   if (getActiveAgentSession(path)) throw Object.assign(new Error("对话正在运行，请先停止后再回退"), { status: 409 });
-  const release = lockWorkspaceFiles([path]);
+  const release = getAgentHost().workspace.lockWorkspaceFiles([path]);
   try {
     const entries = await readSessionEntriesStrict(path, "回退");
     // ACT: SDK 会直接把条目写进传入的数组，必须给副本，否则写回时会把新增条目再拼一次。
@@ -447,7 +445,7 @@ export async function rewindAgentSession(cwd: string, path: string, entryId: str
       type: "custom", id: newEntryId(used), parentId: nearestSurviving(anchor.parentId), timestamp: new Date().toISOString(),
       customType: "toonflowRewind", data: { from: anchor.id },
     } as SessionEntry);
-    await writeWorkspaceFile(path, [entries[0], ...next].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    await getAgentHost().workspace.writeWorkspaceFile(path, [entries[0], ...next].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
     // 回退已经落盘，子会话清理失败不应把成功的回退报成失败。
     await removeSessionFiles(cwd, basename(path), subAgentFiles).catch((error) => console.warn("回退后清理子会话失败", error));
     return await getAgentSession(cwd, path);
@@ -463,7 +461,7 @@ export async function rewindAgentSession(cwd: string, path: string, entryId: str
 async function cloneSubAgentFiles(cwd: string, directory: string, parentFile: string, files: Iterable<string>, renamed: Map<string, string>) {
   for (const file of files) {
     if (renamed.has(file) || !sessionFileNamePattern.test(file)) continue;
-    const source = await resolveWorkspacePath(directory, file, true);
+    const source = await getAgentHost().workspace.resolveWorkspacePath(directory, file, true);
     const entries = await readSessionEntriesStrict(source.path, "复制会话").catch(() => undefined);
     if (!entries) continue;
     const id = crypto.randomUUID();
@@ -474,8 +472,8 @@ async function cloneSubAgentFiles(cwd: string, directory: string, parentFile: st
     const body = entries.slice(1) as SessionEntry[];
     await cloneSubAgentFiles(cwd, directory, fileName, subAgentFilesOf(body), renamed);
     for (const entry of body) rewriteSubAgentRefs(entry, parentFile, renamed);
-    const target = await resolveWorkspacePath(directory, fileName, true);
-    await writeWorkspaceFile(target.path, [header, ...body].map((entry) => JSON.stringify(entry)).join("\n") + "\n", true);
+    const target = await getAgentHost().workspace.resolveWorkspacePath(directory, fileName, true);
+    await getAgentHost().workspace.writeWorkspaceFile(target.path, [header, ...body].map((entry) => JSON.stringify(entry)).join("\n") + "\n", true);
   }
 }
 
@@ -493,7 +491,7 @@ function rewriteSubAgentRefs(entry: SessionEntry, parentFile: string, renamed: M
 /** 复制为新会话：截取当前分支到该条消息所在轮结束，写新文件并返回。 */
 export async function forkAgentSession(cwd: string, path: string, entryId: string) {
   if (getActiveAgentSession(path)) throw Object.assign(new Error("对话正在运行，请先停止后再复制"), { status: 409 });
-  const release = lockWorkspaceFiles([path]);
+  const release = getAgentHost().workspace.lockWorkspaceFiles([path]);
   try {
     const entries = await readSessionEntriesStrict(path, "复制会话");
     // ACT: SDK 会直接把条目写进传入的数组，必须给副本，否则写回时会把新增条目再拼一次。
@@ -511,7 +509,7 @@ export async function forkAgentSession(cwd: string, path: string, entryId: strin
     // 本轮结束于下一条用户消息之前；没有下一轮则到分支末尾。
     const nextUser = branch.findIndex((entry, index) => index > start && isUserEntry(entry));
     const copied = branch.slice(0, nextUser < 0 ? undefined : nextUser) as SessionEntry[];
-    const { path: directory } = await resolveWorkspacePath(cwd, ".agent/sessions", true);
+    const { path: directory } = await getAgentHost().workspace.resolveWorkspacePath(cwd, ".agent/sessions", true);
     const id = crypto.randomUUID();
     const timestamp = new Date().toISOString();
     const fileName = `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
@@ -525,8 +523,8 @@ export async function forkAgentSession(cwd: string, path: string, entryId: strin
     const name = `${sourceName.replace(/(?: · 副本(?:\s\d+)?)+$/u, "").slice(0, 72)} · 副本`;
     const used = new Set(copied.map((entry) => entry.id));
     const sessionInfo = { type: "session_info", id: newEntryId(used), parentId: copied.at(-1)?.id ?? null, timestamp, name };
-    const target = await resolveWorkspacePath(directory, fileName, true);
-    await writeWorkspaceFile(target.path, [header, ...copied, sessionInfo].map((entry) => JSON.stringify(entry)).join("\n") + "\n", true);
+    const target = await getAgentHost().workspace.resolveWorkspacePath(directory, fileName, true);
+    await getAgentHost().workspace.writeWorkspaceFile(target.path, [header, ...copied, sessionInfo].map((entry) => JSON.stringify(entry)).join("\n") + "\n", true);
     return { file: basename(target.path), name, conversation: await getAgentSession(cwd, target.path) };
   } finally {
     release();
@@ -534,7 +532,7 @@ export async function forkAgentSession(cwd: string, path: string, entryId: strin
 }
 
 export async function createAgentConversation(cwd: string, child?: Omit<AgentSubAgent, "file" | "status">) {
-  const { path: directory } = await resolveWorkspacePath(cwd, ".agent/sessions", true);
+  const { path: directory } = await getAgentHost().workspace.resolveWorkspacePath(cwd, ".agent/sessions", true);
   const history = SessionManager.create(cwd, directory, child ? { parentSession: child.parentFile } : undefined);
   const path = history.getSessionFile()!;
   history.appendCustomEntry("toonflowReasoning", { thinkingLevel: child?.thinkingLevel ?? null });
@@ -545,12 +543,12 @@ export async function createAgentConversation(cwd: string, child?: Omit<AgentSub
     if (child.thinkingLevel) history.appendThinkingLevelChange(child.thinkingLevel);
   }
   // ACT: SDK 默认等首条回复才落盘；先保存会话头，让空对话也能被历史列表读取。
-  await writeWorkspaceFile(path, [history.getHeader(), ...history.getEntries()].map(entry => JSON.stringify(entry)).join("\n") + "\n", true);
+  await getAgentHost().workspace.writeWorkspaceFile(path, [history.getHeader(), ...history.getEntries()].map(entry => JSON.stringify(entry)).join("\n") + "\n", true);
   return getAgentSession(cwd, path);
 }
 
 export async function renameAgentSession(cwd: string, path: string, name: string) {
-  const release = lockWorkspaceFiles([path]);
+  const release = getAgentHost().workspace.lockWorkspaceFiles([path]);
   try {
     const entries = parseSessionEntries(await readFile(path, "utf8"));
     if (entries[0]?.type !== "session") throw Object.assign(new Error("会话文件无效"), { status: 400 });
@@ -697,8 +695,8 @@ export async function getAgentSession(cwd: string, path: string) {
     lastReply?.type === "message" && lastReply.message.role === "assistant"
       ? { provider: lastReply.message.provider, modelId: lastReply.message.model }
       : context.model;
-  const providers = conf.get("settings", {}).customProviders;
-  const provider = providerSchema.safeParse(Array.isArray(providers) ? providers.find((item) => item?.id === model?.provider) : undefined);
+  const providers = getAgentHost().settings.get("settings", {}).customProviders;
+  const provider = getAgentHost().models.providerSchema.safeParse(Array.isArray(providers) ? providers.find((item) => item?.id === model?.provider) : undefined);
   const configuredModel = provider.success ? provider.data.models.find((item) => item.id === model?.modelId) : undefined;
   const subAgents = new Map<string, AgentSubAgent>();
   for (const entry of history.getEntries()) {
@@ -712,7 +710,7 @@ export async function getAgentSession(cwd: string, path: string) {
     name: history.getSessionName() || (firstUserMessage?.content.trim() || firstUserMessage?.attachments?.[0]?.name)?.slice(0, 60) || "新对话",
     messages,
     stats: getAgentStats(history),
-    contextUsage: getAgentContext(history, active?.session?.model?.contextWindow ?? (configuredModel && model ? getModelLimits(model.provider, configuredModel).contextWindow : 0)),
+    contextUsage: getAgentContext(history, active?.session?.model?.contextWindow ?? (configuredModel && model ? getAgentHost().models.getModelLimits(model.provider, configuredModel).contextWindow : 0)),
     providerId: model?.provider,
     modelId: model?.modelId,
     thinkingLevel: reasoningSelection.success ? reasoningSelection.data.thinkingLevel ?? undefined : context.thinkingLevel,

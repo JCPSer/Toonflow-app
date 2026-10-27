@@ -1,9 +1,8 @@
-import { t } from "@/lib/i18n";
+import { getAgentHost } from "@/agent/host";
 import { randomUUID } from "node:crypto";
 import type { Usage } from "@earendil-works/pi-ai";
 import { createTeamA2aClient, SendMessageRequest, GetTaskRequest, CancelTaskRequest, TaskState, Role, type Message, type Task, type Artifact } from "@toonflow/teams-scaffold/a2a";
 import { emptyUsage, type SubAgentResult } from "@/agent/runtime/subAgent";
-import { getRemoteTeam } from "@/modules/pluginMarket/teams";
 
 export async function runRemoteTeam(options: {
   name: string;
@@ -83,16 +82,16 @@ export async function runRemoteTeam(options: {
 
   try {
     signal?.throwIfAborted();
-    const remote = getRemoteTeam(name);
-    if (!remote) throw new Error(t`远端团队 ${name} 不存在`);
-    if (!remote.enabled) throw new Error(t`远端团队 ${name} 已禁用`);
+    const remote = getAgentHost().teams.getRemoteTeam(name);
+    if (!remote) throw new Error(getAgentHost().i18n.t`远端团队 ${name} 不存在`);
+    if (!remote.enabled) throw new Error(getAgentHost().i18n.t`远端团队 ${name} 已禁用`);
     client = await createTeamA2aClient({
       url: remote.cardUrl, token: remote.token,
       fetch: ((input, init) => fetch(input, { ...init, signal: init?.signal ?? signal })) as typeof fetch,
     });
     const card = await client.getAgentCard({ signal });
     signal?.throwIfAborted();
-    if (!getRemoteTeam(name)?.enabled) throw new Error(t`远端团队 ${name} 已禁用`);
+    if (!getAgentHost().teams.getRemoteTeam(name)?.enabled) throw new Error(getAgentHost().i18n.t`远端团队 ${name} 已禁用`);
     const request = SendMessageRequest.fromJSON({ message: {
       messageId: randomUUID(), role: "ROLE_USER", parts: [{ text: task }], taskId: result.taskId, contextId: result.contextId,
     } });

@@ -1,14 +1,10 @@
-import { t } from "@/lib/i18n";
+import { getAgentHost } from "@/agent/host";
 import { readFile } from "@toonflow/file";
 import { join } from "node:path";
 import { DefaultResourceLoader, SettingsManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildSystemPrompt } from "@/agent/runtime/prompt";
 import { autoCompactStrategy, getAgentPreferences } from "@/agent/runtime/preferences";
 import { loadAgentSkills } from "@/agent/skills";
-import { resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
-import { isMemoryEnabled, readDocument } from "@/modules/platformCore/personalization";
-import conf from "@/modules/platformCore/conf";
-import { getRuntimePlatform } from "@/lib/platform";
 
 /**
  * 会话设置。主会话按用户偏好与模型窗口决定压缩阈值；子会话复用同一套压缩配置但关闭重试。
@@ -29,15 +25,16 @@ export function createAgentSettings(contextWindow?: number, options: { retry?: b
 }
 
 export async function createAgentResources(cwd: string, tools: ToolDefinition[], settings = createAgentSettings(), instructions = "") {
-  const savedPrompt = conf.get("settings", {}).agentSystemPrompt;
+  const host = getAgentHost();
+  const savedPrompt = host.settings.get("settings", {}).agentSystemPrompt;
   const systemPrompt = typeof savedPrompt === "string" ? savedPrompt : undefined;
   const agentDir = join(cwd, ".agent");
-  const { path: agentsPath } = await resolveWorkspacePath(cwd, "AGENTS.md");
+  const { path: agentsPath } = await host.workspace.resolveWorkspacePath(cwd, "AGENTS.md");
   const agentsContent = await readFile(agentsPath, "utf8").catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return "";
-    throw new Error(t`读取工作区 AGENTS.md 失败：${error.message}`, { cause: error });
+    throw new Error(host.i18n.t`读取工作区 AGENTS.md 失败：${error.message}`, { cause: error });
   });
-  const [globalAgents, memory] = await Promise.all([readDocument("agents"), isMemoryEnabled() ? readDocument("memory") : { content: "" }]);
+  const [globalAgents, memory] = await Promise.all([host.personalization.readDocument("agents"), host.personalization.isMemoryEnabled() ? host.personalization.readDocument("memory") : { content: "" }]);
   const skills = loadAgentSkills(cwd);
   const sdkSkills = tools.some(tool => tool.name === "skillOperator")
     ? { ...skills, skills: skills.skills.map(skill => ({ ...skill, disableModelInvocation: true })) }
@@ -56,7 +53,7 @@ export async function createAgentResources(cwd: string, tools: ToolDefinition[],
     // ACT: 技能正文按需读取；每个会话独立创建 loader，避免 SDK 的会话绑定互相覆盖。
     skillsOverride: () => sdkSkills,
     systemPrompt: "",
-    systemPromptOverride: () => [buildSystemPrompt({ systemPrompt, tools, skills: skills.skills, platform: getRuntimePlatform().os }), instructions].filter(Boolean).join("\n\n"),
+    systemPromptOverride: () => [buildSystemPrompt({ systemPrompt, tools, skills: skills.skills, platform: host.platform.getRuntimePlatform().os }), instructions].filter(Boolean).join("\n\n"),
     appendSystemPrompt: [
       globalAgents.content.trim() ? `## 全局协作规范（AGENTS.md）\n${globalAgents.content}` : "",
       memory.content.trim() ? `## 全局长期记忆\n以下是跨对话保存的偏好与事实，使用前核对适用项目，以用户本轮要求为准。\n<global_memory>\n${memory.content}\n</global_memory>` : "",

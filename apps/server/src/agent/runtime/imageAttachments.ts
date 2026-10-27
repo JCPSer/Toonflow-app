@@ -3,7 +3,7 @@ import { formatDimensionNote, resizeImage } from "@earendil-works/pi-coding-agen
 import { mkdir, readFile, realpath, stat, writeAtomic } from "@toonflow/file";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
+import { getAgentHost } from "@/agent/host";
 
 export type AgentImageReference = { id: string; path: string; sourcePath: string; mimeType: string; bytes: number; note?: string };
 export type AgentImagePart = TextContent & { toonflowImage: AgentImageReference };
@@ -44,12 +44,12 @@ async function saveImageBytes(cwd: string, bytes: Uint8Array, mimeType: string, 
   signal?.throwIfAborted();
   const hash = imageHash(bytes);
   const relativePath = `.agent/attachments/${hash}.${imageExtension(mimeType)}`;
-  const target = await resolveWorkspacePath(cwd, relativePath, true);
+  const target = await getAgentHost().workspace.resolveWorkspacePath(cwd, relativePath, true);
   signal?.throwIfAborted();
   try { await writeAtomic(target.path, bytes, { exclusive: true }); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    const saved = await readFile((await resolveWorkspacePath(cwd, relativePath)).path, { signal });
+    const saved = await readFile((await getAgentHost().workspace.resolveWorkspacePath(cwd, relativePath)).path, { signal });
     if (imageHash(saved) !== hash) throw new Error(`图片附件内容校验失败：${relativePath}`);
   }
   signal?.throwIfAborted();
@@ -60,7 +60,7 @@ export async function readAgentImage(cwd: string, reference: AgentImageReference
   signal?.throwIfAborted();
   const checked = getAgentImageReference({ type: "text", text: "", toonflowImage: reference });
   if (!checked) throw new Error("图片附件引用无效");
-  const target = await resolveWorkspacePath(await realpath(cwd), checked.path);
+  const target = await getAgentHost().workspace.resolveWorkspacePath(await realpath(cwd), checked.path);
   const bytes = await readFile(target.path, { signal });
   signal?.throwIfAborted();
   if (bytes.byteLength !== checked.bytes || imageHash(bytes) !== imagePathPattern.exec(checked.path)![1]) {
@@ -80,12 +80,12 @@ export async function saveAgentImage(cwd: string, image: ImageContent, id: strin
   if (!source.byteLength || source.toString("base64") !== image.data) throw new Error("图片附件须为有效的 base64 内容");
   cwd = await realpath(cwd);
   if (!(await stat(cwd)).isDirectory()) throw new Error("图片附件所属工作区目录无效");
-  const folder = await resolveWorkspacePath(cwd, ".agent/attachments", true);
+  const folder = await getAgentHost().workspace.resolveWorkspacePath(cwd, ".agent/attachments", true);
   await mkdir(folder.path, { recursive: true });
   const sourcePath = await saveImageBytes(cwd, source, mimeType, signal);
   // ACT: 参照 DeepSeek Harness 的单图 1 MiB 目标，复用 Pi 按 2048 边长缩放；编码与像素策略不完全相同。
   // 固定策略从原图生成一次，后续读取缓存或引用，不对已发送版本递减压缩。
-  const cachePath = await resolveWorkspacePath(cwd, `${sourcePath}.image2048v1.json`, true);
+  const cachePath = await getAgentHost().workspace.resolveWorkspacePath(cwd, `${sourcePath}.image2048v1.json`, true);
   const saved = await readFile(cachePath.path, { encoding: "utf8", signal }).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return;
     throw error;

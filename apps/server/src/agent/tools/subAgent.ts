@@ -5,7 +5,7 @@ import { teamNameSchema } from "@toonflow/teams-scaffold/runtime";
 import { addUsage, emptyUsage, type SubAgentModel, type SubAgentResult } from "@/agent/runtime/subAgent";
 import { createTeamRunner } from "@/agent/teams";
 import { runRemoteTeam } from "@/agent/teams/remote";
-import { listTeams, getRemoteTeam } from "@/modules/pluginMarket/teams";
+import { getAgentHost } from "@/agent/host";
 
 const parameters = z.strictObject({
   tasks: z.array(z.strictObject({
@@ -22,7 +22,7 @@ export async function createSubAgentTool({ cwd, tools, canvas, runTask, ...model
   runTask: (name: string, task: string, signal?: AbortSignal, onProgress?: (text: string) => void) => Promise<{ result: SubAgentResult; usage: ReturnType<typeof emptyUsage> }>;
 }): Promise<ToolDefinition> {
   if (tools.some(tool => tool.name === "subAgent")) throw new Error("工具名称 subAgent 已被内置子任务工具占用");
-  const teams = (await listTeams()).filter(team => team.enabled && !team.loadError);
+  const teams = (await getAgentHost().teams.listTeams()).filter(team => team.enabled && !team.loadError);
   const subAgentTool: ToolDefinition = {
     name: "subAgent", label: "子任务与团队",
     description: `并行执行委派的独立任务。省略 team 创建可继续对话的子 Agent，继承宿主工具，包括提问、继续委派和 report 上报；指定 team 调用已安装团队或外部 A2A。宿主工具：${[...tools.map(tool => tool.name), "subAgent"].join("、")}。团队目录：${JSON.stringify(teams.map(({ name, description, kind }) => ({ name, description, kind })))}。本地团队按清单分工。任务数量、并发数、执行轮次和总时长不设固定上限，可由用户停止。`,
@@ -45,7 +45,7 @@ export async function createSubAgentTool({ cwd, tools, canvas, runTask, ...model
       await Promise.all(tasks.map(async (task, index) => {
         const onProgress = (text: string) => { results[index]!.result = text; update(); };
         try {
-          const remote = task.team && getRemoteTeam(task.team);
+          const remote = task.team && getAgentHost().teams.getRemoteTeam(task.team);
           if ((task.taskId || task.contextId) && !remote) throw new Error("只有远端 A2A 团队支持 taskId/contextId");
           const output = remote
             ? await runRemoteTeam({ ...task, name: task.team!, signal, onProgress })

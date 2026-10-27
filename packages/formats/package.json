@@ -1,0 +1,14 @@
+{
+  "name": "@toonflow/formats",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./modelReasoning": "./src/modelReasoning.ts",
+    "./documentFormats": "./src/documentFormats.ts",
+    "./mentionSources": "./src/mentionSources.ts",
+    "./a2a": "./src/a2a.ts"
+  },
+  "scripts": { "typecheck": "tsc" }
+}

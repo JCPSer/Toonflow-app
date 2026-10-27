@@ -1,9 +1,10 @@
 import { appendFile, mkdir, rename, stat } from "@toonflow/file";
 import { dirname, join } from "node:path";
-import conf from "@/modules/platformCore/conf";
+import { getAgentHost } from "@/agent/host";
 
 // ACT: Agent 客户端工具链路此前没有任何可追查记录，中止来源只能事后靠日志定性。
 // 日志必须 best-effort：任何写入失败都吞掉，绝不能影响对话本身。
+// 日志目录经 AgentHost 的 settings.settingsPath() 取得，agent 因此不再依赖应用层的 conf。
 const MAX_BYTES = 2 * 1024 * 1024;
 const MAX_FIELD = 300;
 let queue: Promise<void> = Promise.resolve();
@@ -29,7 +30,7 @@ export function agentLog(event: string, fields: Record<string, unknown> = {}) {
 
 async function write(line: string) {
   try {
-    const directory = join(dirname(conf.path), "logs");
+    const directory = join(dirname(getAgentHost().settings.settingsPath()), "logs");
     const file = join(directory, "agent.log");
     await mkdir(directory, { recursive: true });
     const info = await stat(file).catch(() => undefined);

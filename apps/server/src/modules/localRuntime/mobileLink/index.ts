@@ -105,6 +105,8 @@ async function listen(app: Application, port: number) {
     const device = token.length >= 32 && token.length <= 128 && getMobileLinkConfig().devices.find(item => matchesHash(token, item.tokenHash));
     if (!device) throw Object.assign(new Error("设备未配对或授权已撤销"), { status: 401 });
     Object.defineProperty(res.locals, deviceKey, { value: device.id });
+    // ACT: agent 侧不能 import 应用模块，用请求局部标志把「设备互联请求」这一事实跨边界传过去。
+    res.locals.toonflowMobileLink = true;
     const lastSeen = getRuntime(app).lastSeen;
     const version = req.get("x-toonflow-app-version");
     const appVersion = version && /^[\w.+-]{1,64}$/.test(version) ? version : undefined;

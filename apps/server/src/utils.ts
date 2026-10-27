@@ -16,9 +16,7 @@ import * as aiRuns from "@/modules/mediaGeneration/ai/runs";
 import * as plugins from "@/modules/pluginMarket/plugins/tools";
 import * as nodePlugins from "@/modules/pluginMarket/plugins/nodes";
 import * as extPlugins from "@/modules/pluginMarket/plugins/ext";
-import * as agent from "@/agent";
-import * as canvas from "@/agent/bridge/canvas";
-import * as question from "@/agent/bridge/question";
+import * as agentRuntime from "./agentRuntime";
 import * as workspace from "@/modules/localRuntime/workspace";
 import * as workspaceFile from "@/modules/localRuntime/workspace/files";
 import * as workspaceDownload from "@/modules/localRuntime/workspace/download";
@@ -30,9 +28,8 @@ import * as mcpServers from "@/modules/mcpIntegration/mcp/servers";
 import * as mcpDxt from "@/modules/mcpIntegration/mcp/dxt";
 import * as mobileLink from "@/modules/localRuntime/mobileLink";
 import * as teams from "@/modules/pluginMarket/teams";
-import * as a2aSettings from "@/agent/a2a/settings";
 import * as personalization from "@/modules/platformCore/personalization";
-import * as mentionFiles from "@/agent/mentionFiles";
+const { agent, canvas, question, a2aSettings, mentionFiles } = agentRuntime;
 
 export default {
   assets,
@@ -72,4 +69,5 @@ export default {
   a2aSettings,
   personalization,
   mentionFiles,
+  agentRuntime,
 };

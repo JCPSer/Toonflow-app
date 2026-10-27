@@ -1,8 +1,7 @@
 import { lstat, realpath } from "@toonflow/file";
 import { dirname, relative, resolve } from "node:path";
-import conf from "@/modules/platformCore/conf";
+import { getAgentHost } from "@/agent/host";
 import { getAgentPreferences } from "./preferences";
-import { isWithin, resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
 
 /** 开发者选项「开放 Agent 全部权限」：每次实时读取设置，切换后无需重启。 */
 export function isAgentFullAccess() {
@@ -27,7 +26,7 @@ function assertRegularTarget(info: Awaited<ReturnType<typeof lstatOptional>>) {
 
 function assertNotProjectState(cwd: string, target: string) {
   // ACT: .toonflow 是应用内部状态目录（上次画布等），开放全部权限时也不向 Agent 暴露。
-  if (isWithin(cwd, target) && relative(cwd, target).split(/[\\/]/)[0]?.toLocaleLowerCase() === ".toonflow") {
+  if (getAgentHost().workspace.isWithin(cwd, target) && relative(cwd, target).split(/[\\/]/)[0]?.toLocaleLowerCase() === ".toonflow") {
     throw protectedError("项目配置目录不可访问");
   }
 }
@@ -40,7 +39,7 @@ function assertNotSensitive(target: string) {
   for (const root of blockedRoots) {
     if (normalized === root || normalized.startsWith(`${root}/`)) throw protectedError("该系统目录不可读取");
   }
-  const dataDir = dirname(conf.path).replaceAll("\\", "/");
+  const dataDir = dirname(getAgentHost().settings.settingsPath()).replaceAll("\\", "/");
   if (normalized === dataDir || normalized.startsWith(`${dataDir}/`)) throw protectedError("应用数据目录不可读取");
 }
 
@@ -54,7 +53,7 @@ export async function resolveAgentReadPath(cwd: string, path: string) {
   const absolute = resolve(cwd, path);
 
   if (!isAgentFullAccess()) {
-    const target = (await resolveWorkspacePath(cwd, relative(cwd, absolute), true)).path;
+    const target = (await getAgentHost().workspace.resolveWorkspacePath(cwd, relative(cwd, absolute), true)).path;
     assertRegularTarget(await lstatOptional(target));
     assertNotProjectState(cwd, target);
     return target;

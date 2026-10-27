@@ -3,14 +3,14 @@ import { Router } from "express";
 import { z } from "zod";
 import { validateFields } from "@/lib/middleware";
 import { success } from "@/lib/responseFormat";
-import { maxSystemPromptLength } from "@/agent/runtime/prompt";
+
 import { t } from "@/lib/i18n";
 import { providerSchema } from "@/modules/mediaGeneration/ai";
 
 const router = Router();
 
 export default router.put("/", validateFields({ settings: z.record(z.string(), z.json()).and(z.object({
-  agentSystemPrompt: z.string().max(maxSystemPromptLength, { error: () => t`系统提示词不能超过 ${maxSystemPromptLength} 个字符` }).optional(),
+  agentSystemPrompt: z.string().max(u.agentRuntime.maxSystemPromptLength, { error: () => t`系统提示词不能超过 ${u.agentRuntime.maxSystemPromptLength} 个字符` }).optional(),
   customProviders: z.array(providerSchema.extend({ id: z.string().min(1), label: z.string() })).optional(),
   desktopUpdateSource: z.enum(["official", "github", "custom"]).optional(),
   desktopUpdateCustomUrl: z.string().max(2048).refine(value => !value || u.desktop.isValidUpdateUrl(value),

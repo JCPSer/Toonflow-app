@@ -5,7 +5,7 @@ export type MentionOutput = { id: string; name: string; dataType: string; previe
 export type MentionAsset = { path: string; name: string; type: "file" | "directory"; dataType?: string; preview?: string };
 export type MentionPage<T> = { items: T[]; nextCursor?: string };
 export type MentionCanvasNode = { id: string; type?: string; label?: unknown; data?: unknown };
-import type { MentionQuery } from "../lib/mentionSources";
+import type { MentionQuery } from "@toonflow/formats/mentionSources";
 
 export type { MentionQuery };
 export type MentionCanvasSource = {
@@ -132,4 +132,4 @@ export function createNodeMention(node: MentionCanvasNode, canvasId: string): Ag
   return { id: crypto.randomUUID(), label: nodeName, source: { kind: "canvas", canvasId, canvasName, nodeId: node.id, nodeName }, dataType: "NODE", value: null };
 }
 
-export { mentionAssetType } from "../lib/mentionSources";
+export { mentionAssetType } from "@toonflow/formats/mentionSources";

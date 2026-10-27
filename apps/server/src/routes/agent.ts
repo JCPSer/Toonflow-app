@@ -1,12 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { CanvasInfo } from "@toonflow/tools-scaffold/runtime";
-import type { AgentEvent } from "@/agent/runtime/types";
+import type { AgentEvent } from "@/agentRuntime";
 import { validateFields } from "@/lib/middleware";
 import u from "@/utils";
 import { translateError, translateMessage } from "@/lib/i18n";
 import { thinkingLevels } from "@/lib/modelReasoning";
-import { getAgentModelConfiguration } from "@/agent/runtime/model";
 
 const inputSchema = z.object({
   prompt: z.string().trim(), directory: z.string().min(1),
@@ -31,7 +30,7 @@ const inputSchema = z.object({
 export default Router().post("/", validateFields(inputSchema.shape), async (req, res) => {
   const { directory, canvas, ...options } = req.body as z.infer<typeof inputSchema>;
   const cwd = await u.workspace.resolveWorkspace(req, directory);
-  getAgentModelConfiguration(options.providerId, options.modelId, options.thinkingLevel);
+  u.agentRuntime.getAgentModelConfiguration(options.providerId, options.modelId, options.thinkingLevel);
   res.set({ "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" });
   res.flushHeaders();
   const send = (event: AgentEvent) => {

@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n";
+import { getAgentHost } from "@/agent/host";
 import { join } from "node:path";
 import { z } from "zod";
 import { SessionManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -6,8 +6,6 @@ import type { CanvasContext } from "@toonflow/tools-scaffold/runtime";
 import { teamResourcePathSchema } from "@toonflow/teams-scaffold/runtime";
 import { createAgentToolContext } from "@/agent/tools";
 import { addUsage, emptyUsage, runSubAgent, type SubAgentModel } from "@/agent/runtime/subAgent";
-import { readTeam, saveTeamFile } from "@/modules/pluginMarket/teams";
-import { loadTool, validateToolConfig } from "@/modules/pluginMarket/plugins/tools";
 
 const resourceSchema = z.strictObject({
   action: z.enum(["list", "read", "write"]),
@@ -25,12 +23,13 @@ export async function createTeamRunner(options: SubAgentModel & {
   canvas?: CanvasContext;
 }) {
   const { name, cwd, tools, canvas, ...modelOptions } = options;
-  const { directory, manifest, files, enabled } = await readTeam(name);
-  if (!enabled) throw new Error(t`团队 ${name} 已禁用`);
+  const host = getAgentHost();
+  const { directory, manifest, files, enabled } = await host.teams.readTeam(name);
+  if (!enabled) throw new Error(host.i18n.t`团队 ${name} 已禁用`);
   const hostTools = tools.filter(tool => !["subAgent", "report", "askUser", "delegate", "teamResources", "requestInput"].includes(tool.name));
   const privatePlugins = await Promise.all(Object.entries(manifest.tools ?? {}).map(async ([pluginName, config]) => {
-    const { plugin, metadata } = await loadTool(pluginName, join(directory, "tools"));
-    return { plugin, metadata, config: validateToolConfig(plugin, config) };
+    const { plugin, metadata } = await host.tools.loadTool(pluginName, join(directory, "tools"));
+    return { plugin, metadata, config: host.tools.validateToolConfig(plugin, config) };
   }));
   const memberTools = new Map<string, ToolDefinition[]>();
   const instructions = new Map<string, string>();
@@ -40,13 +39,13 @@ export async function createTeamRunner(options: SubAgentModel & {
       const definitions = await plugin.createTools(createAgentToolContext(cwd, config, canvas));
       for (const tool of definitions) {
         if (!tool.name || typeof tool.execute !== "function" || ["subAgent", "askUser", "delegate", "teamResources", "requestInput"].includes(tool.name) || available.has(tool.name)) {
-          throw new Error(t`团队私有工具无效或名称重复：${tool.name}`);
+          throw new Error(host.i18n.t`团队私有工具无效或名称重复：${tool.name}`);
         }
         available.set(tool.name, { ...tool, promptGuidelines: [...(metadata.prompt ? [metadata.prompt] : []), ...(tool.promptGuidelines ?? [])] });
       }
     }
     for (const toolName of member.tools ?? []) {
-      if (!available.has(toolName)) throw new Error(t`成员 ${memberName} 配置的工具当前不可用：${toolName}`);
+      if (!available.has(toolName)) throw new Error(host.i18n.t`成员 ${memberName} 配置的工具当前不可用：${toolName}`);
     }
     memberTools.set(memberName, [...available.values()].filter(tool => !member.tools || member.tools.includes(tool.name)));
     instructions.set(memberName, new TextDecoder("utf-8", { fatal: true }).decode(files.get(member.instructions)));
@@ -75,10 +74,10 @@ export async function createTeamRunner(options: SubAgentModel & {
             if (action !== "list" && (!path || !allowed(path))) throw new Error("资料不属于当前成员的授权范围");
             if (action === "write") {
               if (content === undefined) throw new Error("写入资料需要 content");
-              await saveTeamFile(name, path!, content);
+              await host.teams.saveTeamFile(name, path!, content);
               return { content: [{ type: "text", text: JSON.stringify({ path, saved: true }) }], details: {} };
             }
-            const current = await readTeam(name);
+            const current = await host.teams.readTeam(name);
             const paths = [...current.files.keys()].filter(allowed);
             const bytes = path ? current.files.get(path) : undefined;
             if (action === "read" && !bytes) throw new Error("团队资料不存在");

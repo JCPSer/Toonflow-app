@@ -5,8 +5,7 @@ import { z } from "zod";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CanvasContext } from "@toonflow/tools-scaffold/runtime";
 import type { McpTool } from "@toonflow/mcp";
-import { createAgentTools } from "@/agent/tools";
-import { run as runAgent } from "@/agent";
+import { agent as agentRuntime, createAgentTools } from "@/agentRuntime";
 import conf from "@/modules/platformCore/conf";
 import { callControl, getConnection, listConnections } from "@/modules/mcpIntegration/mcp/control";
 import { appOperations, runAppOperation } from "@/modules/mcpIntegration/mcp/operations";
@@ -245,7 +244,7 @@ export async function getMcpTools(): Promise<McpTool[]> {
     } : undefined;
     const blocks = new Map<string, string>();
     let sessionFile = args.sessionFile;
-    await runAgent({ ...args, cwd: directory!, canvas, signal }, event => {
+    await agentRuntime.run({ ...args, cwd: directory!, canvas, signal }, event => {
       if (event.type === "session") sessionFile = event.file;
       if (event.type === "text") blocks.set(event.blockId, event.content ?? (blocks.get(event.blockId) ?? "") + (event.delta ?? ""));
     });

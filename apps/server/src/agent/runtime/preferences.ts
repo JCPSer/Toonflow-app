@@ -1,4 +1,4 @@
-import conf from "@/modules/platformCore/conf";
+import { getAgentHost } from "@/agent/host";
 
 /**
  * ACT: 上下文与权限相关的用户偏好集中在这里读取，避免各调用点各自解析 settings 结构。
@@ -21,7 +21,7 @@ function pickNumber(value: unknown, min: number, max: number, fallback: number) 
 }
 
 export function getAgentPreferences(): AgentPreferences {
-  const settings = conf.get("settings", {}) as { agent?: Record<string, unknown>; developer?: Record<string, unknown> };
+  const settings = getAgentHost().settings.get("settings", {}) as { agent?: Record<string, unknown>; developer?: Record<string, unknown> };
   const agent = settings.agent ?? {};
   return {
     compactPercent: pickNumber(agent.compactPercent, 50, 95, DEFAULT_COMPACT_PERCENT),

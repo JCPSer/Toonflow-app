@@ -1,5 +1,5 @@
 import type { CanvasToolCall, QuestionRequest, ToolCall } from "@toonflow/tools-scaffold/runtime";
-import type { ThinkingLevel } from "../../lib/modelReasoning";
+import type { ThinkingLevel } from "@toonflow/formats/modelReasoning";
 
 export type AgentToolCall = ToolCall & { question?: QuestionRequest & { callId: string } };
 

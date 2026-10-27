@@ -50,6 +50,7 @@
         "@firecrawl/anydoc-wasm": "0.2.4",
         "@toonflow/ffmpeg": "workspace:*",
         "@toonflow/file": "workspace:*",
+        "@toonflow/formats": "workspace:*",
         "@toonflow/i18n": "workspace:*",
         "@toonflow/mcp": "workspace:*",
         "@toonflow/providers": "workspace:*",
@@ -315,6 +316,10 @@
         "async-mutex": "0.5.0",
         "stubborn-fs": "2.0.0",
       },
+    },
+    "packages/formats": {
+      "name": "@toonflow/formats",
+      "version": "0.0.0",
     },
     "packages/i18n": {
       "name": "@toonflow/i18n",
@@ -1397,6 +1402,8 @@
     "@toonflow/ffmpeg": ["@toonflow/ffmpeg@workspace:packages/ffmpeg"],
 
     "@toonflow/file": ["@toonflow/file@workspace:packages/file"],
+
+    "@toonflow/formats": ["@toonflow/formats@workspace:packages/formats"],
 
     "@toonflow/i18n": ["@toonflow/i18n@workspace:packages/i18n"],
 

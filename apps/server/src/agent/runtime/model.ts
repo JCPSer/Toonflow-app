@@ -1,10 +1,10 @@
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { ThinkingLevel } from "@/lib/modelReasoning";
-import { getConfiguredModel } from "@/modules/mediaGeneration/ai";
+import type { ThinkingLevel } from "@toonflow/formats/modelReasoning";
+import { getAgentHost } from "@/agent/host";
 
 export function getAgentModelConfiguration(providerId: string, modelId: string, thinkingLevel?: ThinkingLevel) {
-  const configured = getConfiguredModel(providerId, modelId);
+  const configured = getAgentHost().models.getConfiguredModel(providerId, modelId);
   // ACT: 旧版用 off 保存默认档位；模型未声明关闭能力时按默认处理，显式支持 off 的模型仍可关闭。
   if (thinkingLevel === "off" && !configured.model.reasoningLevels.includes("off")) thinkingLevel = undefined;
   if (thinkingLevel !== undefined && !configured.model.reasoningLevels.includes(thinkingLevel)) {

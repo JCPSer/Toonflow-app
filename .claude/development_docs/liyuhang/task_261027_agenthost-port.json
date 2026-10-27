@@ -1,0 +1,114 @@
+{
+  "task": "agent-runtime 与应用层双向 import 环治理（AgentHost 端口 + 反向门面）",
+  "created_at": "2026-10-27T18:30:00+08:00",
+  "inputs": {
+    "requirements": ".easyvibe/development_docs/liyuhang/1_requirements_matrix/2026-10-27-13-57-agentHostPortCycleBreak-v5.md",
+    "solution": ".easyvibe/development_docs/liyuhang/2_requirements_solutions/2026-10-27-14-45-agentHostPortCycleBreak.md"
+  },
+  "parallelism": "环境未提供子 agent 工具（仅 Bash/Edit/Read），全部任务由主 agent 串行执行；同一文件被多个批次命中（如 agent/tools/index.ts 覆盖 B1/B2/B3/B4），并行会冲突，故串行更安全。",
+  "tasks": [
+    {
+      "id": "T0",
+      "name": "基线采集（P1-P21）与漂移登记",
+      "deps": [],
+      "status": "done"
+    },
+    {
+      "id": "T1",
+      "name": "packages/formats 建包（modelReasoning/a2a/index + package.json/tsconfig）+ lib 三 shim",
+      "deps": [],
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "name": "agent/host.ts 契约（14 组 / 60 符号）",
+      "deps": [
+        "T1"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "name": "agentRuntime.ts 反向门面 + utils.ts 38 键 + 5 域文件改指",
+      "deps": [
+        "T2"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "name": "agentHost.ts 装配（14 组）+ app.ts 步骤 9.5",
+      "deps": [
+        "T2"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T5",
+      "name": "a2a/settings.ts watcher 惰性化 + A2A 动态块保持",
+      "deps": [
+        "T2",
+        "T4"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T6",
+      "name": "B0 纯下沉 13 行 → @toonflow/formats",
+      "deps": [
+        "T1"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T7",
+      "name": "B1 低风险读取 12 行 → Host",
+      "deps": [
+        "T2"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T8",
+      "name": "B2 模型/媒体/i18n/platform 17 行 → Host",
+      "deps": [
+        "T2"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T9",
+      "name": "B3 安全敏感 21 行 → Host（含多目标行）",
+      "deps": [
+        "T2"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T10",
+      "name": "B4 配置/MCP 11 行 → Host",
+      "deps": [
+        "T2"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T11",
+      "name": "验证：typecheck / build / 探针 / 运行冒烟",
+      "deps": [
+        "T1-T10"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T12",
+      "name": "文档：3_test_results / 5_memory / operation / INDEX / AGENTS 模块表",
+      "deps": [
+        "T11"
+      ],
+      "status": "done"
+    }
+  ],
+  "completed_at": "2026-10-27T21:25:00+08:00",
+  "result": "A2P 75→0；P2A 14 行/3 文件；SCC 2/0；e7 删除；16/16 冒烟通过；偏差 D-1～D-4 见 TEST-2026-10-27-04"
+}

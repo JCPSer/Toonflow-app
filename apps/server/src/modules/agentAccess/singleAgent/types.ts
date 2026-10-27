@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "@toonflow/tools-scaffold/runtime";
-import type { AgentEvent } from "@/agent/runtime/types";
+import type { AgentEvent } from "@/agentRuntime";
 
 export type SingleAgentToolDescriptor = {
   name: string;

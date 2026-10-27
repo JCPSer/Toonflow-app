@@ -4,15 +4,12 @@ import { t } from "@/lib/i18n";
 import { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { QuestionContext } from "@toonflow/tools-scaffold/runtime";
-import { createAgentToolContext } from "@/agent/tools";
-import { createAgentModel } from "@/agent/runtime/model";
-import { configureAgentRequests } from "@/agent/runtime/requests";
-import { getToolResultText } from "@/agent/runtime/sessions";
-import { createQuestionContext, answerQuestion } from "@/agent/bridge/question";
+import {
+  agentLog, configureAgentRequests, createAgentModel, createAgentToolContext, getToolResultText, question,
+} from "@/agentRuntime";
 import { listTools, loadTool, validateToolConfig } from "@/modules/pluginMarket/plugins/tools";
 import { browserRuntime } from "@/modules/agentAccess/browser";
 import conf from "@/modules/platformCore/conf";
-import { agentLog } from "@/lib/agentLog";
 import type { ThinkingLevel } from "@/lib/modelReasoning";
 import type { SingleAgentEvent, SingleAgentResult, SingleAgentStatus, SingleAgentToolDescriptor, SingleAgentToolReference, SingleAgentToolResult } from "./types";
 
@@ -30,7 +27,7 @@ type RunState = {
   gate?: ReturnType<typeof Promise.withResolvers<void>>;
   finished: ReturnType<typeof Promise.withResolvers<void>>;
   send(event: SingleAgentEvent): void;
-  questions?: ReturnType<typeof createQuestionContext>;
+  questions?: ReturnType<typeof question.createQuestionContext>;
   questionIds: Set<string>;
   clientCalls: Map<string, ClientCall>;
 };
@@ -217,7 +214,7 @@ export async function run(options: {
     onStart?.();
     setStatus(active, "running");
     active.controller.signal.throwIfAborted();
-    active.questions = createQuestionContext(state.id, event => {
+    active.questions = question.createQuestionContext(state.id, event => {
       active.questionIds.add(event.callId);
       send(event);
     }, () => active.controller.abort(new Error("用户取消了提问")));
@@ -373,10 +370,10 @@ export function toolResult(sessionId: string, callId: string, response: { result
   call.finish(response.error !== undefined ? new Error(response.error) : response.result!);
 }
 
-export function answer(sessionId: string, callId: string, response: Parameters<typeof answerQuestion>[2]) {
+export function answer(sessionId: string, callId: string, response: Parameters<typeof question.answerQuestion>[2]) {
   const session = getSession(sessionId);
   if (!session.active?.questionIds.has(callId)) throw Object.assign(new Error("提问不属于此对话或已结束"), { status: 404 });
-  const result = answerQuestion(session.id, callId, response);
+  const result = question.answerQuestion(session.id, callId, response);
   session.active.questionIds.delete(callId);
   return result;
 }

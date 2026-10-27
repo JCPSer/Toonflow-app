@@ -6,10 +6,8 @@ import { getAgentImageReference, getOffloadedImageText, readAgentImage, saveAgen
 import { offloadToolContent } from "@/agent/runtime/toolOutput";
 import { getAgentPreferences } from "@/agent/runtime/preferences";
 import type { AgentImageReference } from "@/agent/runtime/imageAttachments";
-import { getRequestFiles, type RequestFile } from "@/modules/mediaGeneration/ai/requestFiles";
-import { createFileTransport, FileRequestLimitError } from "@/modules/mediaGeneration/ai/files";
-import conf from "@/modules/platformCore/conf";
-import { agentLog } from "@/lib/agentLog";
+import { getAgentHost, type RequestFile } from "@/agent/host";
+import { agentLog } from "@/agent/log";
 
 function contentHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -71,7 +69,7 @@ type TimeoutPhase = "response" | "idle" | "limit";
 const DEFAULT_AGENT_REQUEST_LIMITS: AgentRequestLimits = { responseMs: 180_000, idleMs: 120_000, hardMs: 1_800_000 };
 
 function resolveAgentRequestLimits(): AgentRequestLimits {
-  const agent = (conf.get("settings", {}) as { agent?: { requestTimeoutMs?: unknown; idleTimeoutMs?: unknown; requestHardLimitMs?: unknown } }).agent;
+  const agent = (getAgentHost().settings.get("settings", {}) as { agent?: { requestTimeoutMs?: unknown; idleTimeoutMs?: unknown; requestHardLimitMs?: unknown } }).agent;
   const pick = (value: unknown, fallback: number) => {
     const number = Number(value);
     return Number.isFinite(number) ? Math.max(0, Math.round(number)) : fallback;
@@ -178,13 +176,13 @@ export function configureAgentRequests(session: AgentSession, limits?: { maxRequ
       let guard: RequestGuard | undefined;
       try {
         if (toolFailure) { const { error } = toolFailure; toolFailure = undefined; throw error; }
-        const providers = conf.get("settings", {}).customProviders;
+        const providers = getAgentHost().settings.get("settings", {}).customProviders;
         const provider = Array.isArray(providers) ? providers.find(item => item?.id === model.provider) : undefined;
         // ACT: 取鉴权（含 OAuth 刷新）也可能挂住，计时从这一步就开始。
         guard = createRequestGuard(requestLimits);
         const auth = await session.modelRuntime.getAuth(model, { apiKey: options?.apiKey, env: options?.env, signal: guard.signal(options?.signal) });
         const apiKey = options?.apiKey ?? auth?.auth.apiKey;
-        const files = createFileTransport({
+        const files = getAgentHost().models.createFileTransport({
           apiUrl: auth?.auth.baseUrl ?? model.baseUrl,
           apiKey: apiKey ?? "",
           protocol: model.api,
@@ -322,7 +320,7 @@ export function configureAgentRequests(session: AgentSession, limits?: { maxRequ
             onPayload: async (payload, requestModel) => {
               try {
                 const body = await options?.onPayload?.(payload, requestModel) ?? payload;
-                const images = getRequestFiles(body).filter(file => file.mimeType.toLowerCase().startsWith("image/"));
+                const images = getAgentHost().models.getRequestFiles(body).filter(file => file.mimeType.toLowerCase().startsWith("image/"));
                 const imageCursors = new Map<string, number>();
                 activeImages = [];
                 for (const image of images) {
@@ -352,7 +350,7 @@ export function configureAgentRequests(session: AgentSession, limits?: { maxRequ
                 try { await files.prepare(body); }
                 catch (error) {
                   // 文件 ID 只缩小 JSON；供应商仍限制图片总字节和张数，超限也按旧观察卸载。
-                  if (error instanceof FileRequestLimitError && offloadBytes(error.excessBytes, error.excessCount, true)) {
+                  if (error instanceof getAgentHost().models.FileRequestLimitError && offloadBytes(error.excessBytes, error.excessCount, true)) {
                     restart = true;
                     throw rebuildRequest;
                   }

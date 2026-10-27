@@ -3,7 +3,7 @@ import { mkdir, realpath, writeAtomic } from "@toonflow/file";
 import { createHash } from "node:crypto";
 import { relative, sep } from "node:path";
 import { agentArtifactsDirectory, getAgentPreferences } from "@/agent/runtime/preferences";
-import { resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
+import { getAgentHost } from "@/agent/host";
 
 type ToolContent = TextContent | ImageContent;
 
@@ -38,8 +38,8 @@ async function offloadText(cwd: string, toolName: string, text: string, maxBytes
     signal?.throwIfAborted();
     // ACT: 与图片附件一致，先按真实工作区解析，禁止落盘路径逃逸出工作区。
     const root = await realpath(cwd);
-    const target = await resolveWorkspacePath(root, relativePath, true);
-    const directory = await resolveWorkspacePath(root, agentArtifactsDirectory, true);
+    const target = await getAgentHost().workspace.resolveWorkspacePath(root, relativePath, true);
+    const directory = await getAgentHost().workspace.resolveWorkspacePath(root, agentArtifactsDirectory, true);
     await mkdir(directory.path, { recursive: true });
     signal?.throwIfAborted();
     // ACT: 文件名由「内容哈希 + 工具名」决定，相同输出重复落盘时覆盖同一文件，保持幂等。

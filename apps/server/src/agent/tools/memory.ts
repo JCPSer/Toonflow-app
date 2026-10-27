@@ -1,14 +1,13 @@
 import { z } from "zod";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { isMemoryEnabled, maxDocumentLength, readDocument, saveDocument } from "@/modules/platformCore/personalization";
-
-const parameters = z.strictObject({
-  action: z.enum(["read", "save"]).describe("read 读取最新全局记忆；save 保存合并后的完整 Markdown"),
-  content: z.string().max(maxDocumentLength).optional().describe("save 时必填；保留仍有效的记忆，空字符串表示清空"),
-  revision: z.string().regex(/^[a-f0-9]{64}$/).optional().describe("save 时必填；必须使用最近一次 read 返回的 revision，禁止猜测"),
-});
+import { getAgentHost } from "@/agent/host";
 
 export function createMemoryTool(): ToolDefinition {
+  const parameters = z.strictObject({
+    action: z.enum(["read", "save"]).describe("read 读取最新全局记忆；save 保存合并后的完整 Markdown"),
+    content: z.string().max(getAgentHost().personalization.maxDocumentLength).optional().describe("save 时必填；保留仍有效的记忆，空字符串表示清空"),
+    revision: z.string().regex(/^[a-f0-9]{64}$/).optional().describe("save 时必填；必须使用最近一次 read 返回的 revision，禁止猜测"),
+  });
   return {
     name: "memory",
     label: "全局记忆",
@@ -23,14 +22,15 @@ export function createMemoryTool(): ToolDefinition {
     executionMode: "sequential",
     async execute(_id, params, signal) {
       signal?.throwIfAborted();
-      if (!isMemoryEnabled()) throw new Error("本地记忆已关闭，请遵循用户的设置，不再读取或保存记忆");
+      const host = getAgentHost();
+      if (!host.personalization.isMemoryEnabled()) throw new Error("本地记忆已关闭，请遵循用户的设置，不再读取或保存记忆");
       const args = parameters.parse(params);
       if (args.action === "save" && (args.content === undefined || args.revision === undefined)) {
         throw new Error("保存记忆需要提供 content 和最近读取的 revision");
       }
       const details = args.action === "read"
-        ? await readDocument("memory")
-        : await saveDocument("memory", args.content!, args.revision!);
+        ? await host.personalization.readDocument("memory")
+        : await host.personalization.saveDocument("memory", args.content!, args.revision!);
       return { content: [{ type: "text", text: JSON.stringify(details) }], details };
     },
   };

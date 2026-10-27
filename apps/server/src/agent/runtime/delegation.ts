@@ -2,19 +2,22 @@ import { readFile } from "@toonflow/file";
 import { parseSessionEntries } from "@earendil-works/pi-coding-agent";
 import type { CanvasContext } from "@toonflow/tools-scaffold/runtime";
 import type { AgentEvent } from "@/agent/runtime/types";
-import { run } from "@/agent/runtime";
 import { createAgentConversation, getToolResultText, trackAgentEvent, updateSubAgent } from "@/agent/runtime/sessions";
 import { addUsage, emptyUsage, type SubAgentResult } from "@/agent/runtime/subAgent";
 import { createCanvasContext } from "@/agent/bridge/canvas";
 import { createQuestionContext } from "@/agent/bridge/question";
-import { resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
-import { translateError, translateMessage } from "@/lib/i18n";
-import type { ThinkingLevel } from "@/lib/modelReasoning";
+import { getAgentHost } from "@/agent/host";
+import type { ThinkingLevel } from "@toonflow/formats/modelReasoning";
+
+// ACT: 主循环由调用方注入，避免 delegation ↔ runtime/index 的静态环（file 级 SCC 归零）。
+// 入参形状由调用方保证，这里只声明调用契约，避免为了类型反向 import 主循环模块。
+type RunAgent = (options: any, send: (event: AgentEvent) => void) => Promise<unknown>;
 
 export async function runDelegatedAgent(options: {
   cwd: string; parentFile: string; name: string; task: string;
   providerId: string; modelId: string; thinkingLevel?: ThinkingLevel;
   canvas?: CanvasContext; signal?: AbortSignal; send: (event: AgentEvent) => void; onProgress?: (text: string) => void;
+  run: RunAgent;
 }) {
   const { cwd, parentFile, name, task, providerId, modelId, thinkingLevel, canvas, signal, onProgress } = options;
   const child = await createAgentConversation(cwd, { parentFile, name, task, providerId, modelId, thinkingLevel });
@@ -31,11 +34,11 @@ export async function runDelegatedAgent(options: {
   const questions = createQuestionContext(cwd, send, () => controller.abort());
   const result: SubAgentResult = { name, status: "running", result: "准备执行" };
   try {
-    await run({ prompt: task, cwd, sessionFile: child.file, providerId, modelId, thinkingLevel, canvas: bridge?.context, question: questions.context, signal: childSignal, onCancel: () => controller.abort() }, send);
+    await options.run({ prompt: task, cwd, sessionFile: child.file, providerId, modelId, thinkingLevel, canvas: bridge?.context, question: questions.context, signal: childSignal, onCancel: () => controller.abort() }, send);
     result.status = childSignal.aborted ? "cancelled" : "completed";
   } catch (error) {
     result.status = childSignal.aborted ? "cancelled" : (error as { code?: string })?.code === "AGENT_LENGTH" ? "limited" : "error";
-    result.result = error instanceof Error ? translateError(error) : translateMessage("子任务执行失败");
+    result.result = error instanceof Error ? getAgentHost().i18n.translateError(error) : getAgentHost().i18n.translateMessage("子任务执行失败");
     if (result.status !== "limited") await updateSubAgent(cwd, parentFile, { ...agent, status: result.status, result: result.result });
     send({ type: "error", message: result.result });
   } finally {
@@ -43,7 +46,7 @@ export async function runDelegatedAgent(options: {
     questions.dispose();
     send({ type: "done" });
   }
-  const { path } = await resolveWorkspacePath(cwd, `.agent/sessions/${child.file}`);
+  const { path } = await getAgentHost().workspace.resolveWorkspacePath(cwd, `.agent/sessions/${child.file}`);
   const entries = parseSessionEntries(await readFile(path, "utf8"));
   const usage = emptyUsage();
   for (const entry of entries) {
