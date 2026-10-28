@@ -52,3 +52,4 @@
 | 2026-10-28 18:25 | 看门狗修复审查闭环：三道超时（60min 宿主级/2×5min 下载）、监听器移进工厂、poll 幂等守卫、索引恢复 | server/scaffold typecheck 0，9 节点包与入口重建部署 |
 | 2026-10-28 19:55 | 引用/附件改纯指针 + 画布平移卡顿（连线 10Hz + contain:paint）+ 角标挂框外与计时组件隔离 | server/scaffold/9 包 typecheck 0，全部构建部署 |
 | 2026-10-28 21:10 | 连线消失与分支变灰修复 + 对话轮次目录条 | 删 contain:paint；新增 assistantEntry 事件与前端补 id；加右侧轮次目录（pointer-events 穿透、padding 空槽、:has 展开）；server/web typecheck 通过、构建部署 |
+| 2026-10-28 21:55 | 截帧空白与自动建节点出屏修复 + 小地图点击跳转 | 离屏容器挂载 + presentedFrame/nudgeFrame；抽 nodeViewport 助手并接入 7 处自动建节点；minimap @click 用 viewBox 反算坐标 setCenter；5 包 typecheck 通过、两轮构建部署 |
