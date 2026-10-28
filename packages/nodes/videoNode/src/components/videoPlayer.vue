@@ -41,8 +41,8 @@
           </div>
         </el-popover>
       </div>
-      <el-dropdown v-if="!readOnly && files" class="captureMenu" trigger="click" placement="top-end" :disabled="!ready || capturing" @visibleChange="captureMenuVisible = $event" @command="captureFrame">
-        <el-button class="playerButton" text circle :icon="IconPhotoScan" :loading="capturing" :disabled="!ready || capturing" :aria-expanded="captureMenuVisible" aria-label="截取视频帧" title="截取视频帧" />
+      <el-dropdown v-if="!readOnly && files" class="captureMenu" trigger="click" placement="top-end" :disabled="capturing" @visibleChange="captureMenuVisible = $event" @command="captureFrame">
+        <el-button class="playerButton" text circle :icon="IconPhotoScan" :loading="capturing" :disabled="capturing" :aria-expanded="captureMenuVisible" aria-label="截取视频帧" title="截取视频帧" />
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="current" :icon="IconPhotoScan">截取当前帧</el-dropdown-item>
@@ -62,7 +62,7 @@ import { ElButton, ElDropdown, ElDropdownMenu, ElDropdownItem, ElMessage, ElPopo
 import { IconPlayerPlay, IconPlayerPause, IconVolume, IconVolumeOff, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { useNodeFiles } from "@toonflow/nodes-scaffold/workspaceFiles";
 
-const { src, posterUrl = "", label = "节点视频", readOnly = false } = defineProps<{ src: string; posterUrl?: string; label?: string; readOnly?: boolean }>();
+const { src, posterUrl = "", label = "节点视频", readOnly = false, resolveSource } = defineProps<{ src: string; posterUrl?: string; label?: string; readOnly?: boolean; resolveSource?: () => Promise<void> }>();
 // ACT: 海报态由父层提供首帧图；src 为空时只显示海报，用户点播放才 emit activate 索取视频。
 const emit = defineEmits<{ loadedmetadata: [event: Event]; posterSize: [width: number, height: number]; activate: []; deactivate: [] }>();
 const video = ref<HTMLVideoElement>();
@@ -90,11 +90,14 @@ const flow = readOnly ? undefined : useVueFlow();
 const files = readOnly ? undefined : useNodeFiles();
 const getCanvas = inject<(() => { id: string } | undefined) | undefined>("canvas", undefined);
 let captureController: AbortController | undefined;
+// ACT: 海报态截帧要先等父层激活出 src，这期间的 src 变化不能当成"换视频"中止本次截帧。
+let awaitingSource = false;
 
 watch(() => getCanvas?.()?.id, () => captureController?.abort(), { flush: "sync" });
 watch(() => readOnly, value => { if (value) captureController?.abort(); }, { flush: "sync" });
 watch(() => src, () => {
   closeHoverOverlays();
+  if (awaitingSource) return;
   captureController?.abort();
   ready.value = false;
   poster.value = "";
@@ -270,52 +273,74 @@ function toggleMute() {
   readVolume();
 }
 
-function loadFrame(source: HTMLVideoElement, time: number, signal: AbortSignal) {
+function loadFrame(source: HTMLVideoElement, srcUrl: string, mode: { kind: "time"; time: number } | { kind: "last" }, signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     const timer = window.setTimeout(() => finish(new Error("视频帧读取超时")), 15000);
     function finish(error?: unknown) {
       clearTimeout(timer);
-      source.onloadeddata = null;
+      source.onloadedmetadata = null;
       source.onseeked = null;
       source.onerror = null;
       signal.removeEventListener("abort", abort);
       error ? reject(error) : resolve();
     }
     function abort() { finish(signal.reason); }
-    source.onloadeddata = () => {
-      if (time === 0) finish();
-      else source.currentTime = time;
+    // ACT: 只有 seeked 才代表解码器出了新画面；loadedmetadata 时 readyState 可能已 ≥2，据此判断会画到旧帧/黑帧。
+    source.onloadedmetadata = () => {
+      const total = source.duration;
+      if (!Number.isFinite(total) || total <= 0) return finish(new Error("无法读取视频时长"));
+      const last = Math.max(0, total - 0.05);
+      // ACT: 首帧固定取 0.05s 触发一次真实 seek；目标时间恰好等于当前时间时不会派发 seeked，会一直等到超时。
+      // ACT: last 在极短视频上会算成 0，与当前时间同值不会派发 seeked，至少留 0.01s 才能触发真实 seek。
+      const target = mode.kind === "last" ? Math.max(0.01, last) : Math.max(0.05, Math.min(mode.time, last || 0.05));
+      source.onseeked = () => {
+        if (source.readyState < 2 || !source.videoWidth) return finish(new Error("视频帧尚未就绪"));
+        finish();
+      };
+      source.currentTime = target;
     };
-    source.onseeked = () => finish();
     source.onerror = () => finish(new Error("无法读取视频帧"));
     signal.addEventListener("abort", abort, { once: true });
-    source.src = src;
+    source.src = srcUrl;
     source.load();
     if (signal.aborted) abort();
   });
 }
 
 async function captureFrame(command: "current" | "first" | "last") {
-  if (readOnly || !node || !flow || !files || !video.value || !ready.value || capturing.value) return;
+  if (readOnly || !node || !flow || !files || capturing.value) return;
   const { addNodes, findNode, getNodes, nodeTypes } = flow;
   if (!nodeTypes?.value?.["remote-imageNode"]) return void ElMessage.error("请先启用图片节点插件");
   capturing.value = true;
-  const controller = captureController = new AbortController();
   const id = crypto.randomUUID();
   let frameVideo: HTMLVideoElement | undefined;
   let uploadStarted = false;
   let committed = false;
   let workspace: ReturnType<NonNullable<typeof files>["getWorkspaceFiles"]> | undefined;
+  let controller: AbortController | undefined;
   try {
-    let source = video.value;
-    if (command !== "current") {
-      frameVideo = document.createElement("video");
-      frameVideo.muted = true;
-      frameVideo.preload = "auto";
-      // 用独立视频解码首尾帧，不改变播放器当前进度；尾帧定位到结束前。
-      await loadFrame(frameVideo, command === "first" ? 0 : Math.max(0, duration.value - 0.001), controller.signal);
-      source = frameVideo;
+    // ACT: controller 必须在 await 前建好，激活期间的切画布/卸载/只读切换才能中止本次截帧。
+    controller = captureController = new AbortController();
+    // ACT: 海报态没有 <video>，先让父层激活视频源；期间 src 变化是本次激活的结果，不能中止截帧。
+    if (!src && resolveSource) {
+      awaitingSource = true;
+      try { await resolveSource(); }
+      catch { return; } // ACT: activate 内部已提示过读取失败，这里不重复弹错。
+      finally { awaitingSource = false; }
     }
+    controller.signal.throwIfAborted();
+    const srcUrl = src;
+    if (!srcUrl) throw new Error("视频尚未就绪，请稍后重试");
+    // ACT: 统一用独立元素解码，既不打断播放也不改变播放进度。
+    frameVideo = document.createElement("video");
+    frameVideo.muted = true;
+    frameVideo.preload = "auto";
+    // ACT: 海报态没有播放器元素，"当前帧"退化为首帧，明确告知而不是静默给出别的画面。
+    if (command === "current" && !video.value) ElMessage.info("视频尚未播放，已截取首帧");
+    const currentSeconds = video.value?.currentTime ?? 0;
+    const mode = command === "last" ? { kind: "last" as const } : { kind: "time" as const, time: command === "first" ? 0 : currentSeconds };
+    await loadFrame(frameVideo, srcUrl, mode, controller.signal);
+    const source = frameVideo;
     controller.signal.throwIfAborted();
     const canvas = document.createElement("canvas");
     canvas.width = source.videoWidth;
@@ -344,7 +369,7 @@ async function captureFrame(command: "current" | "first" | "last") {
     committed = true;
     ElMessage.success("已截取为图片节点");
   } catch (error) {
-    if (!controller.signal.aborted) ElMessage.error(error instanceof Error ? error.message : "截帧失败");
+    if (!controller?.signal.aborted) ElMessage.error(error instanceof Error ? error.message : "截帧失败");
   } finally {
     if (frameVideo) { frameVideo.removeAttribute("src"); frameVideo.load(); }
     if (uploadStarted && !committed) {
@@ -354,6 +379,8 @@ async function captureFrame(command: "current" | "first" | "last") {
     }
     capturing.value = false;
     captureController = undefined;
+    // ACT: 截帧可能刚从海报态激活出视频，鼠标一直在节点上不会触发 pointerleave，主动排一次闲置释放。
+    scheduleIdle();
   }
 }
 </script>

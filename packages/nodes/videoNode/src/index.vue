@@ -24,8 +24,8 @@
         @click.stop="fileInput?.click()">替换视频</el-button>
     </template>
     <template #topRightActions>
-      <el-dropdown trigger="click" placement="bottom-end" :disabled="!player?.ready || player?.capturing || uploading || exporting" @command="player?.captureFrame($event)">
-        <el-button :icon="IconPhotoScan" :loading="player?.capturing" :disabled="!player?.ready || player?.capturing || uploading || exporting" text title="截取视频帧" aria-label="截取视频帧" />
+      <el-dropdown trigger="click" placement="bottom-end" :disabled="!outputFile || player?.capturing || uploading || exporting" @command="player?.captureFrame($event)">
+        <el-button :icon="IconPhotoScan" :loading="player?.capturing" :disabled="!outputFile || player?.capturing || uploading || exporting" text title="截取视频帧" aria-label="截取视频帧" />
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="current" :icon="IconPhotoScan">截取当前帧</el-dropdown-item>
@@ -45,6 +45,7 @@
         ref="player"
         :src="previewUrl"
         :poster-url="posterUrl"
+        :resolve-source="activate"
         @activate="activate"
         @deactivate="deactivate"
         @loadedmetadata="resizeVideo"

@@ -12,6 +12,7 @@
     <template #dropdown>
       <el-dropdown-menu v-if="entry">
         <template v-if="background">
+          <el-dropdown-item v-if="canReveal" command="reveal-in-os">{{ revealLabel }}</el-dropdown-item>
           <el-dropdown-item command="new-subfolder">{{ translate("新建文件夹") }}</el-dropdown-item>
           <el-dropdown-item command="upload-here">{{ translate("上传到此") }}</el-dropdown-item>
         </template>

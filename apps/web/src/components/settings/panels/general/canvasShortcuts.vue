@@ -59,8 +59,8 @@ const bindModeVisible = ref(false);
 const resetKey = ref(0);
 const issues = ref<Partial<Record<CanvasShortcutAction, string>>>({});
 const shortcutDescriptions: Partial<Record<CanvasShortcutAction, string>> = {
-  copyOnDrag: "按住并拖动节点",
-  duplicateOnDrag: "按住并拖动节点",
+  copyOnDrag: "按住并拖动节点：只复制节点本体，不复制连线",
+  duplicateOnDrag: "按住并拖动节点：生成副本并带入边连线，标签加「副本」；录制纯修饰键请按住组合再松开",
   zoom: "按配置滚动鼠标滚轮",
   pan: "无需按键时，仅平移空白处",
   selection: "左键拖动空白处框选",
