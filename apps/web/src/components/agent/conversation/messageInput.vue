@@ -256,6 +256,13 @@ function handleSenderKeydown(event: KeyboardEvent) {
     return;
   }
   if (mentionMenuRef.value?.handleKeydown(event)) return;
+  // ACT: x-sender 只把 Ctrl+Y 当重做，⌘⇧Z 会命中它自己的撤销判定（不判 Shift），这里接管并显式重做。
+  if (!event.isComposing && event.keyCode !== 229 && (event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === "Z" || event.key === "z" || event.code === "KeyZ")) {
+    event.preventDefault();
+    event.stopPropagation();
+    void sender?.redo();
+    return;
+  }
   skillMenuRef.value?.handleKeydown(event);
   if (event.defaultPrevented) return;
   if (handleModifiedArrow(event)) return;
