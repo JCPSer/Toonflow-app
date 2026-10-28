@@ -1,0 +1,56 @@
+{
+  "task_id": "task_261028_agent-node",
+  "created_at": "2026-10-28",
+  "owner": "liyuhang",
+  "goal": "新增画布节点类型 Agent：仅输入端口、每节点独立 agent 会话、节点旁跟随式对话面板（复用主对话界面）、上游自动注入、四态状态显示",
+  "requirements_doc": ".claude/development_docs/liyuhang/1_requirements_matrix/2026-10-28-23-09-agent-node.md",
+  "solution_doc": ".claude/development_docs/liyuhang/2_requirements_solutions/2026-10-28-23-09-agent-node.md",
+  "decisions": {
+    "input_trigger": "上游只当上下文，手动发消息才跑",
+    "session_scope": "每节点独立会话，不出现在历史列表",
+    "canvas_permission": "与主对话同权",
+    "skills": "每轮临时选，沿用 /skill:，不落节点配置",
+    "panel": "画布层浮层，复用 conversation.vue，同一时刻唯一，附在节点旁跟随",
+    "panel_open": "单击节点开、点空白/其它节点/Esc 关",
+    "input_types": "全类型",
+    "upstream_injection": "每次发消息自动作为引用带上",
+    "model": "跟随全局",
+    "copy": "复制节点/画布 fork 新会话",
+    "delete": "删节点连同会话文件一起删",
+    "status": "待开始/等待输入/理解中/运行中四态，不加失败态"
+  },
+  "tasks": [
+    {
+      "id": "S1",
+      "subject": "节点包 agentNode（端口、本体、状态、摘要）",
+      "owner": "unassigned",
+      "outputs": ["packages/nodes/agentNode/**"],
+      "depends_on": [],
+      "status": "pending"
+    },
+    {
+      "id": "S2",
+      "subject": "会话绑定 + 画布层对话面板（复用 conversation.vue、跟随节点、唯一性、四态状态源）",
+      "owner": "unassigned",
+      "outputs": ["apps/web/src/pages/workspace/panels/canvas/**", "apps/web/src/components/agent/**"],
+      "depends_on": [],
+      "status": "pending"
+    },
+    {
+      "id": "S3",
+      "subject": "服务端：历史过滤、会话删除、复制 fork",
+      "owner": "unassigned",
+      "outputs": ["apps/server/src/agent/**", "apps/server/src/routes/agent/**"],
+      "depends_on": ["S2"],
+      "status": "pending"
+    },
+    {
+      "id": "S4",
+      "subject": "联调与回归：上游注入、状态四态、复制/删除、面板唯一性",
+      "owner": "unassigned",
+      "outputs": [".claude/development_docs/liyuhang/3_test_results/**"],
+      "depends_on": ["S1", "S2", "S3"],
+      "status": "pending"
+    }
+  ]
+}
