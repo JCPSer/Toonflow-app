@@ -14,7 +14,8 @@ export type MentionCanvasSource = {
   nodes(canvasId: string, options: MentionQuery): Promise<MentionPage<MentionNode>> | undefined;
   outputs(canvasId: string, nodeId: string): MentionOutput[] | undefined;
   selectCanvas(canvasId: string, nodeId: string, outputId: string): Promise<AgentMention> | undefined;
-  selectNode(canvasId: string, nodeId: string): AgentMention | undefined;
+  // ACT: 节点引用要读上游 textNode 的正文文件，因此允许异步；消费方本就 await。
+  selectNode(canvasId: string, nodeId: string): Promise<AgentMention> | undefined;
 };
 
 export function mentionRecord(value: unknown): value is Record<string, unknown> {
@@ -125,11 +126,93 @@ export async function createCanvasMention(node: MentionCanvasNode, canvasId: str
     nodeName, outputId, outputName: output.name }, dataType: selected.dataType, value };
 }
 
-// ACT: 节点引用只带身份：画布与节点 id 供模型用画布工具定位，不带任何 data 快照。
-export function createNodeMention(node: MentionCanvasNode, canvasId: string): AgentMention {
+export type MentionEdge = { source: string; sourceHandle: string; target: string; targetHandle: string };
+export type MentionNodeUpstream = {
+  targetHandle: string;
+  targetHandleName?: string;
+  nodeId: string;
+  nodeName: string;
+  nodeType?: string;
+  outputId: string;
+  outputName?: string;
+  dataType: string;
+  preview: string;
+  path?: string;
+  mimeType?: string;
+};
+
+const mediaDataTypes = new Set(["IMAGE", "MASK", "VIDEO", "AUDIO", "FILE"]);
+const upstreamLimit = 20;
+const previewLength = 200;
+
+// ACT: 预览会拼进提示词，多行正文与超长文本必须压平截断，否则一条上游就能吃掉大段上下文。
+function upstreamPreview(preview: string) {
+  const flat = preview.replace(/\s+/g, " ").trim();
+  return flat.length > previewLength ? `${flat.slice(0, previewLength)}…` : flat;
+}
+
+/** ACT: 媒体上游只给定位信息（路径 + mimeType），既不塞图片内容也不请求缩略图。 */
+function mediaReference(dataType: string, value: unknown) {
+  if (!mediaDataTypes.has(dataType) || !mentionRecord(value)) return {};
+  const { url, mimeType } = value;
+  if (typeof url !== "string" || !url.trim() || typeof mimeType !== "string" || !mimeType.trim()) return {};
+  return { path: url.slice(0, 4096), mimeType: mimeType.slice(0, 128) };
+}
+
+function targetHandleName(node: MentionCanvasNode, handleId: string) {
+  const handles = nodeData(node).handles;
+  if (!Array.isArray(handles)) return undefined;
+  const handle = handles.find(item => mentionRecord(item) && item.type === "target" && item.id === handleId);
+  return mentionRecord(handle) && typeof handle.label === "string" && handle.label.trim() ? handle.label.slice(0, 160) : undefined;
+}
+
+/**
+ * ACT: 节点引用只取一层入边，给模型「这个节点的输入来自哪里」的结构与短预览；
+ * 完整内容仍要它自己用画布工具读，避免把整条上游链路的正文都塞进引用。
+ */
+export function collectUpstream(node: MentionCanvasNode, edges: readonly MentionEdge[] | undefined,
+  nodesById: ReadonlyMap<string, MentionCanvasNode> | undefined,
+  readText?: (path: string) => Promise<string>): Promise<{ upstream: MentionNodeUpstream[]; truncated?: boolean }> {
+  if (!edges?.length) return Promise.resolve({ upstream: [] });
+  // ACT: 悬空边（端点节点已删）与空端口边对模型没有意义，统一在这里过滤；实时与离线共用同一口径。
+  const incoming = edges.filter(edge => edge.target === node.id && !!edge.sourceHandle && !!edge.targetHandle
+    && (!nodesById || nodesById.has(edge.source)));
+  const upstream = incoming.slice(0, upstreamLimit).map(async edge => {
+    const source = nodesById?.get(edge.source);
+    const output = source ? mentionNodeOutputs(source).find(item => item.id === edge.sourceHandle) : undefined;
+    const selected = source ? mentionOutputValue(source, edge.sourceHandle) : undefined;
+    const dataType = output?.dataType ?? "";
+    const handleName = targetHandleName(node, edge.targetHandle);
+    // ACT: 画布文件里 textNode 的 outputs 被 toJSON 清空，正文只剩 textPath；离线链路必须读文件才拿得到预览。
+    let text = typeof selected?.value === "string" ? selected.value : undefined;
+    if (text === undefined && typeof selected?.textPath === "string" && readText) text = await readText(selected.textPath).catch(() => undefined);
+    // ACT: 正文读不到时不能只说「文本内容」，否则模型会把占位文案当成真实摘要直接用。
+    const fallback = selected?.textPath !== undefined && text === undefined ? "文本内容（需用工具读取）" : output?.preview ?? "暂无输出";
+    const item: MentionNodeUpstream = {
+      targetHandle: edge.targetHandle.slice(0, 256),
+      nodeId: edge.source.slice(0, 256),
+      nodeName: (source ? mentionNodeName(source) : edge.source).slice(0, 255),
+      outputId: edge.sourceHandle.slice(0, 256),
+      dataType,
+      // ACT: 列表预览只截到 160 字给 UI 用；这里按上游口径重新从完整值取，避免被列表截断限制。
+      preview: upstreamPreview(text ?? fallback),
+      ...(handleName ? { targetHandleName: handleName } : {}),
+      ...(source?.type ? { nodeType: String(source.type).slice(0, 64) } : {}),
+      ...(output?.name ? { outputName: output.name.slice(0, 160) } : {}),
+      ...mediaReference(dataType, selected?.value),
+    };
+    return item;
+  });
+  return Promise.all(upstream).then(items => ({ upstream: items, ...(incoming.length > upstreamLimit ? { truncated: true } : {}) }));
+}
+
+// ACT: 节点引用带身份 + 直接上游摘要；value 从 null 换成对象后仍满足 mentions schema 的 isBoundedValue。
+export async function createNodeMention(node: MentionCanvasNode, canvasId: string,
+  context?: { edges?: readonly MentionEdge[]; nodesById?: ReadonlyMap<string, MentionCanvasNode>; readText?: (path: string) => Promise<string> }): Promise<AgentMention> {
   const canvasName = canvasId.replace(/\.json$/i, "").slice(0, 255);
   const nodeName = mentionNodeName(node);
-  return { id: crypto.randomUUID(), label: nodeName, source: { kind: "canvas", canvasId, canvasName, nodeId: node.id, nodeName }, dataType: "NODE", value: null };
+  return { id: crypto.randomUUID(), label: nodeName, source: { kind: "canvas", canvasId, canvasName, nodeId: node.id, nodeName },
+    dataType: "NODE", value: await collectUpstream(node, context?.edges, context?.nodesById, context?.readText) };
 }
 
 export { mentionAssetType } from "@toonflow/formats/mentionSources";

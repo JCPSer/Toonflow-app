@@ -2,7 +2,7 @@ import { open, opendir, readFile, stat } from "@toonflow/file";
 import { basename } from "node:path";
 import { getAgentHost } from "@/agent/host";
 import { createCanvasMention, createNodeMention, mentionAssetType, mentionNodeOutputs, mentionRecord, queryMentionNodes,
-  type MentionCanvasNode, type MentionQuery } from "./mentionSources";
+  type MentionCanvasNode, type MentionEdge, type MentionQuery } from "./mentionSources";
 import type { AgentMention } from "./runtime/types";
 import { decodeTextFile } from "@toonflow/formats/documentFormats";
 
@@ -10,7 +10,7 @@ export function queryMentionAssets(options: Record<string, unknown>) {
   return getAgentHost().assets.queryAssets(options);
 }
 
-type StoredCanvas = { revision: string; nodes: MentionCanvasNode[]; byId: Map<string, MentionCanvasNode> };
+type StoredCanvas = { revision: string; nodes: MentionCanvasNode[]; byId: Map<string, MentionCanvasNode>; edges: MentionEdge[] };
 const canvasCache = new Map<string, { revision: string; bytes: number; value: Promise<StoredCanvas> }>();
 
 async function readMentionText(directory: string, relativePath: string) {
@@ -41,7 +41,11 @@ async function readCanvas(directory: string, canvasId: string) {
     if (latest.mtimeMs !== info.mtimeMs || latest.size !== info.size) throw Object.assign(new Error("画布正在保存，请重试"), { status: 409 });
     if (!mentionRecord(canvas) || canvas.toonflowCanvas !== true || !Array.isArray(canvas.nodes)) throw Object.assign(new Error("文件不是有效画布"), { status: 400 });
     const nodes = canvas.nodes.filter((node): node is MentionCanvasNode => mentionRecord(node) && typeof node.id === "string");
-    return { revision, nodes, byId: new Map(nodes.map(node => [node.id, node])) };
+    // ACT: 连线与节点同在画布 JSON 里；手写或旧文件可能没有 edges，非法时按无连线处理而不是让引用失败。
+    const edges = Array.isArray(canvas.edges) ? canvas.edges.filter((edge): edge is MentionEdge => mentionRecord(edge)
+      && typeof edge.source === "string" && typeof edge.sourceHandle === "string"
+      && typeof edge.target === "string" && typeof edge.targetHandle === "string") : [];
+    return { revision, nodes, byId: new Map(nodes.map(node => [node.id, node])), edges };
   })();
   const entry = { revision, bytes: info.size, value };
   canvasCache.set(path, entry);
@@ -102,7 +106,8 @@ export async function storedNodeMention(directory: string, canvasId: string, nod
   const canvas = await readCanvas(directory, canvasId);
   const node = canvas.byId.get(nodeId);
   if (!node) throw Object.assign(new Error("节点已删除，请重新选择"), { status: 404 });
-  return createNodeMention(node, canvasId);
+  // ACT: readText 让上游 textNode 的预览能取到正文（画布里 outputs 已被 toJSON 清空，只剩 textPath）。
+  return createNodeMention(node, canvasId, { edges: canvas.edges, nodesById: canvas.byId, readText: path => readMentionText(directory, path) });
 }
 
 export async function selectMentionAsset(relativePath: string, options: { library?: "global" | "project"; directory?: string } = {}): Promise<AgentMention> {

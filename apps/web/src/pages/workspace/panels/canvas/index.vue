@@ -501,7 +501,7 @@ defineExpose({ canvasId, canvasReady, getCanvasContext, addNodeAtPointer, readDo
     return canvasMenuRef.value.getCanvases(signal);
   },
   syncCanvasPath: (previous: string, target: string) => canvasMenuRef.value?.syncCanvasPath(previous, target),
-  getMentionNodes: () => flow.nodes.value, findMentionNode: flow.findNode,
+  getMentionNodes: () => flow.nodes.value, findMentionNode: flow.findNode, getMentionEdges: () => flow.getEdges.value,
   getRetainedNodes: canvasHistory.getRetainedNodes,
   get canvasListReady() { return canvasMenuRef.value?.initialized ?? false; },
   get saveBusy() { return savePaused; }, get loadError() { return canvasMenuRef.value?.loadError ?? ""; },

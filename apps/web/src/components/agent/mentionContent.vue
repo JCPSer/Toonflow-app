@@ -8,7 +8,7 @@
       <video v-else-if="previewUrl && selected.dataType === 'VIDEO'" :src="previewUrl" controls playsinline preload="metadata" @error="error = '无法预览该视频'" />
       <audio v-else-if="previewUrl && selected.dataType === 'AUDIO'" :src="previewUrl" controls preload="metadata" @error="error = '无法预览该音频'" />
       <p v-else-if="selected.dataType === 'FILE'" class="fileName"><icon-file :size="20" />{{ selected.label }}</p>
-      <p v-else-if="selected.dataType === 'NODE'" class="fileName"><icon-at :size="20" />节点引用只包含节点身份，内容由助手用画布工具读取。</p>
+      <p v-else-if="selected.dataType === 'NODE'" class="fileName"><icon-at :size="20" />节点引用含节点身份与直接上游摘要（最多 200 字预览），完整内容由助手用画布工具读取。</p>
       <template v-else>
         <pre>{{ textValue.slice(0, 12000) }}</pre>
         <p v-if="textValue.length > 12000">…（预览已截取，发送保留完整内容）</p>

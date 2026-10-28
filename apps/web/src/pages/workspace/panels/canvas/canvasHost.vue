@@ -491,12 +491,20 @@ const mentionSource: MentionCanvasSource = {
       return text;
     });
   },
+  // ACT: 画布未打开时同步返回 undefined，让上层回落到服务端读取；打开时返回 Promise（要读上游正文）。
   selectNode(canvasId, nodeId) {
     const panel = mentionInstance(canvasId);
     if (!panel) return;
     const node = panel.findMentionNode(nodeId);
     if (!node) throw new Error("节点已删除，请重新选择");
-    return createNodeMention(node, canvasId);
+    // ACT: 节点引用要带直接上游摘要，实时画布直接取当前连线快照；未接端口的边不参与上游。
+    const nodes = panel.getMentionNodes();
+    const edges = panel.getMentionEdges().flatMap(edge => edge.sourceHandle && edge.targetHandle
+      ? [{ source: edge.source, sourceHandle: edge.sourceHandle, target: edge.target, targetHandle: edge.targetHandle }] : []);
+    // ACT: 上游 textNode 未挂载时内存里没有正文，回落到工作区文件，保证实时与离线口径一致；读不到就退回占位文案。
+    const directory = workspaceStore.project?.directory;
+    const readText = directory ? (path: string) => useWorkspaceFiles(directory).readText(path, 200001) : undefined;
+    return createNodeMention(node, canvasId, { edges, nodesById: new Map(nodes.map(item => [item.id, item])), readText });
   },
 };
 
