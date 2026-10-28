@@ -48,3 +48,4 @@
 | 2026-10-27 23:10 | 独立评审第 2 轮架构治理（AgentHost 端口）：3 个子 agent + 自验，查出 1 处功能退化、2 处隐患、1 处未跟踪新包 | 环已断（agent→app 0 条），契约 14 组 1:1；退化待修 |
 | 2026-10-27 23:25 | 修复 MCP 授权入参收敛 + 收口 `createA2aRouter` 门面缺口，更新 AGENTS.md 冻结块条目 | 探针三例正确；typecheck/build/启动全绿 |
 | 2026-10-28 15:10 | 节点引用附带直接上游：`collectUpstream` 一层入边 + 200 字短预览 + 媒体仅 path/mimeType；离线链路补 readText 读 textPath 正文、悬空边与空端口边过滤；还原被重排的 router.ts | server typecheck 0、web 仅剩既有报错、构建与部署完成；真实形态夹具 6 用例 PASS |
+| 2026-10-28 17:25 | 修复「生成任务因页面长时间未连接而停止」：删服务端 120s 看门狗（前端定时器节流≠断线），补页面可见时立即轮询 | server/scaffold typecheck 0，9 节点包+server+入口重建并部署 |

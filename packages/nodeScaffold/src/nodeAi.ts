@@ -99,6 +99,12 @@ const mediaTasksKey = Symbol.for("toonflow.nodeMediaTasks");
 const mediaTasksHost = globalThis as typeof globalThis & { [mediaTasksKey]?: ReturnType<typeof createMediaTasks> };
 // ACT: 图片、视频等独立 UMD 共用短轮询；每批最多 100 项，不按节点占用长连接。
 const mediaTasks = mediaTasksHost[mediaTasksKey] ??= createMediaTasks();
+if (typeof document !== "undefined") {
+  // ACT: 页面从后台切回可见时补一次轮询——后台期间 setTimeout 被节流，切回来不该再等一个完整周期。
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) mediaTasks.resume();
+  });
+}
 
 function createMediaTasks() {
   const pending = new Map<string, PendingMediaTask>();
@@ -109,6 +115,16 @@ function createMediaTasks() {
   function schedule(delay = 1000) {
     if (polling || timer !== undefined || (!pending.size && !cancellations.size)) return;
     timer = setTimeout(poll, delay);
+  }
+
+  function resume() {
+    if (polling || (!pending.size && !cancellations.size)) return;
+    // ACT: 后台期间排队的定时器可能已被系统节流，切回可见时直接丢弃它并立刻轮询，而不是再等一个周期。
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    void poll();
   }
 
   function cancel(directory: string, taskId: string) {
@@ -193,7 +209,7 @@ function createMediaTasks() {
     });
   }
 
-  return { wait, cancel };
+  return { wait, cancel, resume };
 }
 
 export function invalidateNodeModels(type: "language" | "media") {
