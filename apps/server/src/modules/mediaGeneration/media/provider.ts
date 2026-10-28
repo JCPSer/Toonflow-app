@@ -70,7 +70,8 @@ function createMediaTools(fetcher: typeof fetch = fetch): ProviderTools["media"]
   async function bytes(input: MediaInput) {
     if (input.type === "base64") return Buffer.from(input.data.replace(/^data:[^;]+;base64,/, ""), "base64");
     if (input.type === "binary") return Buffer.from(input.data);
-    const response = await fetcher(input.url);
+    // ACT: URL 读取加独立超时——无 signal、无上限时对端「接上不出字节」会把供应商调用永久挂住。
+    const response = await fetcher(input.url, { signal: AbortSignal.timeout(5 * 60 * 1000) });
     if (!response.ok) throw new Error(t`读取图片失败：HTTP ${response.status}`);
     return Buffer.from(await response.arrayBuffer());
   }

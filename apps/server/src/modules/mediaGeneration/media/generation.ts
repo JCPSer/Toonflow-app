@@ -11,6 +11,10 @@ import { detectMimeType, readPriceReference } from "@/modules/mediaGeneration/me
 import { isHidden, readModelVisibility } from "@/modules/mediaGeneration/ai/visibility";
 
 const maxMediaSize = 100 * 1024 * 1024;
+// ACT: 结果下载的独立上限（5 分钟）。它只防「连上但不出字节」，不与供应商生成耗时混为一谈。
+const downloadTimeoutMs = 5 * 60 * 1000;
+// ACT: 单次媒体生成的宿主级上限，须长于内置视频供应商的 30 分钟。
+const taskTimeoutMs = 60 * 60 * 1000;
 const mediaExtensions: Record<string, string> = {
   "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif",
   "image/avif": "avif", "image/bmp": "bmp", "image/tiff": "tiff",
@@ -66,7 +70,8 @@ export async function readReference(cwd: string, reference: MediaReference, medi
 
 async function downloadAsset(url: string, signal?: AbortSignal) {
   if (!/^https?:\/\//i.test(url)) invalid("生成结果必须使用 HTTP 或 HTTPS 地址");
-  const response = await fetch(url, { signal });
+  // ACT: 结果下载必须有独立超时——供应商主机「接上连接却不出字节」时，只有取消信号会让任务永久挂住、永不结算。
+  const response = await fetch(url, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(downloadTimeoutMs)]) : AbortSignal.timeout(downloadTimeoutMs) });
   if (!response.ok) throw new Error(t`下载生成结果失败（HTTP ${response.status}）`);
   if (Number(response.headers.get("content-length")) > maxMediaSize) {
     await response.body?.cancel();
@@ -95,8 +100,7 @@ async function assetBytes(asset: MediaAsset, mediaType: "image" | "video" | "aud
   let mimeType = asset.mimeType ?? "";
   if (asset.type === "url") {
     const result = await downloadAsset(asset.url, signal);
-    bytes = result.bytes;
-    const responseMimeType = result.mimeType.split(";")[0].trim().toLowerCase();
+    bytes = result.bytes;    const responseMimeType = result.mimeType.split(";")[0].trim().toLowerCase();
     mimeType = responseMimeType && responseMimeType !== "application/octet-stream" ? result.mimeType : mimeType;
   } else if (asset.type === "base64") {
     const data = /^data:([^;,]+);base64,([\s\S]+)$/.exec(asset.data);
@@ -166,6 +170,19 @@ export async function getMediaPrice(directory: string | undefined, mediaType: "i
 }
 
 export async function generateMedia(
+  cwd: string,
+  mediaType: "image" | "video" | "audio",
+  request: MediaGenerationRequest,
+  signal?: AbortSignal,
+): Promise<GeneratedMedia[]> {
+  // ACT: 宿主级墙钟上限（60 分钟，长于内置视频供应商的 30 分钟）。自定义供应商不自带超时，
+  // 没有这道闸时一个挂住的请求会让任务永不结算、常驻槽位直到打满 1000 上限。
+  const deadline = AbortSignal.timeout(taskTimeoutMs);
+  const bound = signal ? AbortSignal.any([signal, deadline]) : deadline;
+  return runGeneration(cwd, mediaType, request, bound);
+}
+
+async function runGeneration(
   cwd: string,
   mediaType: "image" | "video" | "audio",
   request: MediaGenerationRequest,

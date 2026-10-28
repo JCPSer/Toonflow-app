@@ -99,14 +99,15 @@ const mediaTasksKey = Symbol.for("toonflow.nodeMediaTasks");
 const mediaTasksHost = globalThis as typeof globalThis & { [mediaTasksKey]?: ReturnType<typeof createMediaTasks> };
 // ACT: 图片、视频等独立 UMD 共用短轮询；每批最多 100 项，不按节点占用长连接。
 const mediaTasks = mediaTasksHost[mediaTasksKey] ??= createMediaTasks();
-if (typeof document !== "undefined") {
-  // ACT: 页面从后台切回可见时补一次轮询——后台期间 setTimeout 被节流，切回来不该再等一个完整周期。
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) mediaTasks.resume();
-  });
-}
 
 function createMediaTasks() {
+  if (typeof document !== "undefined") {
+    // ACT: 注册在工厂内、只由实例创建者执行一次——放在工厂外会让 9 个节点包 + 宿主 chunk 各注册一个，
+    // 且每次热重载再叠一个永不移除。页面切回可见时补一次轮询，不必再等一个完整周期。
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) resume();
+    });
+  }
   const pending = new Map<string, PendingMediaTask>();
   const cancellations = new Map<string, Set<string>>();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -135,6 +136,8 @@ function createMediaTasks() {
   }
 
   async function poll() {
+    // ACT: 入口幂等——clearTimeout 无法取消「已触发、回调已入队」的定时器，这里挡住重复进入。
+    if (polling) return;
     timer = undefined;
     polling = true;
     try {
@@ -142,7 +145,7 @@ function createMediaTasks() {
         cancellations.delete(directory);
         const taskIds = [...ids];
         for (let offset = 0; offset < taskIds.length; offset += 100) {
-          // 取消失败由服务端无心跳过期兜底，不重新提交生成请求。
+          // 取消失败不再重试：服务端已无时间型兜底，任务会在供应商返回或超时后自行结算并回收。
           await fetch("/api/ai/media/tasks/cancel", {
             method: "POST", headers: { "Content-Type": "application/json", "x-toonflow-workspace": "1" },
             body: JSON.stringify({ directory, taskIds: taskIds.slice(offset, offset + 100) }), signal: AbortSignal.timeout(10000),

@@ -143,7 +143,6 @@
         </div>
         <slot v-else-if="previewReady || documentTarget" />
       </el-card>
-      <span v-if="!documentTarget && durationLabel" class="durationBadge nodrag nopan nowheel" :class="{ isDone: durationDone }">{{ durationLabel }}</span>
       <template v-for="group in handleGroups" :key="group.type">
         <handle
           v-for="(item, index) in group.items"
@@ -170,6 +169,9 @@
           <component :is="isHandleConnected(item) ? IconCircleDot : IconCircleDashed" class="handleIcon" :size="18" aria-hidden="true" />
         </handle>
       </template>
+      <!-- ACT: 角标相对 cardContainer 定位（只包住卡片），bottom:100% 才正好停在卡片上边框之外；
+           挂在节点根层会把标题栏高度也算进去，导致偏离卡片约 28px。 -->
+      <span v-if="!documentTarget && durationLabel" class="durationBadge nodrag nopan nowheel" :class="{ isDone: durationDone }">{{ durationLabel }}</span>
     </div>
   </div>
   </teleport>
@@ -827,19 +829,17 @@ watch(
   .cardContainer {
     position: relative;
 
-    .contentCard.selected {
-      border-color: color-mix(in srgb, var(--el-color-primary) 50%, var(--el-border-color-light));
-    }
-
-    /* ACT: 运行时长浮标贴在卡片内侧右上角；pointer-events:none 保证不拦画布拖拽与滚轮。 */
+    /* ACT: 运行时长浮标相对卡片定位，bottom:100% 正好贴在卡片上边框之外；right:0 靠右上角向左凸，
+       避开右侧输出端口（right:-12px）。pointer-events:none 保证不拦画布拖拽与滚轮。 */
     .durationBadge {
       position: absolute;
-      top: 4px;
-      right: 4px;
-      z-index: 1;
+      right: 0;
+      bottom: calc(100% + 3px);
+      z-index: 2;
       padding: 1px 6px;
+      border: 1px solid var(--el-border-color-light);
       border-radius: 999px;
-      background: color-mix(in srgb, var(--el-bg-color) 82%, transparent);
+      background: var(--el-bg-color-overlay);
       color: var(--el-text-color-secondary);
       font-size: 11px;
       font-variant-numeric: tabular-nums;
@@ -851,6 +851,10 @@ watch(
       &.isDone {
         color: var(--el-text-color-placeholder);
       }
+    }
+
+    .contentCard.selected {
+      border-color: color-mix(in srgb, var(--el-color-primary) 50%, var(--el-border-color-light));
     }
 
     .contentCard .loadingContent {
