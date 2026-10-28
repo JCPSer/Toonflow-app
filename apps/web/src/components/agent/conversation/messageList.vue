@@ -246,15 +246,18 @@ const welcomeSuggestions = [
       scrollbar-gutter: stable;
     }
 
-    /* ACT: 轮次目录。收起态只有一条短横，悬停向左扩成浮层显示提问，不挤压消息区；
-       top/bottom 让开面板边缘与右下角「回到最新消息」按钮。
+    /* ACT: 轮次目录。收起态只有一条短横，悬停向左扩成浮层显示提问，不挤压消息区。
+       高度跟条目数走并整体垂直居中：以前用 top/bottom 撑满容器，条目少时看着靠上，
+       悬停展开后浮层也几乎占满整条高度。max-height 的 104px 留给上下边缘和右下角
+       「回到最新消息」按钮（按钮 bottom:12、直径约 32px，两侧各剩 52px 正好不重叠），
+       条目超上限才滚动。
        整个 nav 与列表都 pointer-events: none，只有每一行可交互——否则这条 26px 宽的竖条
        会盖住滚动条并在右边缘吃掉滚轮事件（nav 是滚动容器的兄弟节点，事件不会传过去）。 */
     .turnRail {
       position: absolute;
-      top: 8px;
-      bottom: 56px;
+      top: 50%;
       right: 2px;
+      max-height: calc(100% - 104px);
       z-index: 2;
       display: flex;
       width: 26px;
@@ -262,6 +265,7 @@ const welcomeSuggestions = [
       border: 1px solid transparent;
       border-radius: 8px;
       pointer-events: none;
+      transform: translateY(-50%);
       transition: width 0.16s ease;
 
       /* 用 :has() 而不是 :hover/:focus-within：鼠标点击后按钮仍保持焦点，
@@ -297,7 +301,9 @@ const welcomeSuggestions = [
 
     .turnRailList {
       display: flex;
-      flex: 1;
+      /* ACT: 不能 flex: 1 —— 那会把列表撑满 nav 的可用高度，只有三条提问时浮层也是一整条。
+         flex: 0 1 auto 让高度按条目数收缩，撞到 nav 的 max-height 才由 overflow 接管。 */
+      flex: 0 1 auto;
       flex-direction: column;
       /* 行之间不留缝隙，否则指针在两行之间移动的瞬间 `:has(hover)` 会闪断收起。 */
       gap: 0;
