@@ -78,6 +78,18 @@
         </div>
       </div>
     </div>
+    <!-- ACT: 长对话只能靠滚轮往上翻太慢。右侧给一条轮次目录：收起态只占 22px 显示短横，
+         悬停向左展开显示每条提问，点击跳转。索引取 displayedMessages 的下标，与虚拟列表同源，
+         避免用 props.messages 的下标导致错位。轮数不足 2 条时整条不渲染。 -->
+    <nav v-if="turns.length > 1" class="turnRail" aria-label="对话轮次目录">
+      <div class="turnRailList">
+        <button v-for="(turn, position) in turns" :key="turn.id" type="button" class="turnRailItem" :title="turn.label" :aria-label="`跳到第 ${position + 1} 条提问：${turn.label}`" @click="jumpToTurn(turn.index)">
+          <span class="turnRailBar" aria-hidden="true" />
+          <span class="turnRailIndex">{{ position + 1 }}</span>
+          <span class="turnRailLabel">{{ turn.label }}</span>
+        </button>
+      </div>
+    </nav>
     <el-button v-if="messages.length && !atLatestMessage" class="scrollBottom" circle aria-label="回到最新消息" title="回到最新消息" @click="messageVirtualizer.scrollToEnd()"><icon-arrow-down :size="18" /></el-button>
   </div>
 </template>
@@ -165,6 +177,24 @@ const messageVirtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>(comput
   };
 }));
 const visibleMessages = computed(() => messageVirtualizer.value.getVirtualItems().map(row => ({ row, item: displayedMessages.value[row.index]! })));
+// ACT: 轮次目录与虚拟列表共用 displayedMessages，下标即虚拟行号；标签取纯文本并压缩空白，
+// 只有附件或引用的提问也要给一个可辨识的占位，否则目录里会出现空白行。
+const turns = computed(() => displayedMessages.value.flatMap((message, index) => {
+  if (message.role !== "user") return [];
+  const label = mentionPlainText(message.content, message.mentions).replace(/\s+/g, " ").trim();
+  return [{ id: message.id, index, label: label || (message.attachments?.length ? "（附件）" : "（引用）") }];
+}));
+
+function jumpToTurn(index: number) {
+  const instance = messageVirtualizer.value;
+  // ACT: 先退出「贴底」状态，否则跳转后实时行测量完成会把视图拉回最新消息。
+  atLatestMessage.value = false;
+  instance.scrollToIndex(index, { align: "start" });
+  // ACT: 内容不满一屏、或点的就是当前位置时不会产生位移，也就没有 scroll 事件，
+  // atLatestMessage 会一直停在 false，右下角就会挂出一个点不掉的「回到最新消息」。
+  // 这里按跳转后的真实位置重算一次即可。
+  void nextTick(() => { atLatestMessage.value = instance.isAtEnd(); });
+}
 let messageMeasurePending = false;
 
 function measureMessage(element: Element | ComponentPublicInstance | null) {
@@ -205,12 +235,150 @@ const welcomeSuggestions = [
 <style lang="scss">
 .agentConversation {
   .messageViewport {
+    position: relative;
     flex: 1;
     min-height: 0;
 
     .messageList {
+      /* ACT: 给右侧目录条预留一条空槽，目录条才不会压住右对齐的消息操作按钮与正文。 */
+      padding-right: 34px;
       overflow-anchor: none;
       scrollbar-gutter: stable;
+    }
+
+    /* ACT: 轮次目录。收起态只有一条短横，悬停向左扩成浮层显示提问，不挤压消息区；
+       top/bottom 让开面板边缘与右下角「回到最新消息」按钮。
+       整个 nav 与列表都 pointer-events: none，只有每一行可交互——否则这条 26px 宽的竖条
+       会盖住滚动条并在右边缘吃掉滚轮事件（nav 是滚动容器的兄弟节点，事件不会传过去）。 */
+    .turnRail {
+      position: absolute;
+      top: 8px;
+      bottom: 56px;
+      right: 2px;
+      z-index: 2;
+      display: flex;
+      width: 26px;
+      padding: 4px 0;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      pointer-events: none;
+      transition: width 0.16s ease;
+
+      /* 用 :has() 而不是 :hover/:focus-within：鼠标点击后按钮仍保持焦点，
+         :focus-within 会让浮层在鼠标移开很久之后还挂着；键盘则只认 :focus-visible。 */
+      &:has(.turnRailItem:hover),
+      &:has(.turnRailItem:focus-visible) {
+        width: 260px;
+        border-color: var(--el-border-color-lighter);
+        background: var(--el-bg-color-overlay);
+        box-shadow: var(--el-box-shadow-light);
+
+        .turnRailList {
+          overflow-y: auto;
+          scrollbar-width: thin;
+        }
+
+        .turnRailItem {
+          padding: 0 8px;
+        }
+
+        /* 收起态与展开态只切换显示对象：短横绝对居中、不参与布局，文字常态 display:none，
+           这样 26px 宽的收起态不会把文字挤成一团，展开时也不会有行高跳动。 */
+        .turnRailIndex,
+        .turnRailLabel {
+          display: block;
+        }
+
+        .turnRailBar {
+          display: none;
+        }
+      }
+    }
+
+    .turnRailList {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      /* 行之间不留缝隙，否则指针在两行之间移动的瞬间 `:has(hover)` 会闪断收起。 */
+      gap: 0;
+      min-height: 0;
+      /* 收起态裁掉超出高度的行；悬停展开后才可滚动（滚动事件仍会从行冒泡到列表）。 */
+      overflow: hidden;
+      pointer-events: none;
+      scrollbar-width: none;
+    }
+
+    .turnRailItem {
+      position: relative;
+      display: flex;
+      flex: none;
+      align-items: center;
+      height: 20px;
+      padding: 0;
+      /* 只有行本身接收指针，nav 与列表保持穿透，右侧滚动条与滚轮不受影响。 */
+      pointer-events: auto;
+      border: 0;
+      border-radius: 4px;
+      background: none;
+      color: var(--el-text-color-regular);
+      font-size: 12px;
+      cursor: pointer;
+
+      &:hover,
+      &:focus-visible {
+        background: var(--el-fill-color-light);
+        color: var(--el-color-primary);
+        outline: none;
+      }
+
+      &:hover .turnRailBar,
+      &:focus-visible .turnRailBar {
+        background: var(--el-color-primary);
+      }
+    }
+
+    /* 收起态的可视部分：一根绝对居中的短横，不参与布局，因此 26px 宽度下仍严格居中。 */
+    .turnRailBar {
+      position: absolute;
+      inset: 0;
+      width: 12px;
+      height: 3px;
+      margin: auto;
+      border-radius: 2px;
+      background: var(--el-text-color-placeholder);
+      transition: background 0.16s ease;
+    }
+
+    .turnRailIndex,
+    .turnRailLabel {
+      display: none;
+      white-space: nowrap;
+    }
+
+    .turnRailIndex {
+      flex: none;
+      width: 18px;
+      color: var(--el-text-color-secondary);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    .turnRailLabel {
+      flex: 1;
+      min-width: 0;
+      margin-left: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: left;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .turnRail,
+      .turnRailBar,
+      .turnRailIndex,
+      .turnRailLabel {
+        transition: none;
+      }
     }
 
     .messageSpace {
