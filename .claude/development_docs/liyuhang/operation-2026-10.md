@@ -50,3 +50,4 @@
 | 2026-10-28 15:10 | 节点引用附带直接上游：`collectUpstream` 一层入边 + 200 字短预览 + 媒体仅 path/mimeType；离线链路补 readText 读 textPath 正文、悬空边与空端口边过滤；还原被重排的 router.ts | server typecheck 0、web 仅剩既有报错、构建与部署完成；真实形态夹具 6 用例 PASS |
 | 2026-10-28 17:25 | 修复「生成任务因页面长时间未连接而停止」：删服务端 120s 看门狗（前端定时器节流≠断线），补页面可见时立即轮询 | server/scaffold typecheck 0，9 节点包+server+入口重建并部署 |
 | 2026-10-28 18:25 | 看门狗修复审查闭环：三道超时（60min 宿主级/2×5min 下载）、监听器移进工厂、poll 幂等守卫、索引恢复 | server/scaffold typecheck 0，9 节点包与入口重建部署 |
+| 2026-10-28 19:55 | 引用/附件改纯指针 + 画布平移卡顿（连线 10Hz + contain:paint）+ 角标挂框外与计时组件隔离 | server/scaffold/9 包 typecheck 0，全部构建部署 |
