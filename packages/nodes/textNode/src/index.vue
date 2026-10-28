@@ -2,6 +2,7 @@
   <nodeSkeleton
     v-bind="nodeProps"
     :running="generating"
+    :busy="generating"
     :bottomVisible="node.selected"
     :topVisible="node.selected"
     topWidth="max-content"

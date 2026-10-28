@@ -143,6 +143,7 @@
         </div>
         <slot v-else-if="previewReady || documentTarget" />
       </el-card>
+      <span v-if="!documentTarget && durationLabel" class="durationBadge nodrag nopan nowheel" :class="{ isDone: durationDone }">{{ durationLabel }}</span>
       <template v-for="group in handleGroups" :key="group.type">
         <handle
           v-for="(item, index) in group.items"
@@ -214,6 +215,8 @@ const props = withDefaults(
       previewReady?: boolean;
       /** 生成/思考中：卡片呼吸描边，提示节点仍在运行。 */
       running?: boolean;
+      /** ACT: 正在跑耗时任务（AI 生成、帧分析、导出等）：卡片右上角显示运行时长。与 running 解耦。 */
+      busy?: boolean;
       topWidth?: string | number;
       bottomWidth?: string | number;
       downloadUrl?: string;
@@ -233,6 +236,7 @@ const props = withDefaults(
     previewReady: true,
     readOnly: false,
     running: false,
+    busy: false,
     fullscreenVisible: true,
     bottomPinned: false,
     topWidth: "20vw",
@@ -310,8 +314,7 @@ onScopeDispose(() => {
   documentContext.mounts.delete(nodeId);
   documentContext.targets.delete(nodeId);
 });
-const selectionConnection = inject<ShallowRef<NodeConnectionFeedback | undefined> | undefined>("selectionConnection", undefined);
-const nodeEvent = useNodeEvent();
+const selectionConnection = inject<ShallowRef<NodeConnectionFeedback | undefined> | undefined>("selectionConnection", undefined);const nodeEvent = useNodeEvent();
 if (!props.readOnly) node.isValidTargetPos = (...args) => !props.readOnly && nodeEvent.emit("canConnect", ...args);
 const {
   d3Zoom,
@@ -411,6 +414,62 @@ onNodeClick(({ node: clickedNode }) => {
 const editingLabel = ref(false);
 const labelDraft = ref("");
 const labelInput = ref<HTMLInputElement>();
+
+// ACT: 运行时长只在组件内存里记，不写 node.data——它是观察态，不需要跨会话或跨画布持久化。
+const elapsedMs = ref(0);
+const durationDone = ref(false);
+let startedAt = 0;
+let ticker: ReturnType<typeof setInterval> | undefined;
+
+function stopTicker() {
+  if (ticker === undefined) return;
+  clearInterval(ticker);
+  ticker = undefined;
+}
+
+function pad(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+// 运行中显示 00:42 / 1:05:30，秒级精度用墙钟差值算，定时器被节流也不会累积漂移。
+function formatDuration(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const seconds = total % 60;
+  const minutes = Math.floor(total / 60) % 60;
+  const hours = Math.floor(total / 3600);
+  return hours ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
+}
+
+// 结束后用更紧凑的人类可读格式：42s / 3m12s / 1h05m。
+function formatElapsed(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  if (total < 60) return `${total}s`;
+  if (total < 3600) return `${Math.floor(total / 60)}m${pad(total % 60)}s`;
+  return `${Math.floor(total / 3600)}h${pad(Math.floor((total % 3600) / 60))}m`;
+}
+
+const durationLabel = computed(() => {
+  if (props.busy) return formatDuration(elapsedMs.value);
+  if (!durationDone.value) return "";
+  return `耗时 ${formatElapsed(elapsedMs.value)}`;
+});
+
+watch(() => props.busy, busy => {
+  if (busy) {
+    stopTicker();
+    startedAt = performance.now();
+    elapsedMs.value = 0;
+    durationDone.value = false;
+    ticker = setInterval(() => { elapsedMs.value = performance.now() - startedAt; }, 1000);
+  } else if (ticker !== undefined) {
+    // 只有本次确实跑过才定格；初始的 false 因为没有 ticker 会直接跳过，不会显示「耗时 0s」。
+    stopTicker();
+    elapsedMs.value = performance.now() - startedAt;
+    durationDone.value = true;
+  }
+}, { immediate: true });
+onScopeDispose(stopTicker);
+
 
 const reloadRemoteNode = inject<((type: string) => Promise<void>) | undefined>("reloadRemoteNode", undefined);
 const reloading = ref(false);
@@ -770,6 +829,28 @@ watch(
 
     .contentCard.selected {
       border-color: color-mix(in srgb, var(--el-color-primary) 50%, var(--el-border-color-light));
+    }
+
+    /* ACT: 运行时长浮标贴在卡片内侧右上角；pointer-events:none 保证不拦画布拖拽与滚轮。 */
+    .durationBadge {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      z-index: 1;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--el-bg-color) 82%, transparent);
+      color: var(--el-text-color-secondary);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      line-height: 16px;
+      white-space: nowrap;
+      pointer-events: none;
+      user-select: none;
+
+      &.isDone {
+        color: var(--el-text-color-placeholder);
+      }
     }
 
     .contentCard .loadingContent {

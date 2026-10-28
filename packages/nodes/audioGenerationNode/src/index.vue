@@ -1,6 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
+    :busy="generating || transcribing || !!actions?.processing"
     :topVisible="node.selected"
     :bottomVisible="node.selected"
     :bottomWidth="actions?.mode === 'speed' ? 440 : 660"

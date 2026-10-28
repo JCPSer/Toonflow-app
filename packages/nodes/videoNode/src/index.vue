@@ -1,6 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
+    :busy="exporting || !!actions?.processing || !!actions?.creatingAnalysis"
     :topVisible="node.selected"
     topWidth="max-content"
     :downloadUrl="exporting ? '' : undefined"
