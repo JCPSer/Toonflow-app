@@ -1,6 +1,6 @@
 <template>
   <div class="messageViewport t-chat t-chat--normal">
-    <div ref="messageList" class="messageList t-chat__list" role="region" aria-label="对话消息" tabindex="0">
+    <div ref="messageList" class="messageList t-chat__list" :class="{ hasTurnRail: turns.length > 1 }" role="region" aria-label="对话消息" tabindex="0">
       <chat-item v-if="!messages.length && !disabled" role="assistant" variant="text">
         <template #content>
           <section class="welcomeMessage" aria-label="开始新对话">
@@ -240,10 +240,13 @@ const welcomeSuggestions = [
     min-height: 0;
 
     .messageList {
-      /* ACT: 给右侧目录条预留一条空槽，目录条才不会压住右对齐的消息操作按钮与正文。 */
-      padding-right: 34px;
       overflow-anchor: none;
       scrollbar-gutter: stable;
+    }
+
+    /* ACT: 只有真的渲染目录条时才留空槽；轮次不足 2 条时不留，否则右侧会挂一条无主的空白。 */
+    .messageList.hasTurnRail {
+      padding-right: 34px;
     }
 
     /* ACT: 轮次目录。收起态只有一条短横，悬停向左扩成浮层显示提问，不挤压消息区。
@@ -260,6 +263,11 @@ const welcomeSuggestions = [
       max-height: calc(100% - 104px);
       z-index: 2;
       display: flex;
+      /* ACT: 必须是纵向 flex。横向 flex 下列表宽度按内容收缩，收起态内容宽度是 0
+         （短横是绝对定位、不撑宽），overflow:hidden 就把整条目录裁没了——
+         表现是右侧只剩一块 34px 的空白槽。纵向 flex 下 align-items: stretch 会把
+         列表撑满 26px 宽，高度仍按条目数走。 */
+      flex-direction: column;
       width: 26px;
       padding: 4px 0;
       border: 1px solid transparent;
@@ -304,6 +312,7 @@ const welcomeSuggestions = [
       /* ACT: 不能 flex: 1 —— 那会把列表撑满 nav 的可用高度，只有三条提问时浮层也是一整条。
          flex: 0 1 auto 让高度按条目数收缩，撞到 nav 的 max-height 才由 overflow 接管。 */
       flex: 0 1 auto;
+      min-width: 0;
       flex-direction: column;
       /* 行之间不留缝隙，否则指针在两行之间移动的瞬间 `:has(hover)` 会闪断收起。 */
       gap: 0;

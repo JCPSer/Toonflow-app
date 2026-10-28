@@ -56,3 +56,4 @@
 | 2026-10-28 22:45 | 轮次目录条垂直居中 + 展开高度按需（纯 CSS） | 改 `.turnRail` 定位与 `max-height`、`.turnRailList` 去 `flex:1`；构建并部署，产物链路核对命中 |
 | 2026-10-29 00:30 | 新增 Agent 画布节点（S1 节点包 / S2 面板 / S3 服务端 / S4 联调） | 10 决策 + 2 blocker 9 should-fix 全修；四包 typecheck 0 新增；全量构建部署 |
 | 2026-10-29 01:00 | 分组穿透 + 组菜单 + 添加节点悬停展开（+Agent 面板压缩按钮） | 捕获阶段 9 点探测转发连线点击、右键转画布菜单、deleteNodeSelection 复用删除链路、el-popover 复用子菜单；构建部署 |
+| 2026-10-29 01:50 | 轮次目录条不可见修复 | `.turnRail` 改 `flex-direction:column`，列表只控高度；空槽改 `.hasTurnRail` 条件；构建部署 |
