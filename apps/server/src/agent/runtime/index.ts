@@ -372,6 +372,13 @@ export async function run(
         modelError = event.message.stopReason === "error" ? event.message.errorMessage || "模型请求失败"
           : event.message.stopReason === "length" ? "模型回复因长度限制被截断，未能完整生成回答。" : undefined;
         limited = event.message.stopReason === "length";
+        // ACT: 回复条目的 id 只有落盘后才有（SDK 先通知监听器、再 appendMessage），
+        // 所以放到微任务里读刚追加的那条并发给前端。缺了它前端「复制为新会话」会一直是禁用态。
+        const entryCount = history.getEntries().length;
+        queueMicrotask(() => {
+          const entry = history.getEntries().slice(entryCount).find(item => item.type === "message" && item.message.role === "assistant");
+          if (entry) send({ type: "assistantEntry", id: entry.id });
+        });
       }
       if (event.type === "message_end" || event.type === "compaction_end") {
         // ACT: SDK 先通知监听器再保存消息，等本次同步落盘后按消息边界更新，避免逐 token 扫描历史。

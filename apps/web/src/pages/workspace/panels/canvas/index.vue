@@ -1435,11 +1435,10 @@ const defaultEdgeOptions = markRaw({
     opacity: 1;
   }
 
-  // ACT: 连线层是普通绘制内容，任一虚线动画的失效会冒泡到根层。contain:paint 把重绘限定在该层内，
-  // 平移时不再连带整页重绘（实测根层重绘由 12.5 次/帧降到 0）。
-  :deep(.vue-flow__edges) {
-    contain: paint;
-  }
+  // ACT: 禁止给 .vue-flow__edges 加 contain:paint —— Vue Flow 的 edges SVG 尺寸等于可视区，
+  // 但连线坐标是画布坐标系（平移后常见几千 px），超出自身盒子的部分完全依赖官方样式里的
+  // overflow: visible 绘制。paint containment 强制裁剪到元素自身盒子，平移后所有连线都在盒子外，
+  // 表现就是「连线全没了」。降频只能靠下面的 steps()，不能靠图层隔离。
 
   // ACT: 虚线流动原本用 linear 插值，stroke-dashoffset 每帧取值都不同，浏览器必须逐帧光栅化 SVG path。
   // steps() 把连续插值改成离散跳变，只在跳变时失效：20 步 / 2s = 10Hz，视觉上仍是流动虚线，

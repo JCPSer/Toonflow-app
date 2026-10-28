@@ -43,6 +43,8 @@ export type AgentEvent =
   | { type: "retry"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
   | { type: "session"; file: string }
   | { type: "userMessage"; id: string; content?: string; attachments?: { name: string; path: string; mimeType: string }[]; mentions?: AgentMention[] }
+  // ACT: 回复条目落盘后才拿得到 id，实时下发给前端用于分支/回退锚点。
+  | { type: "assistantEntry"; id: string }
   | { type: "subAgent"; agent: AgentSubAgent }
   | { type: "subAgentEvent"; file: string; event: AgentEvent }
   | { type: "report"; parentFile: string; file: string; name: string; content: string; id: string }

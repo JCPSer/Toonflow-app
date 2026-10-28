@@ -136,6 +136,13 @@ export function createConversationStream(messages: Ref<AgentMessage[]>) {
   }
 
   function receive(event: AgentEvent) {
+    // ACT: 回复条目 id 由服务端落盘后补发（事件里只有分片 id）。补上后「复制为新会话」才能定位到这条回复；
+    // 同一轮里先到的 id 就是服务端分组后采用的 id，后续几条不再覆盖。
+    if (event.type === "assistantEntry") {
+      const target = reply ?? messages.value.findLast(message => message.role === "assistant" && message.streaming);
+      if (target && !target.entryId) target.entryId = event.id;
+      return;
+    }
     if (event.type === "userMessage") {
       const existing = messages.value.find(message => message.entryId === event.id)
         ?? messages.value.find(message => message.role === "user" && !message.entryId && message.content === event.content);
