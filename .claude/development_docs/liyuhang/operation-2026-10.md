@@ -54,3 +54,5 @@
 | 2026-10-28 21:10 | 连线消失与分支变灰修复 + 对话轮次目录条 | 删 contain:paint；新增 assistantEntry 事件与前端补 id；加右侧轮次目录（pointer-events 穿透、padding 空槽、:has 展开）；server/web typecheck 通过、构建部署 |
 | 2026-10-28 21:55 | 截帧空白与自动建节点出屏修复 + 小地图点击跳转 | 离屏容器挂载 + presentedFrame/nudgeFrame；抽 nodeViewport 助手并接入 7 处自动建节点；minimap @click 用 viewBox 反算坐标 setCenter；5 包 typecheck 通过、两轮构建部署 |
 | 2026-10-28 22:45 | 轮次目录条垂直居中 + 展开高度按需（纯 CSS） | 改 `.turnRail` 定位与 `max-height`、`.turnRailList` 去 `flex:1`；构建并部署，产物链路核对命中 |
+| 2026-10-29 00:30 | 新增 Agent 画布节点（S1 节点包 / S2 面板 / S3 服务端 / S4 联调） | 10 决策 + 2 blocker 9 should-fix 全修；四包 typecheck 0 新增；全量构建部署 |
+| 2026-10-29 01:00 | 分组穿透 + 组菜单 + 添加节点悬停展开（+Agent 面板压缩按钮） | 捕获阶段 9 点探测转发连线点击、右键转画布菜单、deleteNodeSelection 复用删除链路、el-popover 复用子菜单；构建部署 |

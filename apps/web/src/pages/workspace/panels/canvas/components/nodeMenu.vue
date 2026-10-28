@@ -53,10 +53,37 @@
         </template>
         <template v-else-if="menuLevel === 'actions'">
           <el-dropdown-item command="upload" :icon="IconUpload" :disabled="!uploadFiles">上传</el-dropdown-item>
-          <el-dropdown-item command="nodes" :icon="IconPlus">
-            <span>添加节点</span>
-            <icon-chevron-right class="nextIcon" :size="14" />
-          </el-dropdown-item>
+          <!-- ACT: 「添加节点」改成悬停即向右展开，省掉一次点击；键盘仍可用回车/右键菜单原来的层级切换。 -->
+          <el-popover
+            v-model:visible="nodesFlyoutVisible"
+            trigger="hover"
+            placement="right-start"
+            :fallbackPlacements="['left-start', 'right-end', 'left-end']"
+            :width="240"
+            :offset="8"
+            popperClass="nodeChildMenu"
+            :showArrow="false"
+            :showAfter="0"
+            :hideAfter="120"
+            :persistent="false"
+            :triggerKeys="[]"
+            :appendTo="menuContainer"
+            :popperStyle="{ padding: '5px 0', maxWidth: 'calc(100vw - 16px)' }">
+            <template #reference>
+              <el-dropdown-item command="nodes" :icon="IconPlus">
+                <span>添加节点</span>
+                <icon-chevron-right class="nextIcon" :size="14" />
+              </el-dropdown-item>
+            </template>
+            <nodeMenuItems
+              :items="menuItems"
+              :nodes="filteredNodes"
+              :appendTo="menuContainer"
+              :uploadDisabled="!uploadFiles"
+              @select="handleCommand"
+              @upload="handleCommand('upload')"
+              @close="closeNodesFlyout" />
+          </el-popover>
           <el-divider />
           <el-dropdown-item command="undo" :icon="IconArrowBackUp" :disabled="!canUndo">撤销</el-dropdown-item>
           <el-dropdown-item command="redo" :icon="IconArrowForwardUp" :disabled="!canRedo">重做</el-dropdown-item>
@@ -86,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, type Component } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch, type Component } from "vue";
 import { useVueFlow, type ConnectingHandle, type GraphNode, type HandleType } from "@vue-flow/core";
 import { isTypeCompatible, useNodeEvent, validateConnection, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
 import { ElMessage } from "element-plus";
@@ -130,6 +157,13 @@ const menuVisible = ref(false);
 const nodeMenuItemsRef = ref<InstanceType<typeof nodeMenuItems>>();
 const menuContainer = computed(() => menuList.value?.$el.closest<HTMLElement>(".el-dropdown__popper") ?? undefined);
 const menuLevel = ref<"actions" | "nodes" | "selection" | "arrange">("actions");
+const nodesFlyoutVisible = ref(false);
+// ACT: 点「添加节点」会切到内联的节点层级，此时悬停浮层要收起，避免两份列表同时挂在屏幕上。
+watch(menuLevel, level => { if (level === "nodes") nodesFlyoutVisible.value = false; });
+function closeNodesFlyout() {
+  nodesFlyoutVisible.value = false;
+  menu.value?.handleClose();
+}
 const selectedNodes = shallowRef<GraphNode[]>([]);
 const deleting = ref(false);
 const pasting = ref(false);
@@ -274,6 +308,7 @@ async function addNode(type: string, position: { x: number; y: number }) {
 }
 
 async function handleCommand(command: unknown) {
+  nodesFlyoutVisible.value = false;
   if (command === "nodes" || command === "actions" || command === "selection" || command === "arrange") {
     if (command === "arrange" && !canArrangeSelection.value) return;
     menuLevel.value = command;

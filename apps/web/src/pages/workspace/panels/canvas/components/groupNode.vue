@@ -1,5 +1,22 @@
 <template>
   <div class="groupNode" :class="{ selected, resizing: !!resize }">
+    <el-dropdown
+      ref="menu"
+      trigger="contextmenu"
+      virtualTriggering
+      :virtualRef="menuAnchor"
+      placement="bottom-start"
+      :showArrow="false"
+      :showTimeout="0"
+      :hideTimeout="0"
+      @command="handleCommand">
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item command="rename" :icon="IconPencil">重命名分组</el-dropdown-item>
+          <el-dropdown-item command="delete" :icon="IconTrash" divided>删除分组</el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
     <input
       v-if="editingLabel && !readOnly"
       ref="labelInput"
@@ -14,7 +31,14 @@
       @keydown.enter="confirmLabel"
       @keydown.esc.prevent="editingLabel = false"
       @blur="saveLabel" />
-    <span v-else class="groupLabel" :tabindex="readOnly ? undefined : 0" :title="readOnly ? data.label || '分组' : `${data.label || '分组'}（双击编辑名称）`" @dblclick.stop="editLabel" @keydown.enter.stop.prevent="editLabel">
+    <span
+      v-else
+      class="groupLabel"
+      :tabindex="readOnly ? undefined : 0"
+      :title="readOnly ? data.label || '分组' : `${data.label || '分组'}（双击编辑名称）`"
+      @dblclick.stop="editLabel"
+      @keydown.enter.stop.prevent="editLabel"
+      @contextmenu.stop.prevent="openMenu($event)">
       {{ data.label || "分组" }}
     </span>
     <button
@@ -38,11 +62,15 @@
 <script setup lang="ts">
 import { inject, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useVueFlow, type GraphNode, type NodeProps } from "@vue-flow/core";
-import { ElMessage } from "element-plus";
+import { ElMessage, type DropdownInstance } from "element-plus";
+import { IconPencil, IconTrash } from "@tabler/icons-vue";
 
 const props = withDefaults(defineProps<NodeProps & { readOnly?: boolean }>(), { readOnly: false });
 const flow = useVueFlow();
 const batchHistory = inject<((action: () => Promise<void>) => Promise<void>) | undefined>("batchCanvasHistory", undefined);
+// ACT: 分组必须连内容一起删。复用画布的删除链路（含 delete 生命周期、不可删节点校验、撤销批次），
+// 自己 removeNodes 只会留下 parentNode 指向已删节点的孤儿。
+const deleteSelection = inject<((nodes: GraphNode[]) => Promise<void>) | undefined>("deleteNodeSelection", undefined);
 const editingLabel = ref(false);
 const labelDraft = ref("");
 const labelInput = ref<HTMLInputElement>();
@@ -84,6 +112,31 @@ function confirmLabel(event: KeyboardEvent) {
   if (props.readOnly || event.isComposing) return;
   event.preventDefault();
   saveLabel();
+}
+
+// ACT: 分组本体已经 pointer-events:none（让组内的连线和画布能收到事件），
+// 所以菜单只能从标题栏拉起来，和节点骨架一样用虚拟锚点定位到光标。
+const menu = ref<DropdownInstance>();
+const menuAnchor = shallowRef({ getBoundingClientRect: () => new DOMRect() });
+
+async function openMenu(event: MouseEvent) {
+  if (props.readOnly) return;
+  event.preventDefault();
+  event.stopPropagation();
+  menu.value?.handleClose();
+  menuAnchor.value = { getBoundingClientRect: () => new DOMRect(event.clientX, event.clientY, 0, 0) };
+  await nextTick();
+  menu.value?.handleOpen();
+}
+
+async function handleCommand(command: string) {
+  if (props.readOnly) return;
+  if (command === "rename") return void editLabel();
+  if (command !== "delete") return;
+  const node = flow.findNode(props.id);
+  if (!node) return;
+  if (!deleteSelection) return ElMessage.error("当前环境无法删除分组");
+  await deleteSelection([node]);
 }
 
 function startResize(event: PointerEvent, corner: ResizeCorner) {
@@ -186,6 +239,7 @@ watch(
     height: 22px;
     max-width: 100%;
     line-height: 20px;
+    cursor: move;
   }
 
   .groupLabel {
@@ -220,6 +274,7 @@ watch(
     border-radius: 2px;
     background: var(--el-bg-color);
     opacity: 0;
+    pointer-events: auto;
     touch-action: none;
 
     &:focus-visible { opacity: 1; }

@@ -9,11 +9,12 @@
     @gesturestart.capture="zoomCanvas"
     @gesturechange.capture="zoomCanvas"
     @gestureend.capture="zoomCanvas"
-    @pointerdown.capture="updateCanvasSelection"
+    @pointerdown.capture="onCanvasPointerDown"
     @click.capture="updateCanvasSelection"
     @auxclick.capture="preventMiddleClick"
     @pointermove="pointerPosition = { x: $event.clientX, y: $event.clientY }; if (!$event.buttons) updateCanvasSelection($event)"
     @pointerleave="pointerPosition = undefined"
+    @contextmenu.capture="forwardGroupContextMenu"
     @dragover="dragFilesOver"
     @drop="dropFiles">
     <vue-flow
@@ -100,6 +101,12 @@
         :getSignal="() => canvasController.signal"
         :disabled="!canvasId || !project?.directory" />
       <nodeSearch ref="nodeSearchRef" :disabled="!active || settingsVisible || !canvasId || !project?.directory" />
+      <agentNodePanel
+        ref="agentNodePanelRef"
+        :runtime-key="runtimeKey"
+        :active="active === true"
+        :canvas-id="canvasId"
+        :statuses="agentNodeStatuses" />
     </vue-flow>
     <teleport to="body">
       <div
@@ -160,7 +167,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, shallowReactive, shallowRef, watch } from "vue";
+import { computed, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, reactive, ref, shallowReactive, shallowRef, watch } from "vue";
 import axios from "axios";
 import { debounce } from "lodash-es";
 import { ElMessage } from "element-plus";
@@ -186,6 +193,7 @@ import {
   type Node,
   type Edge,
   type GraphEdge,
+  type GraphNode,
   type EdgeMouseEvent,
   type NodeTypesObject,
   type XYPosition,
@@ -208,6 +216,7 @@ import { useSessionStateStore } from "@/stores/sessionState";
 import groupNode from "./components/groupNode.vue";
 import selectionToolbar from "./components/selectionToolbar.vue";
 import nodeSearch from "./components/nodeSearch.vue";
+import agentNodePanel from "./components/agentNodePanel.vue";
 import mentionThumbnail from "@/components/agent/mentionThumbnail.vue";
 import { useMentionSources, type MentionOutput } from "@/components/agent/mentionSources";
 import { useAgentComposerStore } from "@/stores/agentComposer";
@@ -215,6 +224,7 @@ import { finishGroupDrag, getSelectionTree } from "./selectionNodes";
 import type { NodeOutput } from "@toonflow/nodes-scaffold/values";
 import type { NodeConnectionFeedback, NodeHandle } from "@toonflow/nodes-scaffold/connection";
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
+import { AGENT_NODE_STATUS_KEY, type AgentNodeStatus } from "@toonflow/nodes-scaffold/agentNode";
 import type { NodeDocumentContext, NodeDocumentState } from "@toonflow/nodes-scaffold/nodeDocument";
 import { useNodeToolsContext } from "@toonflow/nodes-scaffold/nodeTools";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -314,12 +324,76 @@ flow.onNodeDragStop(({ nodes }) => {
   else finishGroupDrag(flow.getNodes.value, nodes);
 });
 const requestNodeAssetsCleanup = inject<((directory: string, nodeIds: string[]) => void) | undefined>("requestNodeAssetsCleanup");
+// ACT: Agent 节点的会话文件不能随节点删除立刻删——撤销历史里还留着这个节点，撤销回来就成了空壳。
+// 这里在节点离开画布时先记账，等它被撤销栈淘汰（onNodesDropped）再真正删除；撤销回来则划掉账。
+const pendingAgentSessionCleanup = new Map<string, string>();
+let knownAgentSessions = new Map<string, string>();
+// ACT: 不能用 `watch(() => flow.getNodes.value)` —— 增删是 push/splice，同一个数组代理不会换引用，
+// 监听不到；拼 id 串才能稳定感知节点增删（数据字段变化不需要在这里处理）。
+watch(() => flow.getNodes.value.map(node => node.id).join("|"), () => {
+  const current = new Map<string, string>();
+  for (const node of flow.getNodes.value) {
+    const file = (node.data as { agentSessionFile?: string } | undefined)?.agentSessionFile;
+    if (node.type === "remote-agentNode" && file) current.set(node.id, file);
+  }
+  for (const [id, file] of knownAgentSessions) if (!current.has(id)) pendingAgentSessionCleanup.set(id, file);
+  for (const id of current.keys()) pendingAgentSessionCleanup.delete(id);
+  knownAgentSessions = current;
+}, { flush: "post" });
+
+function isAgentSessionReferenced(sessionFile: string) {
+  return flow.getNodes.value.some(node => {
+    const data = node.data as { agentSessionFile?: string; agentSessionCloneFrom?: string } | undefined;
+    return data?.agentSessionFile === sessionFile || data?.agentSessionCloneFrom === sessionFile;
+  });
+}
+
+async function cleanupAgentSessions(directory: string, nodeIds: string[]) {
+  for (const nodeId of nodeIds) {
+    const sessionFile = pendingAgentSessionCleanup.get(nodeId);
+    if (!sessionFile) continue;
+    // ACT: 复制出的节点还没打开过时会话指针仍指向源文件，源节点被删不能把别人的会话删掉。
+    if (isAgentSessionReferenced(sessionFile)) {
+      pendingAgentSessionCleanup.delete(nodeId);
+      continue;
+    }
+    try {
+      const response = await fetch("/api/agent/session", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", "x-toonflow-workspace": "1" },
+        body: JSON.stringify({ directory, sessionFile }),
+      });
+      if (response.ok) {
+        pendingAgentSessionCleanup.delete(nodeId);
+      } else if (response.status === 409) {
+        // ACT: 会话还在跑；节点已经被撤销栈淘汰，不会再有下一次淘汰事件触发重试，自己排一次。
+        setTimeout(() => void cleanupAgentSessions(directory, [nodeId]), 10_000);
+      }
+    } catch {
+      // 网络失败同样下次再试。
+    }
+  }
+}
+
 const canvasHistory = useCanvasHistory(flow, () =>
   project.value?.directory && canvasId.value ? JSON.stringify([project.value.directory, canvasId.value]) : "",
-  { directory: () => project.value?.directory, onNodesDropped: (directory, nodeIds) => requestNodeAssetsCleanup?.(directory, nodeIds) }
+  {
+    directory: () => project.value?.directory,
+    onNodesDropped: (directory, nodeIds) => {
+      requestNodeAssetsCleanup?.(directory, nodeIds);
+      void cleanupAgentSessions(directory, nodeIds);
+    },
+  }
 );
 const { canUndo, canRedo } = canvasHistory;
 provide("batchCanvasHistory", canvasHistory.batch);
+// ACT: 分组删除必须连内容一起走画布的删除链路（delete 生命周期 + 不可删校验 + 撤销批次）。
+// 分组本体是 pointer-events:none，够不到画布菜单，所以在这里把删除能力显式提供出去。
+provide("deleteNodeSelection", (nodes: GraphNode[]) => {
+  const menu = nodeMenuRef.value;
+  if (!menu) return Promise.reject(new Error("画布尚未就绪"));
+  return canvasHistory.batch(() => menu.deleteSelection(nodes));
+});
 const getNodeTools = useNodeToolsContext();
 const { addNodes, addEdges, removeEdges, findEdge, findNode, toObject, viewport, screenToFlowCoordinate } = flow;
 provide("copyNodeToClipboard", async (node: Parameters<typeof copyNodeToClipboard>[0]) => {
@@ -466,12 +540,17 @@ async function addNodeToAgentContextFromToolbar(nodeId: string, anchor: HTMLElem
 }
 
 provide("nodeAgentContext", addNodeToAgentContextFromToolbar);
-flow.onPaneClick(closeAgentPortMenu);
-flow.onMoveStart(closeAgentPortMenu);
+flow.onPaneClick(() => {
+  closeAgentPortMenu();
+  agentNodePanelRef.value?.close();
+});flow.onMoveStart(closeAgentPortMenu);
 flow.onNodeDragStart(closeAgentPortMenu);
-flow.onNodeClick(({ event }) => {
+flow.onNodeClick(({ node, event }) => {
   if (event.target instanceof Element && event.target.closest("[data-node-agent-context]")) return;
   closeAgentPortMenu();
+  // ACT: 单击 Agent 节点即打开它自己的对话面板，点其它节点或画布空白关闭——同一时刻只留一个。
+  if (node.type === "remote-agentNode") void agentNodePanelRef.value?.open(node.id);
+  else agentNodePanelRef.value?.close();
 });
 watch([canvasId, () => project.value?.directory], closeAgentPortMenu, { flush: "post" });
 let canvasController = new AbortController();
@@ -490,6 +569,12 @@ function getCanvasContext() {
   return canvasId.value || canvasMenuRef.value?.initialized ? createCanvasContext(canvasId.value, canvasController.signal, workspaceController.signal) : undefined;
 }
 const canvasReady = computed(() => !!canvasId.value && !nodeListLoading.value && nodeLoads.size === 0);
+// ACT: Agent 节点状态由对话面板写入、节点包 inject 读取。必须在画布层 provide ——
+// 面板与节点都是 <vue-flow> 的子节点，面板自己 provide 的话节点收不到（兄弟节点不共享注入）。
+// 只放内存：写进 node.data 会触发画布 500ms 防抖保存，状态每秒变化会一直写盘。
+const agentNodeStatuses = reactive<Record<string, AgentNodeStatus>>({});
+provide(AGENT_NODE_STATUS_KEY, agentNodeStatuses);
+const agentNodePanelRef = ref<InstanceType<typeof agentNodePanel>>();
 provide("canvas", getCanvasContext);
 // ACT: 后台画布只是 hidden + inert，不卸载；节点里的 Esc 兜底必须知道"我在不在前台画布"，
 // 否则在画布 B 按 Esc 会把画布 A 里仍在生成的节点停掉。
@@ -675,6 +760,57 @@ async function saveDocumentNode(directory: string, canvasPath: string, nodeId: s
     }
     checkDocumentDirectory(directory);
   });
+}
+
+// ACT: 分组是一整块矩形，会把组内的连线整个盖住——线点不中、右键只有系统菜单。
+// 做法是「穿透探测」：左键按下时临时让组体退出命中测试，看光标（含 6px 容差）下有没有连线；
+// 有就当作点了那条线（弹断开气泡并挡住拖动），没有就让事件继续落到组上，拖动照旧。
+const edgeProbeOffsets: [number, number][] = [[0, 0], [6, 0], [-6, 0], [0, 6], [0, -6], [4, 4], [-4, -4], [4, -4], [-4, 4]];
+
+function edgeIdUnderGroup(group: HTMLElement, x: number, y: number) {
+  group.style.pointerEvents = "none";
+  try {
+    for (const [dx, dy] of edgeProbeOffsets) {
+      const element = document.elementFromPoint(x + dx, y + dy);
+      const edge = element?.closest?.(".vue-flow__edge");
+      const id = edge?.getAttribute("data-id");
+      if (id) return id;
+    }
+  } finally {
+    group.style.pointerEvents = "";
+  }
+  return undefined;
+}
+
+function groupBodyOf(target: EventTarget | null) {
+  if (!(target instanceof Element)) return undefined;
+  if (target.closest(".groupLabel, .groupLabelInput, .resizeCorner")) return undefined;
+  return target.closest<HTMLElement>(".vue-flow__node-canvasGroup") ?? undefined;
+}
+
+function onCanvasPointerDown(event: PointerEvent) {
+  probeGroupEdgeClick(event);
+  updateCanvasSelection(event);
+}
+
+function probeGroupEdgeClick(event: PointerEvent) {
+  if (event.button !== 0) return;
+  const group = groupBodyOf(event.target);
+  if (!group) return;
+  const id = edgeIdUnderGroup(group, event.clientX, event.clientY);
+  if (!id || !findEdge(id)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  edgeDisconnect.value = { id, x: event.clientX, y: event.clientY };
+}
+
+function forwardGroupContextMenu(event: MouseEvent) {
+  const group = groupBodyOf(event.target);
+  if (!group) return;
+  event.preventDefault();
+  event.stopPropagation();
+  // 组内右键与组外一致：出画布菜单（添加节点/撤销等），组自己的菜单在标题栏上。
+  nodeMenuRef.value?.openMenu(event, true);
 }
 
 function showEdgeDisconnect({ event, edge }: EdgeMouseEvent) {
@@ -1167,8 +1303,12 @@ function updateCanvasKeys(event: KeyboardEvent) {
   if (!props.active || props.settingsVisible) return resetCanvasKeys();
   const target = event.target;
   const shortcuts = generalSettings.value.canvasShortcuts;
+  // ACT: 面板打开时焦点可能在 body 上（点消息正文不改焦点），这时 Delete/Backspace
+  // 会落到画布快捷键上，把正被使用的 Agent 节点删掉。
+  const panelOpenOnBody = !!agentNodePanelRef.value?.isOpen?.() && (target === document.body || target === document.documentElement);
   const inCanvas =
     target instanceof Element &&
+    !panelOpenOnBody &&
     !target.closest("[role='dialog'], #agentPanel") &&
     (target === document.body || target === document.documentElement || canvasElement.value?.contains(target));
   // None 只配置默认鼠标手势，不能触发会禁用节点交互的临时抓手或节点内部缩放。

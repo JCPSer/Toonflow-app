@@ -120,6 +120,14 @@ async function copyCanvasFilesInternal(files: Files, path: string, target: strin
         Object.assign(node, { selected: false });
         Reflect.deleteProperty(node, "initialized");
         node.data = remapData(node.data) as Node["data"];
+        // ACT: 画布另存是服务端 JSON 拷贝，拿不到节点复制事件。Agent 节点不能和原画布共用一个会话文件，
+        // 这里改成「首次打开面板时再克隆」，一次覆盖另存/导入/跨工程粘贴所有路径。
+        const agentData = node.data as { agentSessionFile?: string; agentSessionCloneFrom?: string; agentLastPrompt?: string };
+        if (agentData.agentSessionFile) {
+          agentData.agentSessionCloneFrom = agentData.agentSessionFile;
+          delete agentData.agentSessionFile;
+          delete agentData.agentLastPrompt;
+        }
         if (typeof textPath === "string") {
           const destination = `assets/${node.id}/content.md`;
           if (remapPath(textPath) !== destination) {
