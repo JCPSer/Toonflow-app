@@ -170,8 +170,9 @@
         </handle>
       </template>
       <!-- ACT: 角标相对 cardContainer 定位（只包住卡片），bottom:100% 才正好停在卡片上边框之外；
-           挂在节点根层会把标题栏高度也算进去，导致偏离卡片约 28px。 -->
-      <span v-if="!documentTarget && durationLabel" class="durationBadge nodrag nopan nowheel" :class="{ isDone: durationDone }">{{ durationLabel }}</span>
+           挂在节点根层会把标题栏高度也算进去，导致偏离卡片约 28px。
+           计时隔离在 durationBadge 内部，避免每秒重渲染时连带 <slot> 的节点内容一起重建。 -->
+      <durationBadge v-if="!documentTarget" class="durationBadge" :busy="busy" :active="!documentTarget" />
     </div>
   </div>
   </teleport>
@@ -198,6 +199,7 @@ import { ElCard, ElButton, ElDivider, ElDropdown, ElDropdownMenu, ElDropdownItem
 import type { DropdownInstance } from "element-plus";
 import { validateConnection } from "./connection";
 import { useNodeEvent } from "./nodeEvent";
+import durationBadge from "./durationBadge.vue";
 import type { NodeConnectionFeedback, NodeData, NodeHandle } from "./connection";
 import { isNodeOutput, type NodeOutput } from "./values";
 import type { NodeDocumentContext } from "./nodeDocument";
@@ -416,61 +418,6 @@ onNodeClick(({ node: clickedNode }) => {
 const editingLabel = ref(false);
 const labelDraft = ref("");
 const labelInput = ref<HTMLInputElement>();
-
-// ACT: 运行时长只在组件内存里记，不写 node.data——它是观察态，不需要跨会话或跨画布持久化。
-const elapsedMs = ref(0);
-const durationDone = ref(false);
-let startedAt = 0;
-let ticker: ReturnType<typeof setInterval> | undefined;
-
-function stopTicker() {
-  if (ticker === undefined) return;
-  clearInterval(ticker);
-  ticker = undefined;
-}
-
-function pad(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-// 运行中显示 00:42 / 1:05:30，秒级精度用墙钟差值算，定时器被节流也不会累积漂移。
-function formatDuration(ms: number) {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const seconds = total % 60;
-  const minutes = Math.floor(total / 60) % 60;
-  const hours = Math.floor(total / 3600);
-  return hours ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
-}
-
-// 结束后用更紧凑的人类可读格式：42s / 3m12s / 1h05m。
-function formatElapsed(ms: number) {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  if (total < 60) return `${total}s`;
-  if (total < 3600) return `${Math.floor(total / 60)}m${pad(total % 60)}s`;
-  return `${Math.floor(total / 3600)}h${pad(Math.floor((total % 3600) / 60))}m`;
-}
-
-const durationLabel = computed(() => {
-  if (props.busy) return formatDuration(elapsedMs.value);
-  if (!durationDone.value) return "";
-  return `耗时 ${formatElapsed(elapsedMs.value)}`;
-});
-
-watch(() => props.busy, busy => {
-  if (busy) {
-    stopTicker();
-    startedAt = performance.now();
-    elapsedMs.value = 0;
-    durationDone.value = false;
-    ticker = setInterval(() => { elapsedMs.value = performance.now() - startedAt; }, 1000);
-  } else if (ticker !== undefined) {
-    // 只有本次确实跑过才定格；初始的 false 因为没有 ticker 会直接跳过，不会显示「耗时 0s」。
-    stopTicker();
-    elapsedMs.value = performance.now() - startedAt;
-    durationDone.value = true;
-  }
-}, { immediate: true });
-onScopeDispose(stopTicker);
 
 
 const reloadRemoteNode = inject<((type: string) => Promise<void>) | undefined>("reloadRemoteNode", undefined);
@@ -830,17 +777,22 @@ watch(
     position: relative;
 
     /* ACT: 运行时长浮标相对卡片定位，bottom:100% 正好贴在卡片上边框之外；right:0 靠右上角向左凸，
-       避开右侧输出端口（right:-12px）。pointer-events:none 保证不拦画布拖拽与滚轮。 */
+       避开右侧输出端口（right:-12px）。因为整块都在卡片之外，v-loading 的遮罩覆盖不到它，
+       无需抬高 z-index（那样反而会让角标越过相邻节点绘制）。
+       pointer-events:none 保证不拦画布拖拽与滚轮。 */
     .durationBadge {
       position: absolute;
       right: 0;
       bottom: calc(100% + 3px);
       z-index: 2;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
       padding: 1px 6px;
-      border: 1px solid var(--el-border-color-light);
+      border: 1px solid var(--el-border-color);
       border-radius: 999px;
       background: var(--el-bg-color-overlay);
-      color: var(--el-text-color-secondary);
+      color: var(--el-text-color-regular);
       font-size: 11px;
       font-variant-numeric: tabular-nums;
       line-height: 16px;
@@ -849,7 +801,7 @@ watch(
       user-select: none;
 
       &.isDone {
-        color: var(--el-text-color-placeholder);
+        color: var(--el-text-color-secondary);
       }
     }
 

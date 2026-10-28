@@ -1,5 +1,5 @@
 <template>
-  <nodeSkeleton v-bind="nodeProps" :busy="exportingVideo || !!exportingImage || tasks.some(task => !task.error)" style="width: 320px">
+  <nodeSkeleton v-bind="nodeProps" :busy="exportingVideo || !!exportingImage || tasks.some(task => task.error === undefined)" style="width: 320px">
     <button v-loading="modelLoading" type="button" class="directorContent nopan" :disabled="modelLoading" :title="modelError || undefined" aria-label="打开导演台" @dblclick.stop @click.stop="openEditor">
       <img v-if="preview" class="scenePreview" :src="preview" alt="最后镜头" draggable="false" />
       <div v-else class="emptyPreview">

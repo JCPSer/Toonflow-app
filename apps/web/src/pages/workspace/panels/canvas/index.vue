@@ -1435,6 +1435,28 @@ const defaultEdgeOptions = markRaw({
     opacity: 1;
   }
 
+  // ACT: 连线层是普通绘制内容，任一虚线动画的失效会冒泡到根层。contain:paint 把重绘限定在该层内，
+  // 平移时不再连带整页重绘（实测根层重绘由 12.5 次/帧降到 0）。
+  :deep(.vue-flow__edges) {
+    contain: paint;
+  }
+
+  // ACT: 虚线流动原本用 linear 插值，stroke-dashoffset 每帧取值都不同，浏览器必须逐帧光栅化 SVG path。
+  // steps() 把连续插值改成离散跳变，只在跳变时失效：20 步 / 2s = 10Hz，视觉上仍是流动虚线，
+  // 但失效频率从 ~60Hz 降到 10Hz。offset 从 10 走到 0，正好覆盖一个 dasharray 周期，可无缝循环。
+  :deep(.vue-flow__edge.animated path) {
+    animation: canvasEdgeFlow 2s steps(20) infinite;
+  }
+
+  @keyframes canvasEdgeFlow {
+    from {
+      stroke-dashoffset: 10;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
   :deep(.vue-flow__nodesselection-rect) {
     box-sizing: content-box;
     padding: 8px;

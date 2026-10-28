@@ -99,7 +99,7 @@ export async function storedMentionOutput(directory: string, canvasId: string, n
   const canvas = await readCanvas(directory, canvasId);
   const node = canvas.byId.get(nodeId);
   if (!node) throw Object.assign(new Error("节点已删除，请重新选择"), { status: 404 });
-  return outputId === undefined ? mentionNodeOutputs(node) : createCanvasMention(node, canvasId, outputId, path => readMentionText(directory, path));
+  return outputId === undefined ? mentionNodeOutputs(node) : createCanvasMention(node, canvasId, outputId);
 }
 
 export async function storedNodeMention(directory: string, canvasId: string, nodeId: string) {
@@ -121,6 +121,7 @@ export async function selectMentionAsset(relativePath: string, options: { librar
   const info = await stat(path);
   const type = mentionAssetType(relativePath);
   if (!info.isFile() || !info.size || info.size > 100 * 1024 * 1024) throw Object.assign(new Error("请选择非空且不超过 100 MB 的素材文件"), { status: 400 });
-  const value = type.dataType === "STRING" ? await readMentionText(root, relativePath) : { url: relativePath, mimeType: type.mimeType };
+  // ACT: 不读正文，只给库内相对路径；文本由模型用 read 按需读取。
+  const value = type.dataType === "STRING" ? { path: relativePath, mimeType: type.mimeType } : { url: relativePath, mimeType: type.mimeType };
   return { id: crypto.randomUUID(), label: basename(path), source: { kind: "asset", path: relativePath, library }, dataType: type.dataType, value };
 }

@@ -1,7 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
-    :busy="generating || !!actions?.processing || !!actions?.creatingAnalysis"
+    :busy="generating || !!actions?.processing"
     v-model:bottomVisible="node.selected"
     :topVisible="node.selected"
     topWidth="max-content"

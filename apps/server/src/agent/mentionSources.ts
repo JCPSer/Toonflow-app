@@ -113,15 +113,20 @@ export async function queryMentionNodes(nodes: readonly MentionCanvasNode[], rev
   return { items, ...(offset < nodes.length ? { nextCursor: JSON.stringify([revision, query, offset]) } : {}) };
 }
 
-export async function createCanvasMention(node: MentionCanvasNode, canvasId: string, outputId: string, readText: (path: string) => Promise<string>): Promise<AgentMention> {
+/**
+ * ACT: 引用只传指针，不发原文——文本给工作区路径由模型按需 read，
+ * 媒体给路径 + mimeType。这样一次性把几万字的节点塞进上下文的问题从根上消失。
+ * 校验与预览的正文由调用方在本地读取，不进入模型上下文。
+ */
+export async function createCanvasMention(node: MentionCanvasNode, canvasId: string, outputId: string): Promise<AgentMention> {
   const output = mentionNodeOutputs(node).find(output => output.id === outputId);
   const selected = mentionOutputValue(node, outputId);
   if (!output?.available || !selected) throw new Error("这个输出暂无内容，请重新选择");
-  const value = selected.textPath === undefined ? selected.value : await readText(selected.textPath);
-  if (typeof value === "string" && value.length > 100000) throw new Error("文本引用最多支持 100000 个字符，请缩小内容后重试");
-  if (typeof value === "string" && !value.trim()) throw new Error("这个输出暂无内容，请重新选择");
   const canvasName = canvasId.replace(/\.json$/i, "").slice(0, 255);
   const nodeName = mentionNodeName(node);
+  // 文本输出落盘在 textPath，直接给路径；没有路径但内存里有值时，说明是未落盘的临时输出，退回节点指针。
+  const value = selected.textPath !== undefined ? { path: selected.textPath, mimeType: "text/markdown" } : selected.value;
+  if (typeof value === "string" && !value.trim()) throw new Error("这个输出暂无内容，请重新选择");
   return { id: crypto.randomUUID(), label: `${nodeName} · ${output.name}`.slice(0, 500), source: { kind: "canvas", canvasId, canvasName, nodeId: node.id,
     nodeName, outputId, outputName: output.name }, dataType: selected.dataType, value };
 }

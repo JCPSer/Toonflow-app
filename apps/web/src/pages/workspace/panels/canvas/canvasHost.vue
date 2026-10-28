@@ -483,13 +483,8 @@ const mentionSource: MentionCanvasSource = {
     if (!panel) return;
     const node = panel.findMentionNode(nodeId);
     if (!node) throw new Error("节点已删除，请重新选择");
-    const directory = workspaceStore.project?.directory;
-    if (!directory) throw new Error("请先打开工作区");
-    return createCanvasMention(node, canvasId, outputId, async path => {
-      const text = await useWorkspaceFiles(directory).readText(path, 400001);
-      if (text.length > 100000) throw new Error("文本引用最多支持 100000 个字符，请缩小内容后重试");
-      return text;
-    });
+    // ACT: 引用只发指针，不再读正文——文本输出直接给 textPath，由模型按需 read。
+    return createCanvasMention(node, canvasId, outputId);
   },
   // ACT: 画布未打开时同步返回 undefined，让上层回落到服务端读取；打开时返回 Promise（要读上游正文）。
   selectNode(canvasId, nodeId) {

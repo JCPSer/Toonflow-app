@@ -1,7 +1,6 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
-    :busy="!!lighting?.generating || !!multiAngle?.generating || !!panorama?.busy"
     :topVisible="node.selected"
     :bottomVisible="node.selected && (lightingVisible || multiAngleVisible || editor?.mode === 'inpaint')"
     :bottomWidth="660"
