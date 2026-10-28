@@ -1,10 +1,12 @@
 import { inject, nextTick } from "vue";
 import { useNode, useVueFlow } from "@vue-flow/core";
+import { revealNodeInViewport } from "@toonflow/nodes-scaffold/runtime";
 import type { ImageInpaint } from "./imageInpaint";
 
 export function useImageVariationNode() {
   const { id, node } = useNode();
-  const { addNodes, addEdges, removeNodes, findNode, getNodes, nodeTypes } = useVueFlow();
+  const flow = useVueFlow();
+  const { addNodes, addEdges, removeNodes, findNode, getNodes, nodeTypes } = flow;
   const batchHistory = inject<(action: () => Promise<void>) => Promise<void>>("batchCanvasHistory", action => action());
 
   return async function createVariation(input: { label: string; prompt: string; model: string; size: string; ratio: string; nodeId?: string; inpaint?: ImageInpaint }, signal?: AbortSignal) {
@@ -36,6 +38,8 @@ export function useImageVariationNode() {
       }
       await nextTick();
     });
+    // ACT: 变体节点排在原节点右侧，原节点贴边时会落到屏外。
+    await revealNodeInViewport(flow, nodeId, { margin: 48 });
     return { nodeId, edgeId };
   };
 }

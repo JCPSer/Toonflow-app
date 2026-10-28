@@ -81,13 +81,14 @@
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useNode, useVueFlow, type Node } from "@vue-flow/core";
 import { ElButton, ElDialog, ElMessage, ElProgress } from "element-plus";
-import { useNodeFiles, useNodeFfmpeg, useNodeEvent, type WorkspaceFiles, type NodeMediaValue } from "@toonflow/nodes-scaffold/runtime";
+import { revealNodeInViewport, useNodeFiles, useNodeFfmpeg, useNodeEvent, type WorkspaceFiles, type NodeMediaValue } from "@toonflow/nodes-scaffold/runtime";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
 import { processVideo } from "../videoProcessing";
 
 const props = defineProps<{ file?: NodeMediaValue; src: string; disabled?: boolean }>();
 const { node } = useNode();
-const { addNodes, addEdges, removeNodes, findNode, getNodes, nodeTypes, removeSelectedElements, addSelectedNodes, nodesSelectionActive, fitView, setCenter } = useVueFlow();
+const flow = useVueFlow();
+const { addNodes, addEdges, removeNodes, findNode, getNodes, nodeTypes, removeSelectedElements, addSelectedNodes, nodesSelectionActive, fitView, setCenter } = flow;
 const files = useNodeFiles();
 const loadFfmpeg = useNodeFfmpeg();
 const nodeEvent = useNodeEvent();
@@ -399,6 +400,8 @@ async function process() {
       if (findNode(node.id) !== node || requiredTypes.some(type => !nodeTypes?.value?.[type])) throw new Error("画布节点已变化，请重新处理");
       addNodes(nodes);
       committed = true;
+      // ACT: 音轨/片段按源节点向下排，一行放满就会跑出视口，最后补一次跟随。
+      await revealNodeInViewport(flow, nodes.at(-1)!.id, { margin: 48 });
     });
     visible.value = false;
     ElMessage.success(`${actionLabels[operation]}完成，已生成 ${nodes.length} 个节点`);

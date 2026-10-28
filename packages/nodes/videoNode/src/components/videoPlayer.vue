@@ -61,6 +61,7 @@ import { useNode, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElDropdown, ElDropdownMenu, ElDropdownItem, ElMessage, ElPopover, ElSlider } from "element-plus";
 import { IconPlayerPlay, IconPlayerPause, IconVolume, IconVolumeOff, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { useNodeFiles } from "@toonflow/nodes-scaffold/workspaceFiles";
+import { revealNodeInViewport } from "@toonflow/nodes-scaffold/runtime";
 
 const { src, posterUrl = "", label = "节点视频", readOnly = false, resolveSource } = defineProps<{ src: string; posterUrl?: string; label?: string; readOnly?: boolean; resolveSource?: () => Promise<void> }>();
 // ACT: 海报态由父层提供首帧图；src 为空时只显示海报，用户点播放才 emit activate 索取视频。
@@ -273,6 +274,9 @@ function toggleMute() {
   readVolume();
 }
 
+// ACT: 取帧必须让 video 参与渲染。WKWebView 里未挂到文档的 video 即使 seeked 且 readyState=4，
+// drawImage 仍可能画出一张全透明画布（用户看到的就是「截出来是空白图片」）。这里挂进一个离屏容器，
+// 并在 seeked 之后再等 requestVideoFrameCallback 报告真正呈现了一帧，才交给调用方绘制。
 function loadFrame(source: HTMLVideoElement, srcUrl: string, mode: { kind: "time"; time: number } | { kind: "last" }, signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     const timer = window.setTimeout(() => finish(new Error("视频帧读取超时")), 15000);
@@ -293,9 +297,12 @@ function loadFrame(source: HTMLVideoElement, srcUrl: string, mode: { kind: "time
       // ACT: 首帧固定取 0.05s 触发一次真实 seek；目标时间恰好等于当前时间时不会派发 seeked，会一直等到超时。
       // ACT: last 在极短视频上会算成 0，与当前时间同值不会派发 seeked，至少留 0.01s 才能触发真实 seek。
       const target = mode.kind === "last" ? Math.max(0.01, last) : Math.max(0.05, Math.min(mode.time, last || 0.05));
+      // ACT: rvfc 必须在设置 currentTime 之前注册——seek 完成时那一帧已经呈现过了，
+      // 等 seeked 再注册就永远不会再触发（暂停元素没有后续呈现），只剩超时兜底。
+      const presented = presentedFrame(source, target).then(() => nextPaint());
       source.onseeked = () => {
         if (source.readyState < 2 || !source.videoWidth) return finish(new Error("视频帧尚未就绪"));
-        finish();
+        void presented.then(() => finish());
       };
       source.currentTime = target;
     };
@@ -307,6 +314,73 @@ function loadFrame(source: HTMLVideoElement, srcUrl: string, mode: { kind: "time
   });
 }
 
+// ACT: seeked 只保证解码器有数据，不保证帧已进入可绘制状态。等 rvfc 报告「落在目标时间附近的帧已呈现」，
+// 订阅到不符的旧帧就继续等下一帧；没有 rvfc 的老 WebKit 退回一帧 rAF。600ms 超时兜底，避免永久等待。
+function presentedFrame(source: HTMLVideoElement, mediaTime: number) {
+  return new Promise<void>(resolve => {
+    type FrameRequest = (callback: (now: number, metadata: { mediaTime: number }) => void) => number;
+    const request = (source as HTMLVideoElement & { requestVideoFrameCallback?: FrameRequest }).requestVideoFrameCallback;
+    const cancel = (source as HTMLVideoElement & { cancelVideoFrameCallback?: (handle: number) => void }).cancelVideoFrameCallback;
+    let settled = false;
+    let handle: number | undefined;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (handle !== undefined && typeof cancel === "function") cancel.call(source, handle);
+      resolve();
+    };
+    const timer = window.setTimeout(settle, 600);
+    if (typeof request !== "function") {
+      requestAnimationFrame(() => settle());
+      return;
+    }
+    const listen = () => {
+      handle = request.call(source, (_now, metadata) => {
+        // 只看目标时间附近的帧：seek 刚下发时可能先收到解析阶段的旧帧。
+        if (Math.abs(metadata.mediaTime - mediaTime) > 0.15) {
+          listen();
+          return;
+        }
+        settle();
+      });
+    };
+    listen();
+  });
+}
+
+// ACT: 两帧 rAF 保证绘制前至少完成一次合成，避免 drawImage 读到尚未上屏的内容。
+function nextPaint() {
+  return new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+}
+
+// ACT: 重试时只「等」不会产生新帧。真的把时间戳挪 40ms 再 seek 一次，逼解码器重新出帧。
+async function nudgeFrame(source: HTMLVideoElement, signal: AbortSignal) {
+  const from = source.currentTime;
+  const target = from < 0.5
+    ? Math.min(Math.max(0.05, source.duration - 0.01), from + 0.04)
+    : Math.max(0.01, from - 0.04);
+  const presented = presentedFrame(source, target);
+  source.currentTime = target;
+  await presented;
+  await nextPaint();
+  signal.throwIfAborted();
+}
+
+// ACT: 8×8 缩略采样判断这一帧是否真的画出了内容。drawImage 拿到空帧时画布全透明，
+// 此时不能把 PNG 交给用户（会得到一张空白图片节点），必须重试或明确报错。
+function isBlankFrame(source: HTMLVideoElement) {
+  const probe = document.createElement("canvas");
+  probe.width = 8;
+  probe.height = 8;
+  const context = probe.getContext("2d");
+  if (!context) return false;
+  context.drawImage(source, 0, 0, 8, 8);
+  const data = context.getImageData(0, 0, 8, 8).data;
+  for (let index = 3; index < data.length; index += 4) if (data[index]) return false;
+  return true;
+}
+
 async function captureFrame(command: "current" | "first" | "last") {
   if (readOnly || !node || !flow || !files || capturing.value) return;
   const { addNodes, findNode, getNodes, nodeTypes } = flow;
@@ -314,6 +388,9 @@ async function captureFrame(command: "current" | "first" | "last") {
   capturing.value = true;
   const id = crypto.randomUUID();
   let frameVideo: HTMLVideoElement | undefined;
+  // ACT: 解码用的 video 必须一直是文档里的元素（离屏容器），否则 WKWebView 下 drawImage 会拿到空帧。
+  // 容器活到本次截帧结束才移除，不能随 loadFrame 结束就摘掉。
+  let frameHolder: HTMLDivElement | undefined;
   let uploadStarted = false;
   let committed = false;
   let workspace: ReturnType<NonNullable<typeof files>["getWorkspaceFiles"]> | undefined;
@@ -335,6 +412,10 @@ async function captureFrame(command: "current" | "first" | "last") {
     frameVideo = document.createElement("video");
     frameVideo.muted = true;
     frameVideo.preload = "auto";
+    frameHolder = document.createElement("div");
+    frameHolder.style.cssText = "position:fixed;left:-10000px;top:-10000px;width:2px;height:2px;overflow:hidden;pointer-events:none;";
+    frameHolder.appendChild(frameVideo);
+    document.body.appendChild(frameHolder);
     // ACT: 海报态没有播放器元素，"当前帧"退化为首帧，明确告知而不是静默给出别的画面。
     if (command === "current" && !video.value) ElMessage.info("视频尚未播放，已截取首帧");
     const currentSeconds = video.value?.currentTime ?? 0;
@@ -347,7 +428,15 @@ async function captureFrame(command: "current" | "first" | "last") {
     canvas.height = source.videoHeight;
     const context = canvas.getContext("2d");
     if (!context || !canvas.width || !canvas.height) throw new Error("视频帧尚未就绪");
-    context.drawImage(source, 0, 0);
+    // ACT: 空帧不能提交。画出来若全透明说明这一帧没有真正解码，等下一帧呈现后重画；
+    // 3 次仍为空就明确报错，避免把透明 PNG 存成一张空白图片节点。
+    for (let attempt = 0; ; attempt++) {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(source, 0, 0);
+      if (!isBlankFrame(source)) break;
+      if (attempt >= 2) throw new Error("视频帧解码失败，请重试");
+      await nudgeFrame(source, controller.signal);
+    }
     const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("截图生成失败")), "image/png"));
     controller.signal.throwIfAborted();
     const frameLabel = { current: "当前帧", first: "首帧", last: "尾帧" }[command];
@@ -366,11 +455,15 @@ async function captureFrame(command: "current" | "first" | "last") {
       if (position.x < x + width && position.x + other.dimensions.width > x && position.y < y + 300 && position.y + other.dimensions.height > y) y = position.y + other.dimensions.height + 24;
     }
     addNodes({ id, type: "remote-imageNode", position: { x, y }, data: { label: name, outputs: { image: { dataType: "IMAGE", value: { url: path, mimeType: "image/png" } } } } });
+    // ACT: 截出的节点默认摆在源节点右侧并向下的空位，源节点贴着视口边缘时会落到屏外，这里补一次跟随。
+    await revealNodeInViewport(flow, id, { margin: 40 });
     committed = true;
     ElMessage.success("已截取为图片节点");
   } catch (error) {
     if (!controller?.signal.aborted) ElMessage.error(error instanceof Error ? error.message : "截帧失败");
   } finally {
+    frameHolder?.remove();
+    frameHolder = undefined;
     if (frameVideo) { frameVideo.removeAttribute("src"); frameVideo.load(); }
     if (uploadStarted && !committed) {
       await workspace!.remove(`assets/${id}`, true).catch(error => {

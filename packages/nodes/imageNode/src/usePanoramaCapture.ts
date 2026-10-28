@@ -1,13 +1,14 @@
 import { inject, onScopeDispose, ref, watch } from "vue";
 import { useNode, useVueFlow, type Node } from "@vue-flow/core";
 import { ElMessage } from "element-plus";
-import { uploadNodeFile, useNodeFiles } from "@toonflow/nodes-scaffold/runtime";
+import { revealNodeInViewport, uploadNodeFile, useNodeFiles } from "@toonflow/nodes-scaffold/runtime";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
 import type { PanoramaCapture } from "./imagePanorama";
 
 export function usePanoramaCapture(source: () => string) {
   const { node } = useNode();
-  const { addNodes, addEdges, removeNodes, findNode, getNodes, nodeTypes } = useVueFlow();
+  const flow = useVueFlow();
+  const { addNodes, addEdges, removeNodes, findNode, getNodes, nodeTypes } = flow;
   const files = useNodeFiles();
   const getCanvas = inject<(() => { id: string } | undefined) | undefined>("canvas", undefined);
   const getDirectory = inject<(() => string) | undefined>("workspaceDirectory", undefined);
@@ -93,6 +94,7 @@ export function usePanoramaCapture(source: () => string) {
           throw error;
         }
       });
+      await revealNodeInViewport(flow, createdNodes.at(-1)!.id, { margin: 48 });
       ElMessage.success(grouped ? `已创建 ${createdNodes.length} 张截图并成组连线` : "已创建截图并连接原节点");
     } catch (error) {
       if (!controller.signal.aborted) showNodeError(error, "全景截图保存失败");

@@ -57,7 +57,7 @@ import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useNode, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElMessage } from "element-plus";
 import { IconBrush, IconEraser, IconSquare, IconCircle, IconTypography, IconArrowBackUp, IconArrowForwardUp, IconTrash, IconCheck, IconX } from "@tabler/icons-vue";
-import { uploadNodeFile, useNodeFiles } from "@toonflow/nodes-scaffold/runtime";
+import { revealNodeInViewport, uploadNodeFile, useNodeFiles } from "@toonflow/nodes-scaffold/runtime";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
 import { useImageVariationNode } from "../useImageVariationNode";
 import { buildInpaintPrompt, type InpaintDraftInput } from "../imageInpaint";
@@ -65,7 +65,8 @@ import { buildInpaintPrompt, type InpaintDraftInput } from "../imageInpaint";
 const props = defineProps<{ src: string; alt: string; toolbarTarget?: HTMLElement; disabled?: boolean }>();
 const emit = defineEmits<{ load: [event: Event]; error: [event: Event] }>();
 const { node } = useNode();
-const { addNodes, addEdges, findNode, getNodes, nodeTypes } = useVueFlow();
+const flow = useVueFlow();
+const { addNodes, addEdges, findNode, getNodes, nodeTypes } = flow;
 const files = useNodeFiles();
 const createVariation = useImageVariationNode();
 const getCanvas = inject<(() => { id: string } | undefined) | undefined>("canvas", undefined);
@@ -331,6 +332,7 @@ async function saveMark() {
       addEdges([{ id: crypto.randomUUID(), source: node.id, sourceHandle: "image", target: id, targetHandle: "in" }]);
       committed = true;
     });
+    await revealNodeInViewport(flow, id, { margin: 48 });
     cancel();
   } catch (error) {
     if (!controller.signal.aborted) showNodeError(error, "标记保存失败");

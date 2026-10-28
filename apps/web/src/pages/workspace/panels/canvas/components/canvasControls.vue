@@ -6,7 +6,8 @@
     :pannable="true"
     :zoomable="true"
     node-color="var(--el-fill-color-dark)"
-    mask-color="var(--el-mask-color-extra-light)" />
+    mask-color="var(--el-mask-color-extra-light)"
+    @click="onMiniMapClick" />
   <panel class="canvasControlsPanel" position="bottom-left">
     <el-card class="canvasControlsCard" shadow="never" :bodyStyle="{ padding: '2px 4px' }">
       <div class="canvasControls">
@@ -136,7 +137,7 @@ const assetsVisible = defineModel<boolean>("assetsVisible", { default: false });
 const showMap = defineModel<boolean>("showMap", { required: true });
 const zoomMenuVisible = ref(false);
 const flow = useVueFlow();
-const { viewport, zoomTo, zoomIn, zoomOut, fitView, getNodes, updateNode } = flow;
+const { viewport, zoomTo, zoomIn, zoomOut, fitView, getNodes, updateNode, setCenter } = flow;
 const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
 const layoutSnapshot = ref<{ id: string; position: XYPosition }[]>();
 const undoPopoverVisible = ref(false);
@@ -164,6 +165,23 @@ watch(
   { flush: "sync" }
 );
 onBeforeUnmount(() => arrangeController?.abort());
+
+// ACT: 小地图此前只能拖动视口框，点击空白处没有反应。点击即把它对应的画布位置移到屏幕中心。
+// 坐标从 SVG 的 viewBox 反算——组件 emit 的 position 是小地图自身像素坐标，换算规则属于实现细节；
+// preserveAspectRatio 默认 xMidYMid meet，等比缩放后会有留白，必须把留白扣掉才对得上。
+function onMiniMapClick(payload: { event: MouseEvent }) {
+  const target = payload?.event?.target;
+  const svg = target instanceof Element ? target.closest("svg") : null;
+  if (!svg) return;
+  const box = svg.viewBox.baseVal;
+  const rect = svg.getBoundingClientRect();
+  if (!box || !box.width || !box.height || !rect.width || !rect.height) return;
+  const scale = Math.min(rect.width / box.width, rect.height / box.height);
+  if (!scale) return;
+  const x = box.x + (payload.event.clientX - rect.left - (rect.width - box.width * scale) / 2) / scale;
+  const y = box.y + (payload.event.clientY - rect.top - (rect.height - box.height * scale) / 2) / scale;
+  void setCenter(x, y, { zoom: viewport.value.zoom, duration: 180 });
+}
 
 function applyZoom(value: number | undefined) {
   if (value !== undefined && Number.isFinite(value)) void zoomTo(value / 100);
@@ -209,7 +227,11 @@ async function undoArrange() {
 </script>
 
 <style lang="scss" scoped>
-.canvasMiniMap.vue-flow__minimap { bottom: 46px; }
+.canvasMiniMap.vue-flow__minimap {
+  bottom: 46px;
+  /* ACT: 可点击跳转要有可发现的指针反馈；拖动过程中仍由组件内的 grab 光标接管。 */
+  cursor: pointer;
+}
 
 @container canvasWorkspace (max-width: 1040px) {
   .canvasControlsPanel.vue-flow__panel { bottom: 46px; }

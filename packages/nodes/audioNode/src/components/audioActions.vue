@@ -35,7 +35,7 @@ import { computed, inject, onBeforeUnmount, ref, watch } from "vue";
 import { useNode, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElCard, ElDialog, ElInputNumber, ElMessage, ElSlider } from "element-plus";
 import { IconArrowUp, IconX } from "@tabler/icons-vue";
-import { useNodeFfmpeg, useNodeFiles, type NodeMediaValue, type WorkspaceFiles } from "@toonflow/nodes-scaffold/runtime";
+import { revealNodeInViewport, useNodeFfmpeg, useNodeFiles, type NodeMediaValue, type WorkspaceFiles } from "@toonflow/nodes-scaffold/runtime";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
 import { processAudio, type AudioSegment, type AudioProcessingOptions } from "../audioProcessing";
 import audioClipEditor from "./audioClipEditor.vue";
@@ -43,7 +43,8 @@ import audioClipEditor from "./audioClipEditor.vue";
 const props = defineProps<{ file?: NodeMediaValue; src: string; disabled?: boolean; target?: HTMLElement }>();
 const emit = defineEmits<{ pause: [] }>();
 const { node } = useNode();
-const { addNodes, findNode, getNodes, nodeTypes } = useVueFlow();
+const flow = useVueFlow();
+const { addNodes, findNode, getNodes, nodeTypes } = flow;
 const files = useNodeFiles();
 const loadFfmpeg = useNodeFfmpeg();
 const getCanvas = inject<(() => { id: string } | undefined) | undefined>("canvas", undefined);
@@ -140,6 +141,7 @@ async function process() {
       addNodes([{ id, type: "remote-audioNode", position: { x, y }, data: { label: `${node.data.label || "音频"} · ${label}`, outputs: { audio: { dataType: "AUDIO", value: { url: outputPath, mimeType: "audio/mp4" } } } } }]);
       committed = true;
     });
+    await revealNodeInViewport(flow, id, { margin: 48 });
     mode.value = undefined;
     ElMessage.success("已在右侧生成新的音频节点");
   } catch (error) {

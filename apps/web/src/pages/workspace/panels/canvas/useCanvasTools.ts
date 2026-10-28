@@ -1,6 +1,6 @@
 import { nextTick, watch, type Ref } from "vue";
 import { useVueFlow, type XYPosition } from "@vue-flow/core";
-import { useNodeEvent, useNodeToolsContext, validateConnection } from "@toonflow/nodes-scaffold/runtime";
+import { revealNodeInViewport, useNodeEvent, useNodeToolsContext, validateConnection } from "@toonflow/nodes-scaffold/runtime";
 import { canvasSchemas, type CanvasContext, type CanvasToolCall } from "@toonflow/tool-canvas/runtime";
 import { asrRequestSchema } from "@toonflow/tools-scaffold/runtime";
 import { isBrowserAudioAsrSupported, transcribeBrowserAudio } from "@toonflow/asr";
@@ -58,6 +58,22 @@ export function useCanvasTools(options: {
     if (!flow.snapToGrid.value) return position;
     const [x, y] = flow.snapGrid.value;
     return { x: Math.round(position.x / x) * x, y: Math.round(position.y / y) * y };
+  }
+
+  // ACT: 新节点按画布坐标落位，而用户常常停在画布另一头，结果节点生成在屏幕外要到处找。
+  // 一次 AI 调用往往连续建多个节点，逐次平移会互相打断、还会读到动画中途的 viewport，
+  // 所以这里攒成一批，等安静下来只按最后一个节点判断并平移一次。
+  let pendingReveal: string | undefined;
+  let revealTimer: ReturnType<typeof setTimeout> | undefined;
+  function scheduleReveal(nodeId: string) {
+    pendingReveal = nodeId;
+    if (revealTimer !== undefined) clearTimeout(revealTimer);
+    revealTimer = setTimeout(() => {
+      revealTimer = undefined;
+      const id = pendingReveal;
+      pendingReveal = undefined;
+      if (id) void revealNodeInViewport(flow, id, { margin: 32 });
+    }, 320);
   }
 
   return (id: string, canvasSignal: AbortSignal, workspaceSignal: AbortSignal): CanvasContext => {
@@ -166,6 +182,10 @@ export function useCanvasTools(options: {
         flow.addNodes({ id, type: type.type, position: nodePosition(args.position), data: { label: args.label ?? type.label } });
         await nextTick();
         signal.throwIfAborted();
+        flow.updateNodeInternals([id]);
+        await nextTick();
+        signal.throwIfAborted();
+        scheduleReveal(id);
         return nodeInfo(id);
       }
       case "deleteNodes": {

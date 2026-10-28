@@ -7,6 +7,7 @@ export * from "./nodeEvent";
 export * from "./nodeTools";
 export * from "./workspaceFiles";
 
+export * from "./nodeViewport";
 export * from "./nodeAi";
 export * from "./nodeFfmpeg";
 export * from "./nodeAsr";
