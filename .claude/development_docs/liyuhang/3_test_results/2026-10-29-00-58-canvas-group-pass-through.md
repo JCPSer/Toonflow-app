@@ -39,3 +39,17 @@
 - 6px 探测容差之外的「擦边点击」仍不会命中连线。
 - 分组贴画布顶部时标题栏位置（既有布局）未调整。
 - 悬停浮层在极小窗口下的翻转位置依赖 Element Plus `fallbackPlacements`，未做极端尺寸手测。
+
+## 六、复测后修正（2026-10-29 01:20）
+
+用户复测反馈两点，均已处理：
+
+1. **空白区域悬停「添加节点」仍不展开**。上一版把浮层写成 `el-popover trigger="hover"` 并嵌在 `el-dropdown-menu` 内，在 EP 的下拉浮层里不会触发 hover。
+   改为**不依赖 EP 浮层**：`el-dropdown-item` 上直接监听 `mouseenter/mouseleave`，浮层用 `<Teleport to="body">` + `position: fixed` 按菜单项矩形定位（右侧放不下自动翻左、纵向夹在视口内），展开/收起由 160ms 延时 + 浮层自身的进入/离开事件控制。
+   浮层上补 `@pointerdown.stop` / `@mousedown.stop`：它已不在下拉浮层内，不加会被 EP 的 click-outside 判成「点外面」，导致点击节点的瞬间整个菜单被关掉。
+2. **组内与空白右键菜单不一致**。上一版组内转发用了 `openMenu(event, true)`（nodesOnly，节点列表专用），而空白走 `onPaneContextMenu(openMenu)` 即 `nodesOnly=false`（完整操作菜单）。组内改为 `openMenu(event, false)`，两条路径统一。
+3. **Agent 节点没有耗时显示**。补 `:busy`（思考/运行中为真），复用 `nodeSkeleton` 的 `durationBadge`：运行中滚秒，结束后留在角标上显示总耗时。
+
+另外补一个构建经验：同一元素写两个同名修饰符事件（如两个 `@pointerdown.capture`）`vue-tsc` 不报错，但 i18n 插件解析 Vue 时判 `Duplicate attribute` 使构建失败，必须合并成单一处理函数。
+
+`apps/web` typecheck 0 新增；`deploy-local.sh --build` 成功，产物含 `addNodeFlyout`（JS/CSS）与 agentNode 的 `busy`。

@@ -809,8 +809,9 @@ function forwardGroupContextMenu(event: MouseEvent) {
   if (!group) return;
   event.preventDefault();
   event.stopPropagation();
-  // 组内右键与组外一致：出画布菜单（添加节点/撤销等），组自己的菜单在标题栏上。
-  nodeMenuRef.value?.openMenu(event, true);
+  // 组内右键与组外一致：走画布空白同一条路径（nodesOnly=false 才是完整操作菜单），
+  // 组自己的菜单在标题栏上。
+  nodeMenuRef.value?.openMenu(event, false);
 }
 
 function showEdgeDisconnect({ event, edge }: EdgeMouseEvent) {

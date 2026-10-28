@@ -21,3 +21,11 @@
 `apps/web` typecheck 0 新增；`deploy-local.sh --build` 成功并安装。踩到一次构建失败：同一元素写两个 `@pointerdown.capture` 会被 i18n 插件的 Vue 解析器判为 `Duplicate attribute`（vue-tsc 不报），必须合并成单一处理函数。
 
 待手测：组内拖组、组内点线断开、组内右键画布菜单、标题栏右键分组菜单并删除整组、悬停添加节点展开。
+
+## 复测修正（01:20）
+
+- **悬停浮层不能用 `el-popover` 嵌在 `el-dropdown-menu` 里**：在 EP 的下拉浮层内 hover 不触发。改为 `el-dropdown-item` 的 `mouseenter/mouseleave` + `<Teleport to="body">` 的 `position: fixed` 面板，坐标取菜单项 `getBoundingClientRect()`（右放不下翻左、纵向夹视口），160ms 延时配合浮层自身的 enter/leave 做悬浮桥。
+- **浮层 teleport 出去后必须自带 `@pointerdown.stop`/`@mousedown.stop`**：否则 EP 的 click-outside 会把它判成「点外面」，点击节点的同时把整个菜单关掉，节点根本建不出来。
+- **组内右键要与空白右键同一路径**：空白走 `onPaneContextMenu(openMenu)` 即 `nodesOnly=false`（完整操作菜单），组内之前传了 `true`（只列节点），所以两边不一样，改传 `false`。
+- **Agent 节点耗时**：`nodeSkeleton` 的 `durationBadge` 由 `busy` 驱动，节点包补 `:busy="thinking||running"` 即可，运行中滚秒、结束留总时长。
+- 构建坑：同一元素写两个 `@pointerdown.capture`，`vue-tsc` 不报但 i18n 插件的 Vue 解析器报 `Duplicate attribute`，构建直接失败。

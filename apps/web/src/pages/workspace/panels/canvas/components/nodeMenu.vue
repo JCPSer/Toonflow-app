@@ -53,37 +53,37 @@
         </template>
         <template v-else-if="menuLevel === 'actions'">
           <el-dropdown-item command="upload" :icon="IconUpload" :disabled="!uploadFiles">上传</el-dropdown-item>
-          <!-- ACT: 「添加节点」改成悬停即向右展开，省掉一次点击；键盘仍可用回车/右键菜单原来的层级切换。 -->
-          <el-popover
-            v-model:visible="nodesFlyoutVisible"
-            trigger="hover"
-            placement="right-start"
-            :fallbackPlacements="['left-start', 'right-end', 'left-end']"
-            :width="240"
-            :offset="8"
-            popperClass="nodeChildMenu"
-            :showArrow="false"
-            :showAfter="0"
-            :hideAfter="120"
-            :persistent="false"
-            :triggerKeys="[]"
-            :appendTo="menuContainer"
-            :popperStyle="{ padding: '5px 0', maxWidth: 'calc(100vw - 16px)' }">
-            <template #reference>
-              <el-dropdown-item command="nodes" :icon="IconPlus">
-                <span>添加节点</span>
-                <icon-chevron-right class="nextIcon" :size="14" />
-              </el-dropdown-item>
-            </template>
-            <nodeMenuItems
-              :items="menuItems"
-              :nodes="filteredNodes"
-              :appendTo="menuContainer"
-              :uploadDisabled="!uploadFiles"
-              @select="handleCommand"
-              @upload="handleCommand('upload')"
-              @close="closeNodesFlyout" />
-          </el-popover>
+          <!-- ACT: 悬停即向右展开节点列表，省掉一次点击。浮层 teleport 到 body 用 fixed 定位：
+               下拉浮层本身靠 transform 定位，放在它内部（或用它的 popper 当 appendTo）都拿不到视口坐标，
+               而且嵌套在 el-dropdown-menu 里的 popover 在这里不会触发 hover。 -->
+          <el-dropdown-item
+            command="nodes"
+            :icon="IconPlus"
+            @mouseenter="openNodesFlyout"
+            @mouseleave="scheduleNodesFlyoutClose">
+            <span>添加节点</span>
+            <icon-chevron-right class="nextIcon" :size="14" />
+          </el-dropdown-item>
+          <Teleport to="body">
+            <div
+              v-if="nodesFlyoutVisible"
+              class="addNodeFlyout"
+              :style="{ left: `${nodesFlyoutRect.left}px`, top: `${nodesFlyoutRect.top}px` }"
+              @mouseenter="onNodesFlyoutEnter"
+              @mouseleave="onNodesFlyoutLeave"
+              @pointerdown.stop="swallow"
+              @mousedown.stop="swallow"
+              @contextmenu.prevent="swallow">
+              <nodeMenuItems
+                :items="menuItems"
+                :nodes="filteredNodes"
+                :appendTo="menuContainer"
+                :uploadDisabled="!uploadFiles"
+                @select="handleCommand"
+                @upload="handleCommand('upload')"
+                @close="closeNodesFlyout" />
+            </div>
+          </Teleport>
           <el-divider />
           <el-dropdown-item command="undo" :icon="IconArrowBackUp" :disabled="!canUndo">撤销</el-dropdown-item>
           <el-dropdown-item command="redo" :icon="IconArrowForwardUp" :disabled="!canRedo">重做</el-dropdown-item>
@@ -158,11 +158,56 @@ const nodeMenuItemsRef = ref<InstanceType<typeof nodeMenuItems>>();
 const menuContainer = computed(() => menuList.value?.$el.closest<HTMLElement>(".el-dropdown__popper") ?? undefined);
 const menuLevel = ref<"actions" | "nodes" | "selection" | "arrange">("actions");
 const nodesFlyoutVisible = ref(false);
+const nodesFlyoutRect = ref({ left: 0, top: 0 });
+let nodesFlyoutTimer: ReturnType<typeof setTimeout> | undefined;
+let nodesFlyoutHover = false;
 // ACT: 点「添加节点」会切到内联的节点层级，此时悬停浮层要收起，避免两份列表同时挂在屏幕上。
-watch(menuLevel, level => { if (level === "nodes") nodesFlyoutVisible.value = false; });
-function closeNodesFlyout() {
+watch(menuLevel, level => { if (level === "nodes") closeNodesFlyout(false); });
+
+function openNodesFlyout(event: MouseEvent) {
+  const rect = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect();
+  if (!rect) return;
+  cancelNodesFlyoutClose();
+  const width = 240;
+  // 右侧放不下就翻到左侧，纵向夹在视口内（浮层最高按 400px 估）。
+  const left = rect.right + 8 + width > window.innerWidth ? rect.left - width - 8 : rect.right + 8;
+  nodesFlyoutRect.value = { left: Math.max(8, left), top: Math.max(8, Math.min(rect.top, window.innerHeight - 408)) };
+  nodesFlyoutVisible.value = true;
+}
+
+function scheduleNodesFlyoutClose() {
+  if (nodesFlyoutTimer !== undefined) clearTimeout(nodesFlyoutTimer);
+  // ACT: 给鼠标穿过「菜单项 → 浮层」的缝隙留时间，否则 hover 一离开就收起。
+  nodesFlyoutTimer = setTimeout(() => {
+    nodesFlyoutTimer = undefined;
+    if (!nodesFlyoutHover) nodesFlyoutVisible.value = false;
+  }, 160);
+}
+
+function onNodesFlyoutEnter() {
+  nodesFlyoutHover = true;
+  cancelNodesFlyoutClose();
+}
+
+function onNodesFlyoutLeave() {
+  nodesFlyoutHover = false;
+  scheduleNodesFlyoutClose();
+}
+
+function swallow() {
+  // 浮层里的右键不弹系统菜单，也不往画布层透传。
+}
+
+function cancelNodesFlyoutClose() {
+  if (nodesFlyoutTimer !== undefined) clearTimeout(nodesFlyoutTimer);
+  nodesFlyoutTimer = undefined;
+}
+
+function closeNodesFlyout(closeMenu = true) {
+  cancelNodesFlyoutClose();
+  nodesFlyoutHover = false;
   nodesFlyoutVisible.value = false;
-  menu.value?.handleClose();
+  if (closeMenu) menu.value?.handleClose();
 }
 const selectedNodes = shallowRef<GraphNode[]>([]);
 const deleting = ref(false);
@@ -217,7 +262,10 @@ const menuItems = computed(() => filterNodeMenu(
 
 async function onMenuVisibleChange(visible: boolean) {
   menuVisible.value = visible;
-  if (!visible) return clearConnection();
+  if (!visible) {
+    closeNodesFlyout(false);
+    return clearConnection();
+  }
   await nextTick();
   if (menuLevel.value === "nodes") nodeMenuItemsRef.value?.focusFirst();
 }
@@ -308,7 +356,7 @@ async function addNode(type: string, position: { x: number; y: number }) {
 }
 
 async function handleCommand(command: unknown) {
-  nodesFlyoutVisible.value = false;
+  closeNodesFlyout(false);
   if (command === "nodes" || command === "actions" || command === "selection" || command === "arrange") {
     if (command === "arrange" && !canArrangeSelection.value) return;
     menuLevel.value = command;
@@ -462,6 +510,18 @@ async function deleteSelection(selection = selectedNodes.value) {
 </script>
 
 <style lang="scss" scoped>
+.addNodeFlyout {
+  position: fixed;
+  z-index: 3000;
+  width: 240px;
+  max-width: calc(100vw - 16px);
+  padding: 5px 0;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-bg-color-overlay);
+  box-shadow: var(--el-box-shadow-light);
+}
+
 .nodeMenu {
   min-width: 180px;
 
