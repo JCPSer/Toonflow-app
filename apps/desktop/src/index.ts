@@ -2,7 +2,7 @@ import { setLocaleFallback, t, translateMessage } from "@toonflow/server/i18n";
 import { setRuntimeHost } from "@toonflow/server/platform";
 import { detectLocale, normalizeLocale } from "@toonflow/i18n";
 import { execFile } from "node:child_process";
-import { existsSync, realpath, writeAtomicSync } from "@toonflow/file";
+import { existsSync, writeAtomicSync } from "@toonflow/file";
 import { file } from "@toonflow/file/bun";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
@@ -163,47 +163,6 @@ async function restoreInstallRegistration(installDirectory: string) {
     } catch (error) {
       console.error("恢复桌面安装注册信息失败：", error);
     }
-  }
-}
-
-// ACT: Electrobun 预编译层没有暴露 canCreateDirectories，NSOpenPanel 才允许在面板里新建文件夹，
-// 因此 macOS 用 JXA 直接打开面板；runModal 返回数值，需与 NSModalResponseOK 比较。
-// ACT: osascript 是独立进程，不激活的话它创建的 NSOpenPanel 会排在 Toonflow 主窗口后面（用户看不到、
-// 前端一直转圈）。先把自身设成 accessory 应用再激活，面板才会置前；两处都 try 住，失败仍会回退到
-// Electrobun 自带面板。
-const macFolderScript = `
-ObjC.import('AppKit')
-var app = $.NSApplication.sharedApplication
-try { app.setActivationPolicy($.NSApplicationActivationPolicyAccessory) } catch (e) {}
-try { app.activateIgnoringOtherApps(true) } catch (e) {}
-var panel = $.NSOpenPanel.openPanel
-panel.canChooseFiles = false
-panel.canChooseDirectories = true
-panel.canCreateDirectories = true
-panel.allowsMultipleSelection = false
-panel.resolveAliases = true
-try { panel.level = $.NSModalPanelWindowLevel } catch (e) {}
-try { panel.makeKeyAndOrderFront(null) } catch (e) {}
-if (panel.runModal != $.NSModalResponseOK) { "" } else { ObjC.unwrap(panel.URLs.objectAtIndex(0).path) }
-`;
-
-async function chooseMacFolder(): Promise<string | null | undefined> {
-  let stdout: string;
-  try {
-    // ACT: 不设超时——用户可能在面板里新建文件夹、翻目录，贸然杀进程会让面板中途消失并叠出第二个对话框。
-    ({ stdout } = await execFileAsync("/usr/bin/osascript", ["-l", "JavaScript", "-e", macFolderScript], { encoding: "utf8" }));
-  } catch (error) {
-    // ACT: 脚本报错、超时或非零退出时返回 undefined，让 selectDirectory 回退到 Electrobun 自带面板；用户取消走空 stdout。
-    console.error("打开 macOS 目录选择面板失败：", error);
-    return undefined;
-  }
-  const selected = stdout.trim();
-  if (!selected) return null;
-  try {
-    return await realpath(selected);
-  } catch (error) {
-    console.error("解析所选目录的真实路径失败：", error);
-    return null;
   }
 }
 
@@ -540,17 +499,9 @@ async function start() {
         return path ?? null;
       },
       async selectDirectory() {
-        if (process.platform === "darwin") {
-          try {
-            const selected = await chooseMacFolder();
-            // ACT: 取消返回 null 是有效结果；只有面板不可用（undefined）才回退到 Electrobun 自带对话框。
-            if (selected !== undefined) return selected;
-          } finally {
-            // ACT: 面板由 osascript 进程激活，关闭后把焦点还给主窗口，否则应用可能停在后台。
-            mainWindow.show();
-            mainWindow.activate();
-          }
-        }
+        // ACT: 目录选择已改到应用内选择器（workspacePicker），这里只保留进程内原生面板作为兜底：
+        // 它跟随应用包的中文本地化，也天然位于主窗口之上。osascript 子进程那条路已删除——那个进程
+        // 的 NSBundle 只声明了英文，界面永远英文，位置也不受控。
         const [path] = await Utils.openFileDialog({ canChooseFiles: false, canChooseDirectory: true, allowsMultipleSelection: false });
         return path ?? null;
       },

@@ -163,6 +163,9 @@ import route158 from "./routes/workspaces/files/thumb";
 import route159 from "./routes/workspaces/files/write";
 import route160 from "./routes/workspaces/list";
 import route161 from "./routes/workspaces/selectDirectory";
+import route164 from "./routes/agent/clone";
+import route165 from "./routes/agent/session";
+import route166 from "./routes/desktop/listDirectory";
 
 export default (app: Express) => {
   // agentAccess · /api/agent
@@ -179,6 +182,8 @@ export default (app: Express) => {
   app.use("/api/agent/rename", route11);
   app.use("/api/agent/rewind", route12);
   app.use("/api/agent/skills", route13);
+  app.use("/api/agent/clone", route164);
+  app.use("/api/agent/session", route165);
   // pluginMarket · /api/agents
   app.use("/api/agents/a2a/get", route14);
   app.use("/api/agents/a2a/save", route15);
@@ -228,6 +233,7 @@ export default (app: Express) => {
   app.use("/api/desktop/clipboard/read", route53);
   app.use("/api/desktop/clipboard/write", route54);
   app.use("/api/desktop/devtools", route55);
+  app.use("/api/desktop/listDirectory", route166);
   app.use("/api/desktop/openUrl", route56);
   app.use("/api/desktop/plugins/install", route57);
   app.use("/api/desktop/providerFile/read", route58);

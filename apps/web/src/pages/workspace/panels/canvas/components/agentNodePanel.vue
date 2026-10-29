@@ -50,7 +50,6 @@
       :disabled="false"
       :extra-mentions="entry.mentions"
       :accept-pending="false"
-      :show-model-picker="false"
       :auto-focus="false"
       :node-binding="{ canvasId, nodeId: entry.nodeId }"
       @session="file => onSession(entry.nodeId, file)"
@@ -387,6 +386,16 @@ defineExpose({ open, close, isOpen: () => !!currentNodeId.value });
   /* 画布统一 user-select: none，对话正文要能选中复制。 */
   user-select: text;
   -webkit-user-select: text;
+
+  /* ACT: 面板只有 380px 宽，原生滚动条会贴在输入框右上、正好压住轮次目录条（系统开了「始终显示
+     滚动条」时尤其明显，看起来像一条无主的竖条）。这里隐藏原生滚动条，滚轮/触控板滚动照常。 */
+  :deep(.messageList) {
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
 
   .agentNodePanelHeader {
     display: flex;
