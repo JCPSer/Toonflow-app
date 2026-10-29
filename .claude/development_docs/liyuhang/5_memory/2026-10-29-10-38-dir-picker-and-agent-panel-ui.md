@@ -27,3 +27,13 @@ web/server typecheck 均无新增；`deploy-local.sh --build` 成功；产物含
 用户要系统原生面板，因此删除 `POST /api/desktop/listDirectory` 与 picker 的 `desktopMode`，桌面 `selectDirectory()` 保留进程内 `Utils.openFileDialog`（osascript/JXA 那段已删）。用最小 .app 实测确认：**进程内** NSOpenPanel 完全中文（个人收藏/文件夹/其他/新建文件夹/取消/打开），位置水平居中、垂直略高于屏幕中心——这是 AppKit 对打开面板的既定位置，不是偏移；要纯居中只能自绘（已被否决）。
 
 教训：先确认「系统组件在哪个进程里」再谈本地化；`CFBundleLocalizations` 决定 AppKit 的界面语言，与 `AppleLanguages` 无关。
+
+## 追加（11:25）：自建随包原生选择器
+
+Electrobun 面板没有「新建文件夹」（FFI 无 canCreateDirectories），osascript 只有英文包，应用内自绘被否决 → 自建 `folder-picker.app`（`apps/desktop/native/folderPicker.m` + 构建脚本 + electrobun copy + deploy 安装），由主进程 `execFile` 调用，stdout 返回路径。
+
+关键坑：
+- `[panel center]` 在多显示器下按「面板自身所在屏幕」居中，会把面板送到副屏（实测 x=-1360，完全看不见）；用 `[NSScreen mainScreen]` 手算也一样。必须按 `[NSEvent mouseLocation]` 找屏幕，并在布局完成后补两次校正。
+- 面板语言由**主 bundle 的 `CFBundleLocalizations`** 决定；helper 的 Info.plist 声明 zh-Hans 才有中文，和系统 `AppleLanguages` 无关。
+- 子进程不一定是前台 App，普通窗口会被主窗口压住；`NSStatusWindowLevel` 是可靠的做法。
+- 安装路径：打包 copy 的落点是 `Contents/Resources/app`，而 `PATHS.RESOURCES_FOLDER` 是 `Contents/Resources`；要用 `resolve(PATHS.VIEWS_FOLDER, "../mac/…")` 才与 startup/tools 一致。

@@ -43,6 +43,12 @@ done
 echo "== 安装桌面入口 =="
 cp "$ROOT/build/desktop/main/index.js" "$RES/bun/index.js"
 
+if [ -d "$ROOT/build/desktop/mac" ]; then
+  echo "== 安装 macOS 目录选择器（Resources）=="
+  mkdir -p "$RES/mac"
+  rsync -a --delete "$ROOT/build/desktop/mac/" "$RES/mac/"
+fi
+
 echo "== 安装前端 =="
 rsync -a "$ROOT/build/web/" "$RES/views/mainview/"
 

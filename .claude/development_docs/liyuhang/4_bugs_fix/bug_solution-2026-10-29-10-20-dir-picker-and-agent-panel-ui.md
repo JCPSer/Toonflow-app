@@ -69,3 +69,38 @@
 | 评审人 | 结论 | 意见 |
 | --- | --- | --- |
 | 用户（2026-10-29 10:45） | 否决应用内方案 | 要系统原生面板。 |
+
+## 八、最终方案（2026-10-29 11:20）：随包的原生选择器
+
+回退到 Electrobun 进程内面板后暴露出两个硬伤：面板里**没有「新建文件夹」**（`Utils.openFileDialog` 的 FFI 只有 startingFolder/allowedFileTypes/canChooseFiles/canChooseDirectory/allowsMultipleSelection，没有 `canCreateDirectories`，NSOpenPanel 当前系统默认不给建目录），用户视作"只读"。
+
+三条路都不通：Electrobun 加不了参数；osascript 进程的 `NSBundle` 只有英文；应用内自绘被用户否决。
+
+因此自建一个**随包的小 .app**（`apps/desktop/native/folderPicker.m` → `build/desktop/mac/folder-picker.app`）：
+
+```
+main(argv):
+  --start <dir>                     起始目录（默认上次选择/主目录）
+  NSApp ↔ Accessory + activate      无 Dock 图标、可激活
+  NSOpenPanel:
+    canChooseFiles = NO
+    canChooseDirectories = YES
+    canCreateDirectories = YES      ← 关键，补上「新建文件夹」
+    prompt/message = 中文
+    level = NSStatusWindowLevel     子进程不一定是前台 App，提层级保证可见
+  居中：不用 [panel center]（多显示器下按面板自身屏幕居中，实测跑到 x=-1360），
+        改为「鼠标所在屏幕的 visibleFrame 居中 + 夹在可视区内」，布局完成后再校正两次
+  runModal → 选中的路径写到 stdout（取消则不输出）
+```
+
+- 本地化：包的 `Info.plist` 声明 `CFBundleLocalizations = [zh-Hans, en]`、`DevelopmentRegion = zh-Hans`，AppKit 才会把侧栏/按钮本地化（已用最小 .app 与本次实测双重确认：个人收藏 / 文件夹 / 其他 / 新建文件夹 / 取消 / 选择）。
+- 构建：`apps/desktop/scripts/buildMacFolderPicker.mjs` 用 clang 现场编译并组装 .app；接入根 `package.json` 的 `build` 与 `build:macPicker`，非 macOS 直接跳过。
+- 打包：`electrobun.config.ts` 增加 `"build/desktop/mac": "mac"`（仅 darwin）。
+- 部署：`scripts/deploy-local.sh` 把 `build/desktop/mac` 同步到安装包的 `Resources/mac`。
+- 主进程：`selectDirectory()` 在 darwin 上 `execFile` 该 helper（带 `--start` 记忆上次目录），失败/缺包返回 `undefined` 回退到 Electrobun 面板；结束后 `mainWindow.show()/activate()` 把焦点还给主窗口。
+
+## 九、评审意见（补充）
+
+| 评审人 | 结论 | 意见 |
+| --- | --- | --- |
+| 用户（2026-10-29 11:15） | 通过方向 | 要系统面板，必须能新建文件夹、中文、居中。 |

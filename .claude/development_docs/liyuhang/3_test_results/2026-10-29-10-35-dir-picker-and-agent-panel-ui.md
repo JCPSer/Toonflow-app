@@ -85,3 +85,39 @@ toonflow-exec.app   → CFBundleLocalizations [zh-Hans]，DevelopmentRegion zh-H
 | 进程内面板语言/位置 | 用一个只声明 `CFBundleLocalizations=[zh-Hans]` 的最小 .app 实测：面板全中文（个人收藏/文件夹/其他/新建文件夹/取消/打开），位置水平居中、垂直略高于屏幕中心（与系统其他 app 一致） |
 
 结论：现在是系统原生面板、中文、位于主窗口之上；「严格几何居中」不成立，因为 AppKit 对打开面板的默认位置就是略高于中心，要改成纯居中只能在 Electrobun 原生层加 frame/父窗口支持。
+
+## 七、最终实现（2026-10-29 11:25）：随包的原生选择器
+
+Electrobun 自带面板缺「新建文件夹」（FFI 没有 `canCreateDirectories`），osascript 只有英文。最终自建一个随包的小 .app：
+
+| 位置 | 内容 |
+| --- | --- |
+| `apps/desktop/native/folderPicker.m`（新） | NSOpenPanel：`canCreateDirectories = YES`、中文 prompt、`NSStatusWindowLevel` 保证可见、按**鼠标所在屏**居中（`[panel center]` 在多显示器下会跑到另一块屏） |
+| `apps/desktop/scripts/buildMacFolderPicker.mjs`（新） | 用 clang 现场编译并组装 `folder-picker.app`（`CFBundleLocalizations = [zh-Hans, en]`）；非 macOS 跳过 |
+| `package.json` | `build` 增加 `build:macPicker`；新增同名脚本 |
+| `electrobun.config.ts` | 打包复制 `build/desktop/mac → mac`（仅 darwin） |
+| `scripts/deploy-local.sh` | 安装到 `$RES/mac`（即 `Contents/Resources/app/mac`） |
+| `apps/desktop/src/index.ts` | `chooseMacFolder()` 用 `execFile` 调 helper（`--start` 记忆上次目录），失败回退 Electrobun 面板；结束后 `mainWindow.show()/activate()` |
+
+### 实测截图结论
+
+| 项 | 结果 |
+| --- | --- |
+| 语言 | 全中文：个人收藏 / 文件夹 / 其他 / 新建文件夹 / 取消 / 选择，标题「选择工作目录」 |
+| 新建文件夹 | 有 |
+| 位置 | 鼠标所在屏幕的水平/垂直居中（640×? 屏实测居中） |
+| 可见性 | 提到状态窗层级，主窗口在前也可见 |
+
+踩坑记录：`[panel center]` 在多显示器下按"面板自己所在的屏幕"居中，实测把面板送到 x=-1360（副屏）导致完全不可见；手动用 `NSScreen.mainScreen` 算 frame 同样取到了副屏。改成按 `[NSEvent mouseLocation]` 命中的屏幕计算并夹在可视区内，布局完成后再校正两次。
+
+### 产物核对
+
+- `build/desktop/main/index.js` 含 `../mac/folder-picker.app/Contents/MacOS/folder-picker`
+- `/Applications/toonflow-exec.app/Contents/Resources/app/mac/folder-picker.app/Contents/MacOS/folder-picker` 已安装且可执行
+- `deploy-local.sh` 输出「安装 macOS 目录选择器（Resources）」
+
+### 待手测
+
+1. 首页「新建项目」→ 弹出系统面板（中文、居中、有「新建文件夹」）；新建一个文件夹并选中 → 正常进入项目。
+2. 取消 → 按钮停止转圈。
+3. 多显示器：在哪个屏幕操作就在哪块屏幕居中弹出。

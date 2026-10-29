@@ -24,6 +24,8 @@ export default {
         "build/desktop/startup/windowsSplashWorker.js": "startup/windowsSplashWorker.js",
       } : {}),
       "build/web": "views/mainview",
+      // ACT: macOS 目录选择器（自带 zh-Hans 本地化的小 .app），仅在 macOS 构建时存在。
+      ...(process.platform === "darwin" ? { "build/desktop/mac": "mac" } : {}),
       "build/mcp": "mcp",
       "build/tools": "tools",
       // ACT: 团队暂不打包，恢复时取消注释。
