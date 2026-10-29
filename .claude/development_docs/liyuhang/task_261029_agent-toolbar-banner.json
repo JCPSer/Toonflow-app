@@ -1,0 +1,54 @@
+{
+  "task_id": "task_261029_agent-toolbar-banner",
+  "created_at": "2026-10-29",
+  "owner": "liyuhang",
+  "goal": "修 Agent 输入工具条拥挤并让语音开关可发现；把 Agent 的 askUser 提问提升为画布顶部可见横幅",
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "工具条布局：加宽 + 模型名省略 + 溢出折叠",
+      "files": [
+        "apps/web/src/components/agent/conversation/messageInput.vue",
+        "apps/web/src/pages/workspace/panels/canvas/components/agentNodePanel.vue"
+      ],
+      "status": "done",
+      "result": "面板 380→440；.senderActions gap 12→6 + 允许折行；.modelPopover 下限 96px；ResizeObserver 单级折叠到「⋯」并带滞回"
+    },
+    {
+      "id": "T2",
+      "subject": "语音输入开关从 mediaGeneration 工具配置搬到 设置→常规",
+      "files": [
+        "apps/web/src/lib/agentInputSettings.ts",
+        "apps/web/src/stores/settings.ts",
+        "apps/web/src/components/settings/panels/general/index.vue",
+        "packages/tools/mediaGeneration/build.ts",
+        "packages/tools/mediaGeneration/src/index.ts"
+      ],
+      "status": "done",
+      "result": "general.voiceInputEnabled 单一真源；configRules 删 switch、schema 保留字段兼容旧配置"
+    },
+    {
+      "id": "T3",
+      "subject": "Agent 提问横幅（多条合并 / 点击跳转 / 打开即已读）",
+      "files": [
+        "apps/web/src/components/agent/conversation.vue",
+        "apps/web/src/components/agent/types.ts",
+        "apps/web/src/pages/workspace/panels/canvas/components/agentNodePanel.vue",
+        "apps/web/src/pages/workspace/panels/canvas/index.vue"
+      ],
+      "status": "done",
+      "result": "question / questionEnd emit → 面板聚合 → 画布横幅；open() 统一收口已读；节点删除按 findNode 过滤"
+    },
+    {
+      "id": "T4",
+      "subject": "代码审查（子 agent）",
+      "status": "in_progress"
+    },
+    {
+      "id": "T5",
+      "subject": "构建部署 + 运行中实测",
+      "status": "done",
+      "result": "typecheck 通过；deploy-local.sh --build 3 次成功；宽度/折叠/开关端到端实测通过；横幅待手测"
+    }
+  ]
+}

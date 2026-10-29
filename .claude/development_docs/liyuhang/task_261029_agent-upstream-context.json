@@ -1,0 +1,65 @@
+{
+  "task_id": "task_261029_agent-upstream-context",
+  "created_at": "2026-10-29",
+  "owner": "liyuhang",
+  "goal": "Agent 节点每轮自动把直接上游带进上下文，并补上每个上游节点自身输出的 150 字摘要；顺带给所有节点的忙碌态加呼吸描边",
+  "docs": {
+    "requirements": "1_requirements_matrix/2026-10-29-18-09-agent-upstream-context.md",
+    "solution": "2_requirements_solutions/2026-10-29-18-12-agent-upstream-context.md",
+    "test": "3_test_results/2026-10-29-18-50-node-ring-agent-self-context.md",
+    "memory": null
+  },
+  "decisions": {
+    "depth": "只取直接上游一层，不递归",
+    "types": "全部类型；文本给 150 字摘要（有落盘路径时附 path），媒体只给路径 + mimeType",
+    "toggle": "设置项 settings.general.agentUpstreamContext，默认开；关掉后不自动引用上游",
+    "injection_point": "v1 服务端独立块已被推翻，改为扩展现有 NODE 提及，新增 self 字段",
+    "ring": "所有节点的 busy 都亮呼吸描边，延迟 400ms 防闪"
+  },
+  "tasks": [
+    { "id": "T1", "subject": "需求矩阵 + 方案文档", "status": "done" },
+    {
+      "id": "T2",
+      "subject": "子 agent 方案初审",
+      "status": "done",
+      "result": "发现前提错误（前端已自动提及上游）、R8 无保证、文本项缺 path；用户选择改为扩展现有提及链路"
+    },
+    {
+      "id": "T3",
+      "subject": "mentionSources 增加 self 摘要 + 提示词文案",
+      "files": [
+        "apps/server/src/agent/mentionSources.ts",
+        "apps/server/src/agent/runtime/mentions.ts"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "subject": "设置开关（store + buildMentions 生效点 + 界面）",
+      "files": [
+        "apps/web/src/stores/settings.ts",
+        "apps/web/src/pages/workspace/panels/canvas/components/agentNodePanel.vue",
+        "apps/web/src/components/settings/panels/general/index.vue"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T7",
+      "subject": "全节点呼吸描边（nodeSkeleton 由 busy 派生 + 400ms 延迟）",
+      "files": ["packages/nodeScaffold/src/nodeSkeleton.vue"],
+      "status": "done"
+    },
+    {
+      "id": "T5",
+      "subject": "构建部署 + 验证",
+      "status": "done",
+      "result": "typecheck(server/scaffold) 通过；web typecheck 仅剩既有 singleAgent 别名错误；--build 部署完成；createNodeMention 单元验证通过（含路径越界与空白文本）；描边与 self 均需重启应用后实测"
+    },
+    {
+      "id": "T6",
+      "subject": "子 agent 代码审查并整改",
+      "status": "done",
+      "result": "终审 4 条必须修改已全部处理：发送时现取提及、开关即时生效、imageGeneration 等 busy 漏项、提示词 summary 措辞；另采纳 6 条建议（路径校验/空摘要/并发/最短亮灯/预览区块/flushSave）"
+    }
+  ]
+}

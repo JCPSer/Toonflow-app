@@ -1,0 +1,86 @@
+{
+  "task_id": "task_261029_image-crop",
+  "created_at": "2026-10-29",
+  "owner": "liyuhang",
+  "goal": "为 imageNode 与 imageGenerationNode 增加「裁剪」工具：大图弹窗框选、比例预设、像素级精度、结果替换输出并可一层恢复",
+  "context": {
+    "confirmed_decisions": {
+      "interaction": "独立 el-dialog 裁剪弹窗（大图 + 八向手柄 + 遮罩）",
+      "result": "替换当前输出 + 一层「恢复裁剪前」",
+      "ratio": "自由 + 原图/1:1/4:3/3:4/16:9/9:16 六个预设",
+      "transform": "只做裁剪，不做旋转/翻转",
+      "storage": "新文件 assets/<nodeId>/crop-<w>x<h>-<ts>.<ext>，不覆盖原文件",
+      "precision": "X/Y/宽/高 数字框 + 方向键 1px / Shift 10px + Alt 中心缩放",
+      "initialRect": "记住上次未应用的框（按源 url 关联）",
+      "scope": "imageNode + imageGenerationNode（共享 @toonflow/node-image/imageCrop）",
+      "flip": "裁剪弹窗内的左右镜像按钮；整图未裁也允许应用（应用翻转）；框保持不动"
+    },
+    "docs": {
+      "matrix": ".claude/development_docs/liyuhang/1_requirements_matrix/2026-10-29-12-30-image-crop-tool.md",
+      "solution": ".claude/development_docs/liyuhang/2_requirements_solutions/2026-10-29-12-30-image-crop-tool.md"
+    }
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "需求矩阵 + 方案文档",
+      "owner": "lead",
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "subject": "子 agent 评审需求矩阵与方案",
+      "owner": "reviewer",
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "subject": "实现 imageCrop.vue（弹窗、手势、比例锁、编码落盘）",
+      "owner": "lead",
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "subject": "接入 imageNode：按钮、忙碌互斥、applied/restore、crop 状态",
+      "owner": "lead",
+      "status": "done"
+    },
+    {
+      "id": "T5",
+      "subject": "接入 imageGenerationNode：同上（输出写法不同）",
+      "owner": "lead",
+      "status": "done"
+    },
+    {
+      "id": "T6",
+      "subject": "共享包 exports 增加 ./imageCrop",
+      "owner": "lead",
+      "status": "done"
+    },
+    {
+      "id": "T7",
+      "subject": "typecheck + deploy-local --build + 运行中实测",
+      "owner": "lead",
+      "status": "done"
+    },
+    {
+      "id": "T8",
+      "subject": "代码审查（子 agent）+ 测试结果/记忆/操作归档",
+      "owner": "lead",
+      "status": "done"
+    },
+    {
+      "id": "T9",
+      "subject": "左右镜像翻转按钮（裁剪弹窗内）",
+      "owner": "lead",
+      "status": "done"
+    },
+    {
+      "id": "T10",
+      "subject": "子 agent 代码审查 + 3 条阻断级修复回归",
+      "owner": "lead",
+      "status": "done"
+    }
+  ],
+  "result": "已交付：裁剪弹窗（比例预设/数字框/方向键/八向手柄/四块遮罩）+ 左右镜像 + 替换输出+一层恢复 + last 记忆；两节点接入；裁剪、翻转、裁剪+翻转均与 ffmpeg 逐像素一致；子 agent 审查的 3 条阻断级已修复并回归"
+}

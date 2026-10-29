@@ -1,0 +1,76 @@
+{
+  "task_id": "task_261029_canvas-notify-group-batch",
+  "created_at": "2026-10-29",
+  "owner": "liyuhang",
+  "goal": "节点完成提示音与系统通知（仅桌面）、分组框选/命中语义修正、框选图片视频批量加入项目素材库",
+  "docs": {
+    "requirements": "1_requirements_matrix/2026-10-29-15-07-canvas-notify-group-select-batch-assets.md",
+    "solution": "2_requirements_solutions/2026-10-29-15-13-canvas-notify-group-select-batch-assets.md",
+    "test": null,
+    "memory": null
+  },
+  "tasks": [
+    {
+      "id": "T0",
+      "subject": "需求矩阵与方案子 agent 初审",
+      "status": "in_progress",
+      "files": [],
+      "note": "核对 Vue Flow 补丁可行性、pointer-events 穿透、host message 通道、importAsset 重名错误形态"
+    },
+    {
+      "id": "T1",
+      "subject": "节点任务信号 + 宿主提醒（音/通知/未读横幅/设置/静音按钮）",
+      "status": "pending",
+      "files": [
+        "packages/nodeScaffold/src/nodeBusy.ts",
+        "apps/web/src/lib/taskAlerts.ts",
+        "apps/web/src/lib/chime.ts",
+        "apps/web/src/lib/desktopNotify.ts",
+        "apps/web/src/stores/taskAlerts.ts",
+        "apps/web/src/pages/workspace/panels/canvas/index.vue",
+        "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue",
+        "apps/web/src/stores/settings.ts",
+        "apps/web/src/components/settings/panels/general/index.vue",
+        "apps/desktop/src/index.ts",
+        "packages/nodes/imageGenerationNode/src/index.vue",
+        "packages/nodes/videoGenerationNode/src/index.vue",
+        "packages/nodes/audioGenerationNode/src/index.vue",
+        "apps/web/src/components/agent/conversation.vue"
+      ],
+      "result": null
+    },
+    {
+      "id": "T2",
+      "subject": "分组框选判定 + 组体穿透 + 标题栏放大",
+      "status": "pending",
+      "files": [
+        "patches/vueFlowCore.patch",
+        "apps/web/src/pages/workspace/panels/canvas/components/groupNode.vue",
+        "apps/web/src/pages/workspace/panels/canvas/index.vue"
+      ],
+      "result": null
+    },
+    {
+      "id": "T3",
+      "subject": "选中工具栏批量加入项目素材库",
+      "status": "pending",
+      "files": [
+        "apps/web/src/pages/workspace/panels/canvas/components/selectionToolbar.vue",
+        "apps/web/src/pages/workspace/panels/canvas/saveSelectionToAssets.ts"
+      ],
+      "result": null
+    },
+    {
+      "id": "T4",
+      "subject": "联调与浏览器/桌面验证",
+      "status": "pending",
+      "result": null
+    },
+    {
+      "id": "T5",
+      "subject": "子 agent 代码审查并修复",
+      "status": "pending",
+      "result": null
+    }
+  ]
+}

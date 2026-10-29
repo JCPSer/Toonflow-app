@@ -1,0 +1,62 @@
+{
+  "task_id": "task_261029_agent-slash-shortcut-compact",
+  "created_at": "2026-10-29",
+  "owner": "liyuhang",
+  "goal": "修 Agent 斜杠指令吞掉技能输入、Agent 面板聚焦后节点快捷键失效、压缩上下文关面板导致状态错乱",
+  "docs": {
+    "analysis": "4_bugs_fix/bug_analysis-2026-10-29-16-53-agent-slash-shortcut-compact.md",
+    "solution": "4_bugs_fix/bug_solution-2026-10-29-16-55-agent-slash-shortcut-compact.md",
+    "test": null,
+    "memory": null
+  },
+  "decisions": {
+    "unknown_slash": "只消费 /compact、/goal；其余（含 /skill:）原样发给模型",
+    "compact_close": "压缩中关面板不卸载实例",
+    "node_status": "新增 compacting 状态，显示为「压缩中」",
+    "panel_shortcuts": "非输入框、无文本选中时按节点复制粘贴处理"
+  },
+  "tasks": [
+    {
+      "id": "B0",
+      "subject": "斜杠指令只消费内置命令",
+      "files": [
+        "apps/web/src/components/agent/conversation.vue"
+      ],
+      "status": "done",
+      "result": "submitMessage 增加 isBuiltinCommand(/compact|/goal)，未知 / 输入落回正常发送"
+    },
+    {
+      "id": "B1",
+      "subject": "Agent 面板内 Cmd+C/V 可用",
+      "files": [
+        "apps/web/src/pages/workspace/panels/canvas/index.vue"
+      ],
+      "status": "done",
+      "result": null
+    },
+    {
+      "id": "B2",
+      "subject": "压缩上下文状态与实例生命周期",
+      "files": [
+        "apps/web/src/components/agent/conversation.vue",
+        "apps/web/src/pages/workspace/panels/canvas/components/agentNodePanel.vue",
+        "packages/nodeScaffold/src/agentNode.ts",
+        "packages/nodes/agentNode/src/index.vue"
+      ],
+      "status": "done",
+      "result": null
+    },
+    {
+      "id": "T4",
+      "subject": "验证与部署",
+      "status": "done",
+      "result": "typecheck/build/deploy 通过；B0、B1 实测；B2 静态验证，待用户真实压缩确认"
+    },
+    {
+      "id": "T5",
+      "subject": "代码审查并修复",
+      "status": "done",
+      "result": "审查发现 1 Critical + 3 Important + 1 Minor，全部已修并重新构建"
+    }
+  ]
+}

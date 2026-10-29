@@ -1,0 +1,90 @@
+{
+  "task_id": "task_261029_agent-ux-batch",
+  "created_at": "2026-10-29",
+  "owner": "liyuhang",
+  "goal": "Agent 交互六项改造：恢复模型下拉、语音按钮开关、Agent 节点可引用+会话文件索引、节点面板草稿保留、/goal 指令循环、生成中可编辑+待发队列+立即打断发送",
+  "context": {
+    "root_cause_found": "Vue Boolean 类型 prop 缺省被强制转 false；conversation.vue 的 showModelPicker/acceptPending/autoFocus 没有默认值，导致模型下拉、待发消息接收、打开即聚焦全部静默失效",
+    "confirmed_decisions": {
+      "modelPicker": "两边面板都补（根因是 prop 默认值）",
+      "voiceToggle": "放「媒体生成控制」弹窗，开关持久化到 mediaGeneration 工具配置",
+      "agentReference": "只做 @ 引用 + 会话产出文件索引，不给 Agent 节点加输出端口",
+      "draft": "内存保留，切节点/关面板/再点开都在，重启清空",
+      "goal": "模型自评 + 轮次上限（默认 10）；stop/off/reset/none/cancel 归并为四个语义；会话级",
+      "editingWhileBusy": "输入框不锁；发送进入待发送队列；另提供「立即打断发送」"
+    },
+    "docs_dir": ".claude/development_docs/liyuhang"
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "修复 Boolean prop 默认值（模型下拉/自动聚焦/待发消息）",
+      "owner": "lead",
+      "files": [
+        "apps/web/src/components/agent/conversation.vue"
+      ],
+      "status": "done",
+      "note": "withDefaults 补 acceptPending/showModelPicker/autoFocus = true"
+    },
+    {
+      "id": "T2",
+      "subject": "语音输入按钮开关（媒体生成控制弹窗）",
+      "owner": "lead",
+      "files": [
+        "packages/tools/mediaGeneration/src/index.ts",
+        "apps/web/src/components/agent/conversation/messageInput.vue",
+        "apps/web/src/components/agent/menu.vue"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "subject": "Agent 节点可被 @ 引用 + 会话产出文件索引",
+      "owner": "lead",
+      "files": [
+        "apps/server/src/agent/mentionSources.ts",
+        "apps/server/src/agent/runtime/mentions.ts",
+        "apps/web/src/components/agent/mentionMenu.vue"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "subject": "Agent 节点面板草稿按节点保留（内存）",
+      "owner": "lead",
+      "files": [
+        "apps/web/src/pages/workspace/panels/canvas/components/agentNodePanel.vue",
+        "apps/web/src/components/agent/conversation/messageInput.vue"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T5",
+      "subject": "/goal 指令循环 + 斜杠命令",
+      "owner": "lead",
+      "files": [
+        "apps/server/src/agent/runtime/**",
+        "apps/web/src/components/agent/**"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T6",
+      "subject": "生成中可编辑 + 待发送队列 + 立即打断发送",
+      "owner": "lead",
+      "files": [
+        "apps/web/src/components/agent/conversation/messageInput.vue",
+        "apps/web/src/components/agent/conversation.vue",
+        "apps/server/src/agent/runtime/index.ts"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T7",
+      "subject": "需求矩阵/方案/测试/记忆/操作归档",
+      "owner": "lead",
+      "status": "done"
+    }
+  ],
+  "result": "全部六项已实现并部署：模型下拉修复（Vue Boolean prop 默认值）、语音开关入媒体生成配置、Agent 节点引用+会话文件索引、节点面板草稿保留、/goal 循环与指令、生成中队列+打断发送"
+}

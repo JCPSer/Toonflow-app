@@ -1,0 +1,53 @@
+{
+  "task_id": "task_261029_agent-stall-turnjump-summary",
+  "created_at": "2026-10-29",
+  "owner": "liyuhang",
+  "goal": "修 Agent 轮次跳转落点、恢复文本节点正文 150 字摘要、给「执行期全线超时」埋连接探针定性",
+  "docs": {
+    "analysis": "4_bugs_fix/bug_analysis-2026-10-29-14-10-agent-run-stall-turn-jump-text-summary.md",
+    "solution": "4_bugs_fix/bug_solution-2026-10-29-14-10-agent-run-stall-turn-jump-text-summary.md",
+    "test": "3_test_results/2026-10-29-14-40-agent-run-stall-turn-jump-text-summary.md",
+    "memory": "5_memory/2026-10-29-14-40-turn-jump-summary-probe.md"
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "B2 轮次跳转落点收敛",
+      "files": ["apps/web/src/components/agent/conversation/messageList.vue"],
+      "status": "done",
+      "result": "粗跳 + 按 DOM 收敛；连续 3 次 ≤2px 才停；jumpToken 取消、滚轮/touch 打断、index 越界保护、步长夹一屏内"
+    },
+    {
+      "id": "T2",
+      "subject": "B3 文本引用正文 150 字摘要",
+      "files": [
+        "apps/server/src/agent/mentionSources.ts",
+        "apps/server/src/agent/mentionFiles.ts",
+        "apps/server/src/agent/runtime/mentions.ts",
+        "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue",
+        "apps/web/src/components/agent/mentionContent.vue"
+      ],
+      "status": "done",
+      "result": "mentionPreviewLength=150；文本引用 {path,mimeType,summary}；schema 放行 summary；气泡渲染摘要与上游列表"
+    },
+    {
+      "id": "T3",
+      "subject": "B1 同源连接探针（只观测不改行为）",
+      "files": ["apps/web/src/lib/netProbe.ts", "apps/web/src/main.ts", "apps/web/src/components/agent/conversation.vue"],
+      "status": "done",
+      "result": "window.__toonflowNet；fetch/XHR/EventSource 计数 + 长流显式登记；实测单页峰值同源在飞 24、常驻流 2"
+    },
+    {
+      "id": "T4",
+      "subject": "B1 定性",
+      "status": "blocked",
+      "result": "需用户复现一次执行期卡顿，读 __toonflowNet / DevTools Queueing 判定 C4（连接池）还是服务端慢，再按方案 1A/1B 修"
+    },
+    {
+      "id": "T5",
+      "subject": "代码审查（子 agent）并修复",
+      "status": "done",
+      "result": "修 Critical：textPointerSchema 补 summary；并修并发跳转、步长过冲、onChange 覆写贴底标志、XHR 首字节口径、EventSource 计数泄漏、AbortError 误计、探针幂等"
+    }
+  ]
+}
