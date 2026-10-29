@@ -25,7 +25,12 @@ export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: (
     },
   });
 
-  async function run<T>(task: () => Promise<T>): Promise<T> {
+  /**
+   * 执行一次生成。report 用来把结果写进全局节点任务表（markNodeOutcome）：
+   * ACT: 必须在 status 变成 failed 之前调用——节点 busy 的下降沿会立刻派发完成事件，
+   * 晚一步宿主读到的就是默认的 succeeded，失败提醒会被吞掉。
+   */
+  async function run<T>(task: () => Promise<T>, report?: (outcome: "failed" | "cancelled", reason?: string) => void): Promise<T> {
     if (generating.value) throw new Error("节点正在生成，请等待完成");
     status.value = "running";
     error.value = "";
@@ -34,10 +39,12 @@ export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: (
       status.value = "succeeded";
       return result;
     } catch (failure) {
-      status.value = "failed";
+      const cancelled = failure instanceof Error && failure.name === "AbortError";
       const message = (failure as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      error.value = failure instanceof Error && failure.name === "AbortError" ? "生成已取消"
-        : message || (failure instanceof Error ? failure.message : "生成失败");
+      const reason = message || (failure instanceof Error ? failure.message : "生成失败");
+      report?.(cancelled ? "cancelled" : "failed", reason);
+      status.value = "failed";
+      error.value = cancelled ? "生成已取消" : reason;
       throw failure;
     }
   }

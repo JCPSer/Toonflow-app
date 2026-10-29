@@ -1,5 +1,5 @@
 diff --git a/dist/vue-flow-core.js b/dist/vue-flow-core.js
-index c8213e0..3cc6c59 100644
+index c8213e03660a104221374db063742750aa7e7e81..77fe342ba34af4354442d4de14ee9aea37e0d3fe 100644
 --- a/dist/vue-flow-core.js
 +++ b/dist/vue-flow-core.js
 @@ -4739,6 +4739,7 @@ function updateEdgeAction(edge, newConnection, prevEdge, shouldReplaceId, trigge
@@ -31,8 +31,67 @@ index c8213e0..3cc6c59 100644
        userSelectionRect.value = {
          width: 0,
          height: 0,
+@@ -8321,6 +8325,58 @@ const _sfc_main$a = /* @__PURE__ */ vue.defineComponent({
+           (node) => node.id
+         )
+       );
++      // ACT: 分组按「整组完整落入框内」判定。Partial 语义下擦到组边就会连组带内容一起选中，
++      // 所以这里再过滤一遍：空分组、或任一后代没有完整落在框内的分组，直接取消选中。
++      // 必须在 selectedEdgeIds 清空与填充之前执行，否则组内连线会先按整组选中留下痕迹。
++      const paneSelectionRect = {
++        ...pointToRendererPoint(nextUserSelectRect, viewport.value),
++        width: nextUserSelectRect.width / viewport.value.zoom,
++        height: nextUserSelectRect.height / viewport.value.zoom
++      };
++      const selectionChildrenByParent = /* @__PURE__ */ new Map();
++      for (const node of nodes.value) {
++        if (!node.parentNode) {
++          continue;
++        }
++        const children = selectionChildrenByParent.get(node.parentNode);
++        if (children) {
++          children.push(node);
++        } else {
++          selectionChildrenByParent.set(node.parentNode, [node]);
++        }
++      }
++      for (const nodeId of selectedNodeIds.value) {
++        const node = nodeLookup.value.get(nodeId);
++        if (!node || node.type !== "canvasGroup" && !selectionChildrenByParent.has(nodeId)) {
++          continue;
++        }
++        const descendants = [];
++        const queue = [...selectionChildrenByParent.get(nodeId) ?? []];
++        while (queue.length) {
++          const descendant = queue.pop();
++          descendants.push(descendant);
++          const grandchildren = selectionChildrenByParent.get(descendant.id);
++          if (grandchildren) {
++            queue.push(...grandchildren);
++          }
++        }
++        const tolerance = 0.5;
++        const fullyInside = descendants.length > 0 && descendants.every((descendant) => {
++          if (descendant.hidden) {
++            return false;
++          }
++          const { width, height } = descendant.dimensions ?? {};
++          // ACT: Vue Flow 未测量的节点尺寸是 0 而不是 null，必须一并排除，否则子节点测量完成前组会被误选。
++          if (width == null || height == null || width <= 0 || height <= 0) {
++            return false;
++          }
++          const descendantRect = nodeToRect(descendant);
++          return descendantRect.x >= paneSelectionRect.x - tolerance && descendantRect.y >= paneSelectionRect.y - tolerance && descendantRect.x + descendantRect.width <= paneSelectionRect.x + paneSelectionRect.width + tolerance && descendantRect.y + descendantRect.height <= paneSelectionRect.y + paneSelectionRect.height + tolerance;
++        });
++        if (!fullyInside) {
++          selectedNodeIds.value.delete(nodeId);
++        }
++      }
+       selectedEdgeIds.value = /* @__PURE__ */ new Set();
+       const edgesSelectable = ((_a = defaultEdgeOptions.value) == null ? void 0 : _a.selectable) ?? true;
+       for (const nodeId of selectedNodeIds.value) {
 diff --git a/dist/vue-flow-core.mjs b/dist/vue-flow-core.mjs
-index 96b8e8d..4f1ce5d 100644
+index 96b8e8d31f311eac6890d610f9e69c5a9b84f1e5..f984b56e727748b9e19aa8b31164f430040f9bee 100644
 --- a/dist/vue-flow-core.mjs
 +++ b/dist/vue-flow-core.mjs
 @@ -4737,6 +4737,7 @@ function updateEdgeAction(edge, newConnection, prevEdge, shouldReplaceId, trigge
@@ -64,3 +123,62 @@ index 96b8e8d..4f1ce5d 100644
        userSelectionRect.value = {
          width: 0,
          height: 0,
+@@ -8319,6 +8323,58 @@ const _sfc_main$a = /* @__PURE__ */ defineComponent({
+           (node) => node.id
+         )
+       );
++      // ACT: 分组按「整组完整落入框内」判定。Partial 语义下擦到组边就会连组带内容一起选中，
++      // 所以这里再过滤一遍：空分组、或任一后代没有完整落在框内的分组，直接取消选中。
++      // 必须在 selectedEdgeIds 清空与填充之前执行，否则组内连线会先按整组选中留下痕迹。
++      const paneSelectionRect = {
++        ...pointToRendererPoint(nextUserSelectRect, viewport.value),
++        width: nextUserSelectRect.width / viewport.value.zoom,
++        height: nextUserSelectRect.height / viewport.value.zoom
++      };
++      const selectionChildrenByParent = /* @__PURE__ */ new Map();
++      for (const node of nodes.value) {
++        if (!node.parentNode) {
++          continue;
++        }
++        const children = selectionChildrenByParent.get(node.parentNode);
++        if (children) {
++          children.push(node);
++        } else {
++          selectionChildrenByParent.set(node.parentNode, [node]);
++        }
++      }
++      for (const nodeId of selectedNodeIds.value) {
++        const node = nodeLookup.value.get(nodeId);
++        if (!node || node.type !== "canvasGroup" && !selectionChildrenByParent.has(nodeId)) {
++          continue;
++        }
++        const descendants = [];
++        const queue = [...selectionChildrenByParent.get(nodeId) ?? []];
++        while (queue.length) {
++          const descendant = queue.pop();
++          descendants.push(descendant);
++          const grandchildren = selectionChildrenByParent.get(descendant.id);
++          if (grandchildren) {
++            queue.push(...grandchildren);
++          }
++        }
++        const tolerance = 0.5;
++        const fullyInside = descendants.length > 0 && descendants.every((descendant) => {
++          if (descendant.hidden) {
++            return false;
++          }
++          const { width, height } = descendant.dimensions ?? {};
++          // ACT: Vue Flow 未测量的节点尺寸是 0 而不是 null，必须一并排除，否则子节点测量完成前组会被误选。
++          if (width == null || height == null || width <= 0 || height <= 0) {
++            return false;
++          }
++          const descendantRect = nodeToRect(descendant);
++          return descendantRect.x >= paneSelectionRect.x - tolerance && descendantRect.y >= paneSelectionRect.y - tolerance && descendantRect.x + descendantRect.width <= paneSelectionRect.x + paneSelectionRect.width + tolerance && descendantRect.y + descendantRect.height <= paneSelectionRect.y + paneSelectionRect.height + tolerance;
++        });
++        if (!fullyInside) {
++          selectedNodeIds.value.delete(nodeId);
++        }
++      }
+       selectedEdgeIds.value = /* @__PURE__ */ new Set();
+       const edgesSelectable = ((_a = defaultEdgeOptions.value) == null ? void 0 : _a.selectable) ?? true;
+       for (const nodeId of selectedNodeIds.value) {

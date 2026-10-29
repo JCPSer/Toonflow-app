@@ -17,7 +17,9 @@
     "./nodeFfmpeg": "./src/nodeFfmpeg.ts",
     "./nodeAsr": "./src/nodeAsr.ts",
     "./workspaceFiles": "./src/workspaceFiles.ts",
-    "./nodeTools": "./src/nodeTools.ts"
+    "./nodeTools": "./src/nodeTools.ts",
+    "./nodeBusy": "./src/nodeBusy.ts",
+    "./agentNode": "./src/agentNode.ts"
   },
   "scripts": {
     "typecheck": "vue-tsc --noEmit"

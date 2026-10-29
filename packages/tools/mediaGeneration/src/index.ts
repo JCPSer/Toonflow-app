@@ -6,6 +6,9 @@ const configSchema = z.strictObject({
   allowImage: z.boolean().default(true),
   allowVideo: z.boolean().default(true),
   allowAudio: z.boolean().default(true),
+  // ACT: 历史字段，只保留在 schema 里让旧配置继续通过 strictObject 校验；
+  // 开关已经移到「设置 → 常规」，代码里不再读取它。
+  allowVoiceInput: z.boolean().default(true),
 });
 
 const plugin: ToolPlugin = {

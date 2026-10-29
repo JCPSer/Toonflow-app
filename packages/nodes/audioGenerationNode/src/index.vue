@@ -1,7 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
-    :busy="generating || transcribing || !!actions?.processing"
+    :busy="generating || transcribing || uploading || !!actions?.processing"
     :topVisible="node.selected"
     :bottomVisible="node.selected"
     :bottomWidth="actions?.mode === 'speed' ? 440 : 660"
@@ -67,6 +67,7 @@ import { computed, onMounted, onScopeDispose, ref, watch } from "vue";
 import { ElButton, ElCard, ElLoading, ElOption, ElOptionGroup, ElSelect } from "element-plus";
 import { IconArrowUp, IconGauge, IconMusicBolt, IconPlayerStop, IconScissors, IconTransfer, IconTextRecognition } from "@tabler/icons-vue";
 import { getTargetValues, isTypeCompatible, nodeSkeleton, nodeTools, useNode, z, type NodeAudioRequest, type NodeHandle, type NodeInputValue, type NodeMediaModel } from "@toonflow/nodes-scaffold/runtime";
+import { markNodeOutcome } from "@toonflow/nodes-scaffold/nodeBusy";
 import { groupNodeModels } from "@toonflow/node-shared/groupNodeModels";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
 import { useNodeGeneration } from "@toonflow/node-shared/useNodeGeneration";
@@ -216,7 +217,7 @@ async function startGeneration() {
     controller.signal.throwIfAborted();
     if (!result) throw new Error("供应商未返回音频");
     outputs.value.audio = { dataType: "AUDIO", value: { url: result.path, mimeType: result.mimeType } };
-  }).catch(error => showNodeError(error, "音频生成失败")).finally(() => {
+  }, (outcome, reason) => markNodeOutcome(id, outcome, reason)).catch(error => showNodeError(error, "音频生成失败")).finally(() => {
     generationController = undefined;
   });
   return { status: "generating" };

@@ -1,7 +1,7 @@
 <template>
   <div v-if="documentTarget" class="nodeDocumentPlaceholder" :style="canvasSize" aria-hidden="true" />
   <teleport :to="documentTarget ?? 'body'" :disabled="!documentTarget">
-  <div ref="skeletonElement" v-bind="$attrs" class="nodeSkeleton" :class="{ documentNode: documentTarget, running }" @wheel.capture="zoomCanvas" @dblclick.stop="focusNode" @contextmenu="documentTarget && openMenu($event)">
+  <div ref="skeletonElement" v-bind="$attrs" class="nodeSkeleton" :class="{ documentNode: documentTarget, running: ringActive }" @wheel.capture="zoomCanvas" @dblclick.stop="focusNode" @contextmenu="documentTarget && openMenu($event)">
     <el-dropdown
       v-if="!readOnly"
       ref="menu"
@@ -199,6 +199,7 @@ import { ElCard, ElButton, ElDivider, ElDropdown, ElDropdownMenu, ElDropdownItem
 import type { DropdownInstance } from "element-plus";
 import { validateConnection } from "./connection";
 import { useNodeEvent } from "./nodeEvent";
+import { clearNodeBusy, markNodeBusy } from "./nodeBusy";
 import durationBadge from "./durationBadge.vue";
 import type { NodeConnectionFeedback, NodeData, NodeHandle } from "./connection";
 import { isNodeOutput, type NodeOutput } from "./values";
@@ -280,6 +281,45 @@ const handleGroups = computed(() => [
 ]);
 const cardHeight = computed(() => Math.max(100, ...handleGroups.value.map((group) => (group.items.length + 1) * 44)));
 const { id: nodeId, node } = useNode();
+// ACT: 把 busy 登记到全局表，画布据此判断切换/退出项目是否会中断正在跑的任务。
+let busyReported = false;
+watch(() => props.busy, (busy) => {
+  if (busy === busyReported) return;
+  busyReported = busy;
+  markNodeBusy(nodeId, busy);
+}, { immediate: true });
+onScopeDispose(() => {
+  if (!busyReported) return;
+  busyReported = false;
+  clearNodeBusy(nodeId);
+});
+// ACT: 呼吸描边对所有节点统一生效——节点包只要上报 busy（生成、转写、导出、裁剪、上传、打光等）
+// 就算在跑；再留 running 作为显式入口，两种来源取并集。延迟 400ms 再亮，
+// 避免裁剪、上传这类一闪而过的操作闪一下又消失；亮起后至少保持 600ms，
+// 否则 500ms 的操作会在第 400ms 亮、第 500ms 灭，看起来更像闪屏而不是「在工作」。
+const RING_DELAY_MS = 400;
+const RING_MIN_ON_MS = 600;
+const ringActive = ref(false);
+let ringTimer: ReturnType<typeof setTimeout> | undefined;
+let ringStartedAt = 0;
+watch([() => props.busy, () => props.running], ([busy, running]) => {
+  clearTimeout(ringTimer);
+  if (busy || running) {
+    ringTimer = setTimeout(() => {
+      ringActive.value = true;
+      ringStartedAt = performance.now();
+    }, RING_DELAY_MS);
+    return;
+  }
+  if (!ringActive.value) return;
+  const remain = RING_MIN_ON_MS - (performance.now() - ringStartedAt);
+  if (remain <= 0) {
+    ringActive.value = false;
+    return;
+  }
+  ringTimer = setTimeout(() => { ringActive.value = false; }, remain);
+}, { immediate: true });
+onScopeDispose(() => clearTimeout(ringTimer));
 const documentContext = inject<NodeDocumentContext | undefined>("nodeDocument", undefined);
 const documentTarget = computed(() => props.readOnly ? undefined : documentContext?.targets.get(nodeId));
 const skeletonElement = ref<HTMLElement>();
@@ -342,6 +382,8 @@ const {
   removeEdges,
   updateNodeInternals,
   connectionLookup,
+  snapToGrid,
+  snapGrid,
   connectionStartHandle,
   connectionEndHandle,
   connectionStatus,
@@ -550,6 +592,13 @@ async function handleCommand(command: string) {
     for (const item of nearbyNodes) {
       if (copyPosition.y < item.position.y + item.dimensions.height + 32 && copyPosition.y + node.dimensions.height + 32 > item.position.y)
         copyPosition.y = item.position.y + item.dimensions.height + 32;
+    }
+    // ACT: 副本位置是按节点实测高度算的，几乎必然带小数；这里吸附一次，
+    // 否则「创建副本」每次都会留下一个贴不到网格上的节点。
+    if (snapToGrid.value) {
+      const [gridX, gridY] = snapGrid.value ?? [16, 16];
+      copyPosition.x = Math.round(copyPosition.x / gridX) * gridX;
+      copyPosition.y = Math.round(copyPosition.y / gridY) * gridY;
     }
     removeSelectedElements();
     addNodes({

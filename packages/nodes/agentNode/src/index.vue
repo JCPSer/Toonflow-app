@@ -1,5 +1,5 @@
 <template>
-  <nodeSkeleton v-bind="nodeProps" :running="status === 'thinking' || status === 'running'" :busy="status === 'thinking' || status === 'running'" style="width: 300px">
+  <nodeSkeleton v-bind="nodeProps" :running="status === 'thinking' || status === 'running' || status === 'compacting'" :busy="status === 'thinking' || status === 'running' || status === 'compacting'" style="width: 300px">
     <div class="agentContent">
       <div class="statusRow" :class="`is-${status}`">
         <span class="statusDot" aria-hidden="true" />
@@ -44,6 +44,7 @@ const STATUS_LABELS: Record<AgentNodeStatus, string> = {
   waiting: "等待输入",
   thinking: "理解中",
   running: "运行中",
+  compacting: "压缩中",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -112,7 +113,10 @@ nodeEvent.on("copy", () => {
   color: var(--el-text-color-secondary);
   line-height: 18px;
 
+  // ACT: 压缩是「在动但没产出」，直接沿用「理解中」这一套已有视觉（主色 + 呼吸点），
+  // 不新增配色/动画；压缩结束由面板把状态写回 thinking/running/waiting。
   &.is-thinking,
+  &.is-compacting,
   &.is-running {
     color: var(--el-color-primary);
   }
@@ -121,7 +125,8 @@ nodeEvent.on("copy", () => {
     opacity: 1;
   }
 
-  &.is-thinking .statusDot {
+  &.is-thinking .statusDot,
+  &.is-compacting .statusDot {
     animation: agentDot 1.2s ease-in-out infinite;
   }
 }
@@ -194,7 +199,8 @@ nodeEvent.on("copy", () => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .statusRow.is-thinking .statusDot {
+  .statusRow.is-thinking .statusDot,
+  .statusRow.is-compacting .statusDot {
     animation: none;
   }
 }

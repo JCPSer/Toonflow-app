@@ -1,7 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
-    :busy="processing"
+    :busy="processing || uploading"
     v-model:bottomVisible="node.selected"
     :topVisible="node.selected"
     topWidth="max-content"

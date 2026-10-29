@@ -10,6 +10,7 @@
     "./imageMultiAngle": "./src/components/imageMultiAngle.vue",
     "./imageEditor": "./src/components/imageEditor.vue",
     "./imageGridSplit": "./src/components/imageGridSplit.vue",
+    "./imageCrop": "./src/components/imageCrop.vue",
     "./imageInpaintPrompt": "./src/components/imageInpaintPrompt.vue"
   },
   "scripts": {

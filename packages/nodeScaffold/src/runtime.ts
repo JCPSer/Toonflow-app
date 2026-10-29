@@ -8,6 +8,7 @@ export * from "./nodeTools";
 export * from "./workspaceFiles";
 
 export * from "./nodeViewport";
+export * from "./agentNode";
 export * from "./nodeAi";
 export * from "./nodeFfmpeg";
 export * from "./nodeAsr";

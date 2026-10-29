@@ -1,7 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
-    :busy="generating || !!actions?.processing"
+    :busy="generating || uploading || !!actions?.processing"
     v-model:bottomVisible="node.selected"
     :topVisible="node.selected"
     topWidth="max-content"
@@ -112,6 +112,7 @@ import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
 import { IconCameraAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconMovie, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeMediaModel, type NodeVideoRequest, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
+import { markNodeOutcome } from "@toonflow/nodes-scaffold/nodeBusy";
 import { groupNodeModels } from "@toonflow/node-shared/groupNodeModels";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
 import { useNodeGeneration } from "@toonflow/node-shared/useNodeGeneration";
@@ -369,7 +370,9 @@ async function startGeneration() {
       if (!result) throw new Error("供应商未返回视频");
       outputs.value.video = { dataType: "VIDEO", value: { url: result.path, mimeType: result.mimeType } };
       files.getWorkspaceFiles().warmThumb?.(result.path);
-    }))
+    }),
+    // ACT: 失败/取消要在 busy 下降沿之前写进全局任务表，宿主才知道该报成功还是失败。
+    (outcome, reason) => markNodeOutcome(id, outcome, reason))
     .catch((error) => showNodeError(error, "视频生成失败"))
     .finally(() => {
       generationController = undefined;

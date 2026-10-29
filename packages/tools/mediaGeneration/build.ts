@@ -14,5 +14,6 @@ await createToolConfig({
     { type: "switch", field: "allowImage", title: "允许 AI 生成图片", value: true, props: { "aria-label": "允许 AI 生成图片" } },
     { type: "switch", field: "allowVideo", title: "允许 AI 生成视频", value: true, props: { "aria-label": "允许 AI 生成视频" } },
     { type: "switch", field: "allowAudio", title: "允许 AI 生成音频", value: true, props: { "aria-label": "允许 AI 生成音频" } },
+    // ACT: 「显示语音输入按钮」已移到 设置 → 常规；这里不能再放，否则两个开关各写各的会打架。
   ],
 }, import.meta.url);
