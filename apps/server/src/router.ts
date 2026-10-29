@@ -165,7 +165,6 @@ import route160 from "./routes/workspaces/list";
 import route161 from "./routes/workspaces/selectDirectory";
 import route164 from "./routes/agent/clone";
 import route165 from "./routes/agent/session";
-import route166 from "./routes/desktop/listDirectory";
 
 export default (app: Express) => {
   // agentAccess · /api/agent
@@ -233,7 +232,6 @@ export default (app: Express) => {
   app.use("/api/desktop/clipboard/read", route53);
   app.use("/api/desktop/clipboard/write", route54);
   app.use("/api/desktop/devtools", route55);
-  app.use("/api/desktop/listDirectory", route166);
   app.use("/api/desktop/openUrl", route56);
   app.use("/api/desktop/plugins/install", route57);
   app.use("/api/desktop/providerFile/read", route58);

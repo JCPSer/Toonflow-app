@@ -62,3 +62,26 @@ toonflow-exec.app   → CFBundleLocalizations [zh-Hans]，DevelopmentRegion zh-H
 - 桌面模式暂不做"最近使用位置"与 Windows 盘符切换入口。
 - 应用内选择器只能看到文件夹，看不到文件（选工作区不需要）。
 - 若将来需要"在 Finder 中显示"等原生能力，需再单独接系统面板。
+
+## 六、复测后回退（2026-10-29 10:55）：改回系统面板
+
+用户否决了应用内选择器（「怎么是自建的浏览器？而且很难看，我要系统的」），本轮改动相应回退：
+
+| 位置 | 最终状态 |
+| --- | --- |
+| `apps/web/src/pages/home/workspacePicker.vue` | 恢复桌面分支调用 `/api/desktop/selectDirectory`；移除 `desktopMode` / `desktopListing` / `loadDesktopDirectory` / `desktopMkdir` / `onDialogClose` 与 `alignCenter` |
+| `apps/server/src/routes/desktop/listDirectory.ts` | 删除 |
+| `apps/server/src/router.ts` | 移除 `route166` 的导入与挂载 |
+| `apps/desktop/src/index.ts` | 保留回退：`selectDirectory()` 只用进程内 `Utils.openFileDialog`（osascript/JXA 已删） |
+| `agentNodePanel.vue` | 保留：模型选择恢复 + 隐藏消息区原生滚动条 |
+
+验证：
+
+| 项 | 结果 |
+| --- | --- |
+| `apps/web typecheck` | 仅既有 singleAgent 报错 |
+| `apps/server typecheck` | 通过 |
+| `deploy-local.sh --build` | 成功；picker chunk `workspacePicker-rr5TTTIG.js` 含 `/api/desktop/selectDirectory`，不再含 `desktopMode`/`listDirectory` |
+| 进程内面板语言/位置 | 用一个只声明 `CFBundleLocalizations=[zh-Hans]` 的最小 .app 实测：面板全中文（个人收藏/文件夹/其他/新建文件夹/取消/打开），位置水平居中、垂直略高于屏幕中心（与系统其他 app 一致） |
+
+结论：现在是系统原生面板、中文、位于主窗口之上；「严格几何居中」不成立，因为 AppKit 对打开面板的默认位置就是略高于中心，要改成纯居中只能在 Electrobun 原生层加 frame/父窗口支持。

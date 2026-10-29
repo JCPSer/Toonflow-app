@@ -21,3 +21,9 @@
 web/server typecheck 均无新增；`deploy-local.sh --build` 成功；产物含 `listDirectory`（前端 chunk + 桌面 bundle）、`scrollbar-width:none`，且不再含 `show-model-picker`。
 
 经验：判断 macOS 面板语言，直接看进程的 `NSBundle.mainBundle.localizations`，比猜 `AppleLanguages` 快得多；`NSWindow.center()` 要在窗口最终尺寸确定后调用才有意义。
+
+## 追加（10:55）：应用内选择器被否决，改回系统面板
+
+用户要系统原生面板，因此删除 `POST /api/desktop/listDirectory` 与 picker 的 `desktopMode`，桌面 `selectDirectory()` 保留进程内 `Utils.openFileDialog`（osascript/JXA 那段已删）。用最小 .app 实测确认：**进程内** NSOpenPanel 完全中文（个人收藏/文件夹/其他/新建文件夹/取消/打开），位置水平居中、垂直略高于屏幕中心——这是 AppKit 对打开面板的既定位置，不是偏移；要纯居中只能自绘（已被否决）。
+
+教训：先确认「系统组件在哪个进程里」再谈本地化；`CFBundleLocalizations` 决定 AppKit 的界面语言，与 `AppleLanguages` 无关。

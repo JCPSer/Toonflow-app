@@ -3,23 +3,8 @@
     <span class="directoryName">{{ selectedDirectory ? selectedDirectory.split(/[\\/]/).filter(Boolean).at(-1) || selectedDirectory : '工作目录' }}</span>
     <component :is="dialogVisible ? IconChevronUp : IconChevronDown" :size="14" aria-hidden="true" />
   </el-button>
-  <el-dialog v-model="dialogVisible" alignCenter :title="desktopMode ? '选择工作目录' : isMobile && !isRemoteMobile ? '选择手机工作目录' : '选择服务器工作目录'" width="min(680px, 92vw)" appendToBody :closeOnClickModal="!editing" :closeOnPressEscape="!editing" :showClose="!editing" @close="onDialogClose">
-    <div v-if="desktopMode" class="workspaceBrowser">
-      <div class="directoryHeader">
-        <el-button :icon="IconArrowLeft" circle :disabled="loading || editing || !desktopListing?.parent" aria-label="上一级目录" @click="loadDesktopDirectory(desktopListing?.parent ?? '')" />
-        <el-text class="directoryPath" truncated :title="desktopListing?.absolutePath">{{ desktopListing?.absolutePath || '正在读取…' }}</el-text>
-        <el-button :icon="IconFolderPlus" :disabled="loading || editing || !desktopListing || !!browseError" @click="desktopMkdir">新建文件夹</el-button>
-      </div>
-      <el-alert v-if="browseError" :title="browseError" type="error" :closable="false" />
-      <el-table v-loading="loading" :data="desktopListing?.entries ?? []" height="300" emptyText="当前目录没有子文件夹">
-        <el-table-column label="文件夹" minWidth="160">
-          <template #default="{ row }">
-            <el-button class="entryName" link :icon="IconFolder" :title="row.name" :disabled="loading || editing" @click="loadDesktopDirectory(row.absolutePath)">{{ row.name }}</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-    <div v-else class="workspaceBrowser">
+  <el-dialog v-model="dialogVisible" :title="isMobile && !isRemoteMobile ? '选择手机工作目录' : '选择服务器工作目录'" width="min(680px, 92vw)" appendToBody :closeOnClickModal="!editing" :closeOnPressEscape="!editing" :showClose="!editing" @close="finishSelection?.(null)">
+    <div class="workspaceBrowser">
       <div class="directoryHeader">
         <el-button :icon="IconArrowLeft" circle :disabled="loading || editing || !listing?.path" aria-label="上一级目录" @click="loadDirectory(listing?.parent ?? '')" />
         <el-text class="directoryPath" truncated :title="listing?.absolutePath">{{ isMobile && !isRemoteMobile ? '手机工作区' : '服务器工作区' }}{{ listing?.path ? ` / ${listing.path}` : '' }}</el-text>
@@ -43,7 +28,7 @@
     </div>
     <template #footer>
       <el-button :disabled="editing" @click="dialogVisible = false">取消</el-button>
-      <el-button type="primary" :disabled="loading || editing || !(desktopMode ? desktopListing : listing) || !!browseError" @click="confirmDirectory">选择此目录</el-button>
+      <el-button type="primary" :disabled="loading || editing || !listing || !!browseError" @click="confirmDirectory">选择此目录</el-button>
     </template>
   </el-dialog>
 </template>
@@ -57,8 +42,6 @@ import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { isMobile, isDesktop, isRemoteMobile, isRemoteConnection } from "@/lib/platform";
 
 type WorkspaceEntry = { name: string; path: string; type: "file" | "directory" };
-// ACT: 桌面端走本机目录浏览（/api/desktop/listDirectory），只列目录，够选工作区用。
-type DesktopListing = { absolutePath: string; parent: string | null; home: string; entries: { name: string; absolutePath: string }[] };
 type DirectoryListing = {
   path: string;
   absolutePath: string;
@@ -73,8 +56,6 @@ const selecting = ref(false);
 const loading = ref(false);
 const editing = ref(false);
 const listing = ref<DirectoryListing>();
-const desktopMode = ref(false);
-const desktopListing = ref<DesktopListing>();
 const browseError = ref("");
 let finishSelection: ((directory: string | null) => void) | undefined;
 onBeforeUnmount(() => finishSelection?.(null));
@@ -85,12 +66,9 @@ async function chooseDirectory(): Promise<string | null> {
   selecting.value = true;
   try {
     if (isDesktop && !isRemoteConnection) {
-      // ACT: 桌面端不再调系统原生面板——它由 osascript 子进程弹出，界面固定英文、位置也不受控；
-      // 改用应用内目录选择器，跟随应用语言并居中显示。
-      desktopMode.value = true;
-      dialogVisible.value = true;
-      void loadDesktopDirectory("");
-      return await new Promise<string | null>(resolve => { finishSelection = resolve; });
+      const { data } = await axios.post<{ data: { directory: string | null } }>("/api/desktop/selectDirectory", null, { headers: { "x-toonflow-desktop": "1" } });
+      if (data.data.directory) selectedDirectory.value = data.data.directory;
+      return data.data.directory;
     }
     const { data } = await axios.post<{ code: number; data: { native: boolean; directory: string | null } }>("/api/workspaces/selectDirectory", null, { headers: { "x-toonflow-workspace": "1" } });
     if (data.data.native) {
@@ -162,52 +140,10 @@ async function manageEntry(action: "mkdir" | "rename" | "remove", entry?: Worksp
   } finally { editing.value = false; }
 }
 
-async function loadDesktopDirectory(path: string) {
-  if (loading.value) return;
-  loading.value = true;
-  browseError.value = "";
-  try {
-    const { data } = await axios.post<{ code: number; data: DesktopListing; message: string }>("/api/desktop/listDirectory", { path }, { headers: { "x-toonflow-desktop": "1" } });
-    if (data.code !== 200) throw new Error(data.message);
-    desktopListing.value = data.data;
-  } catch (err) {
-    browseError.value = axios.isAxiosError<{ message?: string }>(err) ? err.response?.data?.message || "读取目录失败，请重试" : err instanceof Error ? err.message : "读取目录失败，请重试";
-  } finally { loading.value = false; }
-}
-
-async function desktopMkdir() {
-  const current = desktopListing.value;
-  if (!current || loading.value || editing.value) return;
-  editing.value = true;
-  try {
-    const { value } = await ElMessageBox.prompt("请输入名称", "新建文件夹", {
-      inputValue: "新建文件夹",
-      inputValidator: name => {
-        const trimmed = name?.trim();
-        return !!trimmed && trimmed !== "." && trimmed !== ".." && !/[\\/:*?"<>|\u0000-\u001f]/.test(trimmed) || "请输入有效的文件夹名称";
-      },
-      confirmButtonText: "创建", cancelButtonText: "取消",
-    });
-    await useWorkspaceFiles(current.absolutePath).mkdir(value.trim());
-    await loadDesktopDirectory(current.absolutePath);
-  } catch (error) {
-    if (error !== "cancel" && error !== "close") ElMessage.error(axios.isAxiosError<{ message?: string }>(error)
-      ? error.response?.data?.message || "创建文件夹失败" : error instanceof Error ? error.message : "创建文件夹失败");
-  } finally { editing.value = false; }
-}
-
-function onDialogClose() {
-  finishSelection?.(null);
-  desktopMode.value = false;
-  desktopListing.value = undefined;
-}
-
 function confirmDirectory() {
-  if (loading.value || editing.value || browseError.value) return;
-  const directory = desktopMode.value ? desktopListing.value : listing.value;
-  if (!directory) return;
-  selectedDirectory.value = directory.absolutePath;
-  finishSelection?.(directory.absolutePath);
+  if (loading.value || editing.value || !listing.value || browseError.value) return;
+  selectedDirectory.value = listing.value.absolutePath;
+  finishSelection?.(listing.value.absolutePath);
   dialogVisible.value = false;
 }
 </script>
