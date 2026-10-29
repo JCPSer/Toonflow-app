@@ -489,6 +489,14 @@ async function start() {
       if (detail.type === "openExternal") openLink(detail);
       // flush-done 用于结算关闭闸门的等待；重复或过期的回执在这里自然无效。
       else if (detail.type === "flush-done") resolveFlushDone?.();
+      else if (detail.type === "desktop-notify") {
+        const { title, body, silent } = detail as { title?: unknown; body?: unknown; silent?: unknown };
+        // ACT: 通知是尽力而为：未授权或平台不支持时原生层会拒绝，这里静默失败，绝不能影响主进程。
+        if (typeof title === "string" && title.trim() && typeof body === "string") {
+          try { Utils.showNotification({ title: title.slice(0, 120), body: body.slice(0, 300), silent: silent === true }); }
+          catch (error) { console.error("显示桌面通知失败：", error); }
+        }
+      }
     });
     // 页面重载时监听器随旧页面销毁，安装请求等新页面 ready 后再投递。
     Electrobun.events.on(`will-navigate-${mainWindow.webview.id}`, (event: { data: { detail: unknown } }) => {

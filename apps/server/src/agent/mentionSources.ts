@@ -118,14 +118,34 @@ export async function queryMentionNodes(nodes: readonly MentionCanvasNode[], rev
  * 媒体给路径 + mimeType。这样一次性把几万字的节点塞进上下文的问题从根上消失。
  * 校验与预览的正文由调用方在本地读取，不进入模型上下文。
  */
-export async function createCanvasMention(node: MentionCanvasNode, canvasId: string, outputId: string): Promise<AgentMention> {
+export type MentionTextReader = (path: string) => Promise<string>;
+
+/**
+ * ACT: 文本输出落盘后只剩 textPath，模型要判断「这段讲什么」得先读一遍全文。
+ * 引用里补一段正文摘要（压平空白后前 mentionPreviewLength 字），指针照旧保留，读全文仍按 path 来。
+ * 快照优先、读盘兜底；读不到就只给指针，绝不因为摘要失败让整条引用不可用。
+ */
+async function mentionTextSummary(node: MentionCanvasNode, textPath: string, readText?: MentionTextReader) {
+  const snapshot = nodeData(node).textSnapshot;
+  const text = typeof snapshot === "string" ? snapshot
+    : readText ? await readText(textPath).catch(() => undefined) : undefined;
+  if (typeof text !== "string" || !text.trim()) return undefined;
+  const summary = upstreamPreview(text);
+  return summary || undefined;
+}
+
+export async function createCanvasMention(node: MentionCanvasNode, canvasId: string, outputId: string,
+  options: { readText?: MentionTextReader } = {}): Promise<AgentMention> {
   const output = mentionNodeOutputs(node).find(output => output.id === outputId);
   const selected = mentionOutputValue(node, outputId);
   if (!output?.available || !selected) throw new Error("这个输出暂无内容，请重新选择");
   const canvasName = canvasId.replace(/\.json$/i, "").slice(0, 255);
   const nodeName = mentionNodeName(node);
   // 文本输出落盘在 textPath，直接给路径；没有路径但内存里有值时，说明是未落盘的临时输出，退回节点指针。
-  const value = selected.textPath !== undefined ? { path: selected.textPath, mimeType: "text/markdown" } : selected.value;
+  const summary = selected.textPath !== undefined ? await mentionTextSummary(node, selected.textPath, options.readText) : undefined;
+  const value = selected.textPath !== undefined
+    ? { path: selected.textPath, mimeType: "text/markdown", ...(summary ? { summary } : {}) }
+    : selected.value;
   if (typeof value === "string" && !value.trim()) throw new Error("这个输出暂无内容，请重新选择");
   return { id: crypto.randomUUID(), label: `${nodeName} · ${output.name}`.slice(0, 500), source: { kind: "canvas", canvasId, canvasName, nodeId: node.id,
     nodeName, outputId, outputName: output.name }, dataType: selected.dataType, value };
@@ -148,12 +168,13 @@ export type MentionNodeUpstream = {
 
 const mediaDataTypes = new Set(["IMAGE", "MASK", "VIDEO", "AUDIO", "FILE"]);
 const upstreamLimit = 20;
-const previewLength = 200;
+// ACT: 预览长度只有这一个真源——上游摘要与文本引用摘要共用，避免两处口径不一致。
+export const mentionPreviewLength = 150;
 
 // ACT: 预览会拼进提示词，多行正文与超长文本必须压平截断，否则一条上游就能吃掉大段上下文。
 function upstreamPreview(preview: string) {
   const flat = preview.replace(/\s+/g, " ").trim();
-  return flat.length > previewLength ? `${flat.slice(0, previewLength)}…` : flat;
+  return flat.length > mentionPreviewLength ? `${flat.slice(0, mentionPreviewLength)}…` : flat;
 }
 
 /** ACT: 媒体上游只给定位信息（路径 + mimeType），既不塞图片内容也不请求缩略图。 */
@@ -211,13 +232,71 @@ export function collectUpstream(node: MentionCanvasNode, edges: readonly Mention
   return Promise.all(upstream).then(items => ({ upstream: items, ...(incoming.length > upstreamLimit ? { truncated: true } : {}) }));
 }
 
+export type MentionNodeSelf = {
+  outputId: string;
+  outputName?: string;
+  dataType: string;
+  preview: string;
+  path?: string;
+  mimeType?: string;
+};
+
+/**
+ * ACT: 引用只向模型宣告工作区内的相对路径。手改或导入的画布可能写绝对路径、远程 URL
+ * 或 ../ 逃逸，这类值直接丢掉路径，只保留摘要，避免模型按一个读不到的路径去猜。
+ */
+function workspaceRelativePath(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  const path = value.trim();
+  if (!path || path.length > 1024) return undefined;
+  if (/^(?:[a-z][a-z\d+.-]*:|\/|\\|~)/i.test(path) || path.split(/[\\/]/).includes("..")) return undefined;
+  return path;
+}
+
+/**
+ * ACT: 节点引用原本只带「这个节点的上游」，模型看不到它自己产出了什么。
+ * 这里补一份首个可用输出的短摘要：文本仍是 150 字预览 + 工作区路径，媒体只给路径与类型。
+ * 没有可用输出（或摘要为空）时不加 self，引用照常可用。
+ */
+async function nodeSelfOutput(node: MentionCanvasNode, readText?: MentionTextReader): Promise<MentionNodeSelf | undefined> {
+  const output = mentionNodeOutputs(node).find(item => item.available);
+  if (!output) return undefined;
+  const selected = mentionOutputValue(node, output.id);
+  if (!selected) return undefined;
+  const base = { outputId: output.id.slice(0, 256),
+    ...(output.name && output.name !== output.id ? { outputName: output.name.slice(0, 160) } : {}), dataType: selected.dataType };
+  const withPreview = (self: MentionNodeSelf) => self.preview ? self : undefined;
+  if (selected.textPath !== undefined) {
+    const summary = await mentionTextSummary(node, selected.textPath, readText);
+    const path = workspaceRelativePath(selected.textPath);
+    // ACT: 正文读不到时不能只说「文本内容」，与上游口径一致地写明需要工具读取。
+    return withPreview({ ...base, preview: summary ?? "文本内容（需用工具读取）", ...(path ? { path, mimeType: "text/markdown" } : {}) });
+  }
+  const media = mediaReference(selected.dataType, selected.value) as { path?: string; mimeType?: string };
+  if (typeof media.path === "string") {
+    const path = workspaceRelativePath(media.path);
+    return withPreview({ ...base, preview: media.path.slice(-160).split(/[\\/]/).pop() ?? "", ...(path ? { path, mimeType: media.mimeType } : {}) });
+  }
+  return typeof selected.value === "string" ? withPreview({ ...base, preview: upstreamPreview(selected.value) }) : undefined;
+}
+
 // ACT: 节点引用带身份 + 直接上游摘要；value 从 null 换成对象后仍满足 mentions schema 的 isBoundedValue。
 export async function createNodeMention(node: MentionCanvasNode, canvasId: string,
-  context?: { edges?: readonly MentionEdge[]; nodesById?: ReadonlyMap<string, MentionCanvasNode>; readText?: (path: string) => Promise<string> }): Promise<AgentMention> {
+  context?: {
+    edges?: readonly MentionEdge[]; nodesById?: ReadonlyMap<string, MentionCanvasNode>; readText?: (path: string) => Promise<string>;
+    /** ACT: Agent 节点额外带会话摘要与产出文件索引；拿不到时返回 undefined，不影响普通节点引用。 */
+    extraValue?: () => Promise<Record<string, unknown> | undefined>;
+  }): Promise<AgentMention> {
   const canvasName = canvasId.replace(/\.json$/i, "").slice(0, 255);
   const nodeName = mentionNodeName(node);
+  // ACT: 上游、自身摘要、Agent 附加信息互不依赖，三者并发，避免串行读文件拖慢发送。
+  const [upstream, self, extra] = await Promise.all([
+    collectUpstream(node, context?.edges, context?.nodesById, context?.readText),
+    nodeSelfOutput(node, context?.readText),
+    context?.extraValue?.().catch(() => undefined),
+  ]);
   return { id: crypto.randomUUID(), label: nodeName, source: { kind: "canvas", canvasId, canvasName, nodeId: node.id, nodeName },
-    dataType: "NODE", value: await collectUpstream(node, context?.edges, context?.nodesById, context?.readText) };
+    dataType: "NODE", value: { ...upstream, ...(self ? { self } : {}), ...extra } };
 }
 
 export { mentionAssetType } from "@toonflow/formats/mentionSources";

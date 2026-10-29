@@ -598,7 +598,8 @@ export async function importFileIntoLibrary(target: AssetLibrary, sourcePath: st
   const targetDirectory = normalizeAssetPath(options.targetDir);
   const directory = await resolveLibraryPath(target.root, targetDirectory);
   if (!(await lstat(directory.path)).isDirectory()) throw Object.assign(new Error("目标必须是文件夹"), { status: 400, code: "ENOTDIR" });
-  protectWorkspaceRoot(target.root, directory.path);
+  // ACT: 不传 targetDir 时目标目录就是库根，而库根是合法的导入目的地（素材库允许直接放在根目录）；
+  // 这里只保护「文件路径不能是根」，所以下面的 protectWorkspaceRoot 针对 targetPath 而不是目录。
   const name = options.name?.trim() || basename(sourcePath);
   if (!name || name === "." || name === ".." || /[\\/]/.test(name)) throw Object.assign(new Error("文件名无效"), { status: 400, code: "EINVALIDNAME" });
   assertAssetRelativePath(targetDirectory ? `${targetDirectory}/${name}` : name);

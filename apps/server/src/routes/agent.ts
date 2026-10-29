@@ -15,6 +15,7 @@ const inputSchema = z.object({
   thinkingLevel: z.enum(thinkingLevels).optional(),
   sessionFile: z.string().regex(/^[\w-]+\.jsonl$/).optional(),
   resendFrom: z.string().min(1).max(128).optional(),
+  nodeBinding: u.agent.agentNodeBindingSchema.optional(),
   canvas: z.strictObject({
     id: z.string().min(1).max(256),
     tools: z.array(z.strictObject({

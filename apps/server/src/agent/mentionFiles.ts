@@ -99,7 +99,9 @@ export async function storedMentionOutput(directory: string, canvasId: string, n
   const canvas = await readCanvas(directory, canvasId);
   const node = canvas.byId.get(nodeId);
   if (!node) throw Object.assign(new Error("节点已删除，请重新选择"), { status: 404 });
-  return outputId === undefined ? mentionNodeOutputs(node) : createCanvasMention(node, canvasId, outputId);
+  // ACT: 文本输出引用要带正文摘要，离线链路只能靠工作区文件读，口径与节点引用一致。
+  return outputId === undefined ? mentionNodeOutputs(node)
+    : createCanvasMention(node, canvasId, outputId, { readText: path => readMentionText(directory, path) });
 }
 
 export async function storedNodeMention(directory: string, canvasId: string, nodeId: string) {
@@ -107,7 +109,80 @@ export async function storedNodeMention(directory: string, canvasId: string, nod
   const node = canvas.byId.get(nodeId);
   if (!node) throw Object.assign(new Error("节点已删除，请重新选择"), { status: 404 });
   // ACT: readText 让上游 textNode 的预览能取到正文（画布里 outputs 已被 toJSON 清空，只剩 textPath）。
-  return createNodeMention(node, canvasId, { edges: canvas.edges, nodesById: canvas.byId, readText: path => readMentionText(directory, path) });
+  return createNodeMention(node, canvasId, {
+    edges: canvas.edges, nodesById: canvas.byId, readText: path => readMentionText(directory, path),
+    extraValue: () => agentNodeMention(directory, node),
+  });
+}
+
+const agentNodeTypePattern = /^(?:remote-)?agentNode$/;
+/** 会话文件里出现过的媒体/文档路径；只做字符串候选，命中后必须能在工作区里 stat 到才算数。 */
+const agentFilePattern = /"([^"\n]{2,300}\.(?:png|jpe?g|webp|gif|bmp|svg|mp4|mov|webm|mkv|mp3|wav|m4a|flac|ogg|md|txt|json|jsonl|csv|srt|vtt|pdf))"/gi;
+const agentFileLimit = 50;
+
+function sessionSummary(text: string) {
+  const messages: { role: string; text: string }[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line) as { type?: string; message?: { role?: string; content?: unknown } };
+      if (entry.type !== "message" || !entry.message || typeof entry.message.role !== "string") continue;
+      if (entry.message.role !== "assistant") continue;
+      const content = entry.message.content;
+      const parts = Array.isArray(content) ? content : [];
+      const joined = parts.map(part => (part && typeof part === "object" && (part as { type?: string }).type === "text"
+        ? String((part as { text?: string }).text ?? "") : "")).join("").trim();
+      if (joined) messages.push({ role: entry.message.role, text: joined });
+    } catch {
+      // ACT: 会话文件是追加写的，末尾可能截断；坏行直接跳过，不影响整体摘要。
+    }
+  }
+  const last = messages.at(-1);
+  return last ? last.text.slice(-800) : "";
+}
+
+/**
+ * Agent 节点的引用内容：最近一轮回复摘要 + 该会话里出现过且仍存在的文件索引。
+ * ACT: 只给路径与大小，正文仍由模型按需 read；索引来自会话文本里命中且能 stat 到的候选，
+ * 不做"猜目录"式的递归扫描。
+ */
+async function agentNodeMention(directory: string, node: MentionCanvasNode) {
+  if (!agentNodeTypePattern.test(String(node.type ?? ""))) return undefined;
+  const data = mentionRecord(node.data) ? node.data : {};
+  const sessionFile = typeof data.agentSessionFile === "string" ? data.agentSessionFile : "";
+  if (!/^[\w-]+\.jsonl$/.test(sessionFile)) return { agent: { sessionFile: null, summary: "", files: [], note: "该 Agent 节点还没有会话记录" } };
+  let text: string;
+  try {
+    const { path } = await getAgentHost().workspace.resolveWorkspacePath(directory, `.agent/sessions/${sessionFile}`);
+    const info = await stat(path);
+    if (!info.isFile()) return undefined;
+    // ACT: 会话可能很长；只读末尾 2 MB，摘要与文件索引都只依赖近期内容。
+    const start = Math.max(0, info.size - 2 * 1024 * 1024);
+    const handle = await open(path, "r");
+    try {
+      const buffer = Buffer.alloc(info.size - start);
+      await handle.read(buffer, 0, buffer.length, start);
+      text = buffer.toString("utf8");
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return { agent: { sessionFile, summary: "", files: [], note: "会话文件不可读，可能是旧会话或已被移动" } };
+  }
+  const seen = new Set<string>();
+  const files: { path: string; size: number; extension: string }[] = [];
+  for (const match of text.matchAll(agentFilePattern)) {
+    if (files.length >= agentFileLimit) break;
+    const raw = String(match[1]).replace(/^\.\//, "").replace(/\/+/g, "/");
+    if (!raw || seen.has(raw) || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(raw)) continue;
+    seen.add(raw);
+    const resolved = await getAgentHost().workspace.resolveWorkspacePath(directory, raw).catch(() => undefined);
+    if (!resolved) continue;
+    const info = await stat(resolved.path).catch(() => undefined);
+    if (!info?.isFile()) continue;
+    files.push({ path: raw, size: info.size, extension: raw.split(".").pop()!.toLowerCase() });
+  }
+  return { agent: { sessionFile, summary: sessionSummary(text), files } };
 }
 
 export async function selectMentionAsset(relativePath: string, options: { library?: "global" | "project"; directory?: string } = {}): Promise<AgentMention> {

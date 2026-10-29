@@ -19,9 +19,9 @@ import { createMemoryTool } from "@/agent/tools/memory";
 import { createReportTool } from "@/agent/tools/report";
 import { runDelegatedAgent } from "@/agent/runtime/delegation";
 import {
-  agentAttachmentsSchema, getActiveAgentSession, getAgentContext, getAgentStats, getParentSessionFile, getSubAgentInfo,
-  getToolResultText, hasPendingAgentQuestion, registerAgentSession, updateSubAgent,
-  type ActiveAgentSession,
+  agentAttachmentsSchema, agentNodeBindingSchema, appendAgentNodeMarker, getActiveAgentSession, getAgentContext, getAgentStats,
+  getParentSessionFile, getSubAgentInfo, getToolResultText, hasPendingAgentQuestion, registerAgentSession, updateSubAgent,
+  type ActiveAgentSession, type AgentNodeBinding,
 } from "@/agent/runtime/sessions";
 import type { ThinkingLevel } from "@toonflow/formats/modelReasoning";
 
@@ -35,6 +35,7 @@ type AgentOptions = {
   thinkingLevel?: ThinkingLevel;
   sessionFile?: string;
   resendFrom?: string;
+  nodeBinding?: AgentNodeBinding;
   canvas?: CanvasContext;
   question?: QuestionContext;
   signal?: AbortSignal;
@@ -52,6 +53,7 @@ export async function run(
     thinkingLevel,
     sessionFile,
     resendFrom,
+    nodeBinding,
     canvas,
     question,
     signal,
@@ -62,6 +64,7 @@ export async function run(
   const host = getAgentHost();
   attachments = agentAttachmentsSchema.parse(attachments);
   mentions = agentMentionsSchema.parse(mentions);
+  nodeBinding = nodeBinding ? agentNodeBindingSchema.parse(nodeBinding) : undefined;
   validateMentionTokens(prompt, mentions);
   if (!prompt.trim() && !attachments.length && !mentions.length) throw Object.assign(new Error("请输入消息、提及或添加附件"), { status: 400 });
   getAgentModelConfiguration(providerId, modelId, thinkingLevel);
@@ -115,6 +118,15 @@ export async function run(
     const file = basename(history.getSessionFile()!);
     const parentFile = getParentSessionFile(history);
     const child = getSubAgentInfo(history)?.data;
+    if (nodeBinding) {
+      try {
+        // 新会话此时已有文件名，标记会随首条回复一起落盘；已有标记的会话不重复写入。
+        appendAgentNodeMarker(history, nodeBinding);
+      } catch (error) {
+        // ACT: 标记只服务历史过滤，写入失败不能阻断本轮对话。
+        console.warn("[agent.nodeBinding] 节点会话标记写入失败", error);
+      }
+    }
     const liveTools = new Map<string, AgentToolCall>();
     const publish = send;
     send = event => {

@@ -165,6 +165,7 @@ import route160 from "./routes/workspaces/list";
 import route161 from "./routes/workspaces/selectDirectory";
 import route164 from "./routes/agent/clone";
 import route165 from "./routes/agent/session";
+import route166 from "./routes/workspaces/files/transfer";
 
 export default (app: Express) => {
   // agentAccess · /api/agent
@@ -353,4 +354,5 @@ export default (app: Express) => {
   app.use("/api/workspaces/files/write", route159);
   app.use("/api/workspaces/list", route160);
   app.use("/api/workspaces/selectDirectory", route161);
+  app.use("/api/workspaces/files/transfer", route166);
 }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { basename, dirname, resolve } from "node:path";
-import { readFile, readdir, unlink } from "@toonflow/file";
+import { open, readFile, readdir, stat, unlink } from "@toonflow/file";
 import { calculateContextTokens, createAgentSession, estimateTokens, getLastAssistantUsage, parseSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, FileEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { AgentEvent, AgentMention, AgentSubAgent, AgentToolCall } from "@/agent/runtime/types";
@@ -22,6 +22,13 @@ export const agentAttachmentsSchema = z
       .transform(attachment => ({ ...attachment, mimeType: getReadableFileMimeType(attachment.path, attachment.mimeType) ?? attachment.mimeType }))
   )
   .max(20);
+
+export const agentNodeBindingSchema = z.strictObject({
+  canvasId: z.string().min(1).max(256),
+  nodeId: z.string().min(1).max(256),
+});
+
+export type AgentNodeBinding = z.infer<typeof agentNodeBindingSchema>;
 
 export type ActiveAgentSession = {
   history: SessionManager; session?: AgentSession; send: (event: AgentEvent) => void;
@@ -560,11 +567,108 @@ export async function renameAgentSession(cwd: string, path: string, name: string
   }
 }
 
-export async function listAgentSessions(cwd: string, directory: string) {
+const agentNodeMarkerType = "toonflowAgentNode";
+// ACT: 只认自定义条目的字段形状，普通对话正文里恰好出现这个词不会被误判成节点会话。
+const agentNodeMarkerToken = `"customType":"${agentNodeMarkerType}"`;
+const agentNodeScanBytes = 8 * 1024;
+
+/** 节点会话标记：payload 固定为 { canvasId, nodeId, timestamp }，同一会话只写一次。 */
+export function appendAgentNodeMarker(history: SessionManager, binding: AgentNodeBinding) {
+  const exists = history.getEntries().some((entry) => entry.type === "custom" && entry.customType === agentNodeMarkerType);
+  if (exists) return false;
+  history.appendCustomEntry(agentNodeMarkerType, { ...binding, timestamp: new Date().toISOString() });
+  return true;
+}
+
+/** 只读前 8 KB 判断标记；读失败按普通会话处理，宁可多显示也不误藏用户历史。 */
+async function hasAgentNodeMarkerOnDisk(path: string) {
+  try {
+    const handle = await open(path, "r");
+    try {
+      const buffer = Buffer.alloc(agentNodeScanBytes);
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+      return buffer.subarray(0, bytesRead).includes(agentNodeMarkerToken);
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
+/** 会话展示名：优先最新 session_info，其次首条用户消息，与 getAgentSession 的兜底口径一致。 */
+function sessionDisplayName(entries: SessionEntry[]) {
+  const named = entries.findLast((entry) => entry.type === "session_info" && Boolean(entry.name?.trim()));
+  if (named?.type === "session_info") return named.name!.trim();
+  const firstUser = entries.find(
+    (entry): entry is Extract<SessionEntry, { type: "message" }> => entry.type === "message" && entry.message.role === "user"
+  );
+  if (!firstUser || firstUser.message.role !== "user") return undefined;
+  const content = firstUser.message.content;
+  const text = typeof content === "string" ? content : content.filter((part) => part.type === "text").map((part) => part.text).join("");
+  return text.trim().slice(0, 60) || undefined;
+}
+
+function cloneSessionName(sourceName: string) {
+  // ACT: 与 fork 一致，反复克隆不叠加「副本」后缀。
+  return `${sourceName.replace(/(?: · 副本(?:\s\d+)?)+$/u, "").slice(0, 72)} · 副本`;
+}
+
+/**
+ * 逐字节复制会话文件到同目录的新文件，再在副本末尾追加 session_info。
+ * 源文件只读；副本天然保留 toonflowAgentNode 标记。
+ */
+export async function cloneAgentSession(cwd: string, path: string) {
+  if (!sessionFileNamePattern.test(basename(path))) throw Object.assign(new Error("会话标识无效"), { status: 400 });
+  // ACT: 会话运行中文件还在追加，逐字节拷贝可能截断在行中间，副本会打不开；与 fork 一致要求先停。
+  if (getActiveAgentSession(path)) throw Object.assign(new Error("会话正在运行，请先停止再复制"), { status: 409 });
+  const source = await stat(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") throw Object.assign(new Error("会话不存在，请重新打开对话"), { status: 404 });
+    throw error;
+  });
+  if (!source.isFile()) throw Object.assign(new Error("会话必须是普通文件"), { status: 400 });
+  const content = await readFile(path);
+  const name = cloneSessionName(sessionDisplayName(parseSessionLines(content.toString("utf8"))) ?? "新对话");
+  const { path: directory } = await getAgentHost().workspace.resolveWorkspacePath(cwd, ".agent/sessions", true);
+  const id = crypto.randomUUID();
+  const timestamp = new Date().toISOString();
+  const fileName = `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
+  const target = await getAgentHost().workspace.resolveWorkspacePath(directory, fileName, true);
+  // ACT: 极少数旧文件可能没有结尾换行，补一个换行避免 session_info 与最后一行粘连。
+  const bytes = content.length && content.at(-1) !== 0x0a ? Buffer.concat([content, Buffer.from("\n")]) : content;
+  await getAgentHost().workspace.writeWorkspaceFile(target.path, bytes, true);
+  try {
+    await renameAgentSession(cwd, target.path, name);
+  } catch (error) {
+    await unlink(target.path).catch(() => { /* 清理失败不覆盖原始错误 */ });
+    throw error;
+  }
+  return { file: basename(target.path), name };
+}
+
+/** 删除会话文件；运行中的会话必须先停止，文件不存在视为已删除。 */
+export async function removeAgentSession(cwd: string, path: string) {
+  if (!sessionFileNamePattern.test(basename(path))) throw Object.assign(new Error("会话标识无效"), { status: 400 });
+  if (getActiveAgentSession(path)) throw Object.assign(new Error("会话正在运行，请先停止"), { status: 409 });
+  // ACT: 节点会话可能派发过子会话，只删父文件会把子会话永久留在盘上；沿用回退时的递归清理。
+  const text = await readFile(path, "utf8").catch(() => undefined);
+  if (text !== undefined) await removeSessionFiles(cwd, basename(path), subAgentFilesOf(parseSessionLines(text)));
+  await unlink(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+}
+
+export async function listAgentSessions(cwd: string, directory: string, options: { includeAgentNodes?: boolean } = {}) {
   const files = new Set((await readdir(directory, { withFileTypes: true })).filter((item) => item.isFile()).map((item) => item.name));
   const sessions = await SessionManager.list(cwd, directory);
-  return sessions
-    .filter((item) => files.has(basename(item.path)) && !item.parentSessionPath)
+  const visible = [];
+  for (const item of sessions) {
+    if (!files.has(basename(item.path)) || item.parentSessionPath) continue;
+    // ACT: 节点会话默认不进历史；仅显式 opt-in（如调试/管理）时列出。
+    if (!options.includeAgentNodes && await hasAgentNodeMarkerOnDisk(item.path)) continue;
+    visible.push(item);
+  }
+  return visible
     .sort((left, right) => right.modified.getTime() - left.modified.getTime())
     .map((item) => ({
       file: basename(item.path),
