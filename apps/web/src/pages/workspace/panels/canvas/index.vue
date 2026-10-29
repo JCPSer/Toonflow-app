@@ -12,8 +12,8 @@
     @pointerdown.capture="onCanvasPointerDown"
     @click.capture="updateCanvasSelection"
     @auxclick.capture="preventMiddleClick"
-    @pointermove="pointerPosition = { x: $event.clientX, y: $event.clientY }; if (!$event.buttons) updateCanvasSelection($event)"
-    @pointerleave="pointerPosition = undefined"
+    @pointermove="onCanvasPointerMove"
+    @pointerleave="onCanvasPointerLeave"
     @contextmenu.capture="forwardGroupContextMenu"
     @dragover="dragFilesOver"
     @drop="dropFiles">
@@ -35,8 +35,10 @@
       :elevate-edges-on-select="false"
       :disable-keyboard-a11y="true"
       :selectNodesOnDrag="false"
-      :auto-pan-on-node-drag="false"
-      :auto-pan-on-connect="false"
+      :auto-pan-on-node-drag="true"
+      :auto-pan-on-connect="true"
+      :auto-pan-speed="autoPanSpeed"
+      :node-drag-threshold="4"
       :zoom-on-double-click="false"
       :zoomOnScroll="false"
       :zoomOnPinch="active && !settingsVisible"
@@ -286,6 +288,10 @@ const defaultDragPan = computed(() => getShortcutBindings(generalSettings.value.
 const selectedTool = defineModel<"move" | "hand">("selectedTool", { default: "move" });
 const handMode = computed(() => props.active && !props.settingsVisible && (selectedTool.value === "hand" || panKeyPressed.value));
 let pointerPosition: XYPosition | undefined;
+// ACT: 自动平移只在指针位于画布内时生效。Vue Flow 的 calcAutoPan 不夹取坐标，指针滑进右侧面板后
+// 会一直按最高速平移、而节点被面板挡住，所以把峰值速度按「是否在画布内」在 20 / 0 之间切换。
+const pointerInCanvas = ref(true);
+const autoPanSpeed = computed(() => (pointerInCanvas.value ? 20 : 0));
 const pressedCodes = new Set<string>();
 let gestureScale: number | undefined;
 let copyingNodes = false;
@@ -1288,6 +1294,17 @@ function zoomCanvas(event: WheelEvent | (Event & { scale: number })) {
 
 function preventMiddleClick(event: MouseEvent) {
   if (event.button === 1) event.preventDefault();
+}
+
+function onCanvasPointerMove(event: PointerEvent) {
+  pointerPosition = { x: event.clientX, y: event.clientY };
+  pointerInCanvas.value = true;
+  if (!event.buttons) updateCanvasSelection(event);
+}
+
+function onCanvasPointerLeave() {
+  pointerPosition = undefined;
+  pointerInCanvas.value = false;
 }
 
 function updateCanvasSelection(event: MouseEvent | KeyboardEvent) {
