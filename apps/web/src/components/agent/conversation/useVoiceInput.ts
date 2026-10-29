@@ -6,6 +6,8 @@ import type xSender from "x-sender";
 export default function useVoiceInput(options: {
   getSender: () => xSender | undefined;
   active: () => boolean;
+  /** 设置里关掉语音输入时为 false：按钮隐藏，长按也不再触发。 */
+  enabled?: () => boolean;
   disabled: () => boolean;
   locked: () => boolean;
   onStart: () => void;
@@ -88,6 +90,7 @@ export default function useVoiceInput(options: {
   }
 
   function armVoiceInput(event: PointerEvent) {
+    if (options.enabled && !options.enabled()) return;
     if (event.button !== 0 || !event.isPrimary || options.locked() || !options.active() || options.getSender()?.chatEditor.isComposition ||
       (event.target instanceof Element && event.target.closest("[data-agent-mention]"))) return;
     clearVoicePress();

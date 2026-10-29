@@ -24,6 +24,12 @@
       <el-button text :icon="IconCopyPlus" :disabled="busy || disabled" @click="operate('duplicate')">创建副本</el-button>
       <el-button text :icon="IconBoxMultiple" :disabled="busy || disabled" @click="operate('group')">打组</el-button>
       <el-button text :icon="IconDeselect" :disabled="busy || disabled || !hasGroup" @click="operate('ungroup')">解组</el-button>
+      <span class="toolbarDivider" aria-hidden="true" />
+      <el-tooltip :disabled="canSaveToAssets" content="仅支持图片/视频节点" placement="top">
+        <span class="toolbarItem">
+          <el-button text :icon="IconLibraryPlus" :loading="saving" :disabled="busy || disabled || !canSaveToAssets" @click="saveToAssets">加入素材库</el-button>
+        </span>
+      </el-tooltip>
     </div>
   </el-card>
 </template>
@@ -31,14 +37,17 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
 import { getRectOfNodes, useVueFlow, type GraphNode, type Node, type XYPosition } from "@vue-flow/core";
-import { ElButton, ElCard, ElMessage } from "element-plus";
+import { ElButton, ElCard, ElMessage, ElTooltip } from "element-plus";
 import {
-  IconCopyPlus, IconBoxMultiple, IconDeselect,
+  IconCopyPlus, IconBoxMultiple, IconDeselect, IconLibraryPlus,
   IconLayoutGrid, IconLayoutColumns, IconLayoutRows,
 } from "@tabler/icons-vue";
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
+import { useWorkspaceStore } from "@/stores/workspace";
 import { finishGroupDrag, getSelectionRoots, getSelectionTree } from "../selectionNodes";
+import { gridSize, snapOffset, snapPoint, subtractPoint } from "../snapNodes";
 import { arrangeSelection, type ArrangeSelectionMode } from "../arrangeSelection";
+import { expandSelectionForAssets, getAssetSource, saveSelectionToAssets } from "../saveSelectionToAssets";
 
 const props = defineProps<{
   batchHistory: (action: () => Promise<void>) => Promise<void>;
@@ -46,8 +55,10 @@ const props = defineProps<{
   disabled?: boolean;
 }>();
 const flow = useVueFlow();
+const workspace = useWorkspaceStore();
 const toolbar = ref<InstanceType<typeof ElCard>>();
 const busy = ref(false);
+const saving = ref(false);
 const layoutActions = [
   { mode: "horizontal", label: "水平排列", icon: IconLayoutColumns },
   { mode: "vertical", label: "垂直排列", icon: IconLayoutRows },
@@ -59,6 +70,9 @@ const canArrangeSelection = computed(() => !busy.value && !props.disabled && sel
     && Number.isFinite(node.dimensions.width) && node.dimensions.width > 0
     && Number.isFinite(node.dimensions.height) && node.dimensions.height > 0));
 const hasGroup = computed(() => flow.getSelectedNodes.value.some(node => node.type === "canvasGroup"));
+// ACT: 分组只是容器，先展开到叶子节点再判定，选一个分组就等于选它里面的所有图片/视频。
+const assetSelection = computed(() => expandSelectionForAssets(flow.getSelectedNodes.value, flow.getNodes.value));
+const canSaveToAssets = computed(() => assetSelection.value.length > 0 && assetSelection.value.every(node => !!getAssetSource(node)));
 const visible = computed(() => !props.disabled && !flow.userSelectionActive.value && flow.getSelectedNodes.value.length > 0
   && (flow.nodesSelectionActive.value || hasGroup.value));
 const toolbarStyle = computed(() => {
@@ -89,8 +103,9 @@ async function duplicateNodes(selection: GraphNode[], signal: AbortSignal, withE
     Reflect.deleteProperty(copy, "initialized");
     copy.id = ids.get(node.id)!;
     copy.parentNode = ids.get(saved.parentNode ?? "") ?? saved.parentNode;
+    // ACT: 副本偏移量按节点实际尺寸算，宽度常带小数；向上取整到网格倍数，副本才会落在网格上。
     copy.position = positions ? { ...positions.get(node.id)! }
-      : { x: saved.position.x + (rootsIds.has(node.id) ? bounds.width + 64 : 0), y: saved.position.y };
+      : { x: saved.position.x + (rootsIds.has(node.id) ? snapOffset(bounds.width + 64, gridSize(flow)) : 0), y: saved.position.y };
     copy.data = { ...copy.data, label: `${copy.data?.label || "未命名节点"} - 副本` };
     return copy;
   }));
@@ -115,14 +130,17 @@ function groupNodes(selection: GraphNode[]) {
   const bounds = getRectOfNodes(roots);
   const parentNode = roots.every(node => node.parentNode === roots[0]!.parentNode) ? roots[0]!.parentNode : undefined;
   const parentPosition = flow.findNode(parentNode)?.computedPosition ?? { x: 0, y: 0 };
-  const position = { x: bounds.x - 24, y: bounds.y - 40 };
+  // ACT: 内边距取网格（16）的倍数——32/48；否则组在网格上、子节点却永远差 8px。
+  const position = { x: bounds.x - 32, y: bounds.y - 48 };
+  const grid = gridSize(flow);
+  const groupPosition = snapPoint({ x: position.x - parentPosition.x, y: position.y - parentPosition.y }, grid);
   const id = crypto.randomUUID();
   const group: Node = {
     id,
     type: "canvasGroup",
     parentNode,
-    position: { x: position.x - parentPosition.x, y: position.y - parentPosition.y },
-    style: { width: `${bounds.width + 48}px`, height: `${bounds.height + 64}px` },
+    position: groupPosition,
+    style: { width: `${bounds.width + 64}px`, height: `${bounds.height + 80}px` },
     connectable: false,
     expandParent: false,
     data: { label: "分组" },
@@ -130,7 +148,9 @@ function groupNodes(selection: GraphNode[]) {
   const nodes: Node[] = flow.getNodes.value.map(node => rootIds.has(node.id) ? {
     ...node,
     parentNode: id,
-    position: { x: node.computedPosition.x - position.x, y: node.computedPosition.y - position.y },
+    // ACT: 子节点按"吸附后的绝对坐标 − 组位置"计算；只有组位置对齐没有意义，
+    // 选中的节点本身带小数时子节点依然会错位，之后任何一次贴合都会把组再推离网格。
+    position: subtractPoint(snapPoint(node.computedPosition, grid), groupPosition),
     extent: undefined,
     expandParent: false,
   } : node);
@@ -154,7 +174,7 @@ function ungroupNodes(selection: GraphNode[]) {
     const parentPosition = flow.findNode(parentNode)?.computedPosition ?? { x: 0, y: 0 };
     flow.updateNode(node.id, {
       parentNode,
-      position: { x: node.computedPosition.x - parentPosition.x, y: node.computedPosition.y - parentPosition.y },
+      position: snapPoint({ x: node.computedPosition.x - parentPosition.x, y: node.computedPosition.y - parentPosition.y }, gridSize(flow)),
       extent: undefined,
       expandParent: false,
     });
@@ -173,10 +193,12 @@ function mergeGroups(selection: GraphNode[]) {
   const parentNode = groups.every(node => node.parentNode === first.parentNode) ? first.parentNode : undefined;
   const parentPosition = flow.findNode(parentNode)?.computedPosition ?? { x: 0, y: 0 };
   const style = typeof first.style === "function" ? first.style(first) : first.style;
+  const grid = gridSize(flow);
+  const mergedOrigin = snapPoint({ x: bounds.x, y: bounds.y }, grid);
   const merged: GraphNode = {
     ...first,
     parentNode,
-    position: { x: bounds.x - parentPosition.x, y: bounds.y - parentPosition.y },
+    position: snapPoint({ x: mergedOrigin.x - parentPosition.x, y: mergedOrigin.y - parentPosition.y }, grid),
     dimensions: { width: bounds.width, height: bounds.height },
     style: { ...style, width: `${bounds.width}px`, height: `${bounds.height}px` },
   };
@@ -185,7 +207,8 @@ function mergeGroups(selection: GraphNode[]) {
     return node.parentNode && groupIds.has(node.parentNode) ? [{
       ...node,
       parentNode: first.id,
-      position: { x: node.computedPosition.x - bounds.x, y: node.computedPosition.y - bounds.y },
+      // ACT: 子节点用"吸附后的绝对坐标 − 吸附后的组原点"，与建组同口径，否则合并完组对齐、内容不对齐。
+      position: subtractPoint(snapPoint(node.computedPosition, grid), mergedOrigin),
       extent: undefined,
       expandParent: false,
     }] : [node];
@@ -273,6 +296,27 @@ function startDragCopy(selection: GraphNode[], withEdges: boolean) {
   };
 }
 
+async function saveToAssets() {
+  const directory = workspace.project?.directory;
+  if (saving.value || busy.value || props.disabled || !directory || !canSaveToAssets.value) return;
+  // ACT: 固定开始时的选中集合；批量入库期间用户继续点选不会把范围和序号带偏。
+  const selection = [...flow.getSelectedNodes.value];
+  saving.value = true;
+  try {
+    const result = await saveSelectionToAssets(flow, selection, directory);
+    if (result.saved) {
+      ElMessage.success(`已加入 ${result.saved} 个素材${result.renamed ? `，其中 ${result.renamed} 个重名已自动改名` : ""}`);
+    }
+    if (result.failed.length) {
+      ElMessage.error(`失败 ${result.failed.length} 个：${result.failed[0]!.label}（${result.failed[0]!.reason}）`);
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "加入素材库失败");
+  } finally {
+    saving.value = false;
+  }
+}
+
 async function operate(command: "duplicate" | "group" | "ungroup" | "mergeGroup" | ArrangeSelectionMode) {
   if (busy.value || props.disabled) return;
   const selection = [...flow.getSelectedNodes.value];
@@ -319,6 +363,11 @@ defineExpose({ operate, startDragCopy, busy });
       height: 28px;
       margin: 0;
       padding: 0 8px;
+    }
+
+    // tooltip 需要可接收悬停事件的触发元素，禁用按钮本身不派发鼠标事件。
+    .toolbarItem {
+      display: inline-flex;
     }
 
     .toolbarDivider {

@@ -36,3 +36,6 @@ export type AgentConversation = {
   subAgents?: AgentSubAgent[];
   running?: boolean;
 };
+
+/** 画布顶部横幅用的一条「某个 Agent 节点正在等用户回答」。 */
+export type AgentQuestionNotice = { nodeId: string; label: string; title: string; question: string };

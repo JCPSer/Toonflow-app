@@ -12,6 +12,18 @@
           @change="(value) => updateUiSettings({ startupAnimation: value === true })" />
       </div>
     </section>
+    <section class="settingSection" aria-labelledby="voiceInputTitle">
+      <div class="settingHeader">
+        <div class="settingInfo">
+          <h3 id="voiceInputTitle">语音输入按钮</h3>
+          <p class="description">在 Agent 输入框显示麦克风按钮，也可长按输入框直接说话。关闭后两者都不可用，立即生效。</p>
+        </div>
+        <el-switch
+          :model-value="generalSettings.voiceInputEnabled"
+          aria-label="语音输入按钮"
+          @change="(value) => updateGeneralSettings({ voiceInputEnabled: value === true })" />
+      </div>
+    </section>
     <section class="settingSection" aria-labelledby="canvasCompositingTitle">
       <div class="settingHeader">
         <div class="settingInfo">
@@ -60,13 +72,54 @@
         </div>
       </div>
     </section>
+    <section class="settingSection" aria-labelledby="completionSoundTitle">
+      <div class="settingHeader">
+        <div class="settingInfo">
+          <h3 id="completionSoundTitle">节点提示音</h3>
+          <p class="description">节点任务运行超过 30 秒后完成或失败时播放提示音。手动停止不响。</p>
+        </div>
+        <el-radio-group
+          class="soundOptions"
+          :model-value="generalSettings.completionSound"
+          aria-label="节点提示音"
+          @change="(value) => updateGeneralSettings({ completionSound: normalizeCompletionSound(value) })">
+          <el-radio-button value="always">总是</el-radio-button>
+          <el-radio-button value="background">仅后台</el-radio-button>
+          <el-radio-button value="off">关闭</el-radio-button>
+        </el-radio-group>
+      </div>
+    </section>
+    <section class="settingSection" aria-labelledby="taskNotificationTitle">
+      <div class="settingHeader">
+        <div class="settingInfo">
+          <h3 id="taskNotificationTitle">系统通知</h3>
+          <p class="description">仅桌面应用；点通知只把窗口带到前台，具体定位见画布顶部横幅。</p>
+        </div>
+        <el-switch
+          :model-value="generalSettings.taskNotification"
+          aria-label="系统通知"
+          @change="(value) => updateGeneralSettings({ taskNotification: value === true })" />
+      </div>
+    </section>
+    <section class="settingSection" aria-labelledby="agentUpstreamContextTitle">
+      <div class="settingHeader">
+        <div class="settingInfo">
+          <h3 id="agentUpstreamContextTitle">Agent 上游上下文</h3>
+          <p class="description">Agent 节点每轮自动带上直接上游的摘要：文本取前 150 字并附路径，图片/视频只给路径。关闭后只能用 @ 手动引用。</p>
+        </div>
+        <el-switch
+          :model-value="generalSettings.agentUpstreamContext"
+          aria-label="Agent 上游上下文"
+          @change="(value) => updateGeneralSettings({ agentUpstreamContext: value === true })" />
+      </div>
+    </section>
     <nodeMenuSettings />
     <canvasShortcuts />
   </div>
 </template>
 
 <script setup lang="ts">
-import { defaultUiSettings, generalSettings, uiSettings, updateGeneralSettings, updateUiSettings } from "@/stores/settings";
+import { defaultUiSettings, generalSettings, normalizeCompletionSound, uiSettings, updateGeneralSettings, updateUiSettings } from "@/stores/settings";
 import canvasShortcuts from "./canvasShortcuts.vue";
 import nodeMenuSettings from "./nodeMenuSettings.vue";
 </script>
@@ -86,6 +139,8 @@ import nodeMenuSettings from "./nodeMenuSettings.vue";
       gap: 24px;
 
       > .el-switch { flex-shrink: 0; }
+
+      .soundOptions { flex-shrink: 0; }
 
       .edgeColorControls {
         display: flex;

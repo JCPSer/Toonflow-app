@@ -70,6 +70,18 @@
             <icon-arrow-guide :size="18" />
           </el-button>
         </el-tooltip>
+        <el-tooltip :showArrow="false" :content="completionSoundLabel" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button
+            class="toolButton"
+            text
+            :type="generalSettings.completionSound === 'off' ? 'default' : 'primary'"
+            :aria-pressed="generalSettings.completionSound !== 'off'"
+            :aria-label="completionSoundLabel"
+            @click="cycleCompletionSound">
+            <icon-bell v-if="generalSettings.completionSound !== 'off'" :size="18" />
+            <icon-bell-off v-else :size="18" />
+          </el-button>
+        </el-tooltip>
         <el-tooltip :showArrow="false" content="适应视图" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button class="toolButton" text aria-label="适应视图" @click="fitView()">
             <icon-focus-centered :size="18" />
@@ -120,8 +132,9 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Panel, useVueFlow, type XYPosition } from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
-import { IconMap, IconMagnet, IconFocusCentered } from "@tabler/icons-vue";
+import { IconArrowGuide, IconBell, IconBellOff, IconFocusCentered, IconFolders, IconMagnet, IconMap, IconSitemap } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
+import { generalSettings, updateGeneralSettings } from "@/stores/settings";
 import { arrangeCanvas } from "../arrangeCanvas";
 
 const props = defineProps<{
@@ -139,6 +152,17 @@ const zoomMenuVisible = ref(false);
 const flow = useVueFlow();
 const { viewport, zoomTo, zoomIn, zoomOut, fitView, getNodes, updateNode, setCenter } = flow;
 const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
+// ACT: 工具条上的铃铛只切提示音档位；系统通知是另一件事，放在设置页，避免一个按钮有两种含义。
+const completionSoundModes = ["always", "background", "off"] as const;
+const completionSoundLabel = computed(() => ({
+  always: "提示音：总是",
+  background: "提示音：仅后台",
+  off: "提示音：关闭",
+})[generalSettings.value.completionSound]);
+function cycleCompletionSound() {
+  const current = generalSettings.value.completionSound;
+  updateGeneralSettings({ completionSound: completionSoundModes[(completionSoundModes.indexOf(current) + 1) % completionSoundModes.length] });
+}
 const layoutSnapshot = ref<{ id: string; position: XYPosition }[]>();
 const undoPopoverVisible = ref(false);
 const arranging = ref(false);

@@ -9,12 +9,11 @@
     @gesturestart.capture="zoomCanvas"
     @gesturechange.capture="zoomCanvas"
     @gestureend.capture="zoomCanvas"
-    @pointerdown.capture="onCanvasPointerDown"
+    @pointerdown.capture="updateCanvasSelection"
     @click.capture="updateCanvasSelection"
     @auxclick.capture="preventMiddleClick"
     @pointermove="onCanvasPointerMove"
     @pointerleave="onCanvasPointerLeave"
-    @contextmenu.capture="forwardGroupContextMenu"
     @dragover="dragFilesOver"
     @drop="dropFiles">
     <vue-flow
@@ -70,7 +69,40 @@
         v-if="active && !settingsVisible && project?.directory && canvasReady && !flow.getNodes.value.length"
         :availableNodes="availableNodes"
         @create="createEmptyNode" />
-      <canvasMenu ref="canvasMenuRef" v-model:canvasId="canvasId" :directory="project?.directory" :initialCanvasId="initialCanvasId" :activateCanvas="activateCanvas" :flushSave="flushCanvases ?? flushCanvasSave" />
+      <canvasMenu ref="canvasMenuRef" v-model:canvasId="canvasId" :directory="project?.directory" :initialCanvasId="initialCanvasId" :activateCanvas="activateCanvas" :flushSave="flushCanvases ?? flushCanvasSave" :switching="switchingProject" @switchProject="switchProject" />
+      <workspacePicker ref="relocationPicker" hideTrigger />
+      <!-- ACT: 有 Agent 节点在等回答时，画布顶部横幅合并展示；点一行直接跳过去并标记已读。 -->
+      <div
+        v-if="activeAgentQuestions.length"
+        ref="agentQuestionBannerEl"
+        class="agentQuestionBanner"
+        role="status"
+        aria-live="polite"
+        @pointerdown.stop
+        @wheel.stop
+        @click.stop>
+        <div class="agentQuestionTitle">
+          <icon-message-circle-question :size="14" aria-hidden="true" />
+          <span>{{ activeAgentQuestions.length }} 个 Agent 正在等你回答</span>
+        </div>
+        <button
+          v-for="item in activeAgentQuestions"
+          :key="item.nodeId"
+          type="button"
+          class="agentQuestionItem"
+          @click.stop="openAgentQuestion(item.nodeId)">
+          <span class="agentQuestionNode">{{ item.label }}</span>
+          <span class="agentQuestionText" :title="item.question">{{ item.title || item.question }}</span>
+          <icon-chevron-right :size="14" aria-hidden="true" />
+        </button>
+      </div>
+      <!-- ACT: 节点完成/失败的未读提醒；系统通知没有点击回调，回到应用后靠这条横幅定位。
+           提问横幅在上面时整体下移，避免两条叠在一起。 -->
+      <taskAlertBanner
+        :alerts="canvasTaskAlerts"
+        :style="taskAlertBannerStyle"
+        @select="focusTaskAlert"
+        @clear="taskAlertsStore.clear()" />
       <canvasControls
         ref="canvasControlsRef"
         v-model:assetsVisible="assetsVisible"
@@ -108,7 +140,8 @@
         :runtime-key="runtimeKey"
         :active="active === true"
         :canvas-id="canvasId"
-        :statuses="agentNodeStatuses" />
+        :statuses="agentNodeStatuses"
+        @questions="agentQuestions = $event" />
     </vue-flow>
     <teleport to="body">
       <div
@@ -172,10 +205,10 @@
 import { computed, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, reactive, ref, shallowReactive, shallowRef, watch } from "vue";
 import axios from "axios";
 import { debounce } from "lodash-es";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { isMobile, isDesktop } from "@/lib/platform";
 import { storeToRefs } from "pinia";
-import { IconUnlink, IconFileText, IconPhoto, IconVideo, IconMusic, IconFile } from "@tabler/icons-vue";
+import { IconUnlink, IconFileText, IconPhoto, IconVideo, IconMusic, IconFile, IconChevronRight, IconMessageCircleQuestion } from "@tabler/icons-vue";
 import * as vueRuntime from "vue";
 import * as vueFlowRuntime from "@vue-flow/core";
 import * as elementPlusRuntime from "element-plus";
@@ -212,6 +245,7 @@ import nodeMenu from "./components/nodeMenu.vue";
 import remoteNode from "./components/remoteNode.vue";
 import canvasMenu from "./components/canvasMenu.vue";
 import canvasControls from "./components/canvasControls.vue";
+import workspacePicker from "@/pages/home/workspacePicker.vue";
 import canvasEmpty from "./components/canvasEmpty.vue";
 import { useAssetLibraryStore } from "@/stores/assetLibrary";
 import { useSessionStateStore } from "@/stores/sessionState";
@@ -219,17 +253,24 @@ import groupNode from "./components/groupNode.vue";
 import selectionToolbar from "./components/selectionToolbar.vue";
 import nodeSearch from "./components/nodeSearch.vue";
 import agentNodePanel from "./components/agentNodePanel.vue";
+import taskAlertBanner from "./components/taskAlertBanner.vue";
+import { useTaskAlertsStore } from "@/stores/taskAlerts";
+import { setNodeLabelResolver } from "@/lib/taskAlerts";
 import mentionThumbnail from "@/components/agent/mentionThumbnail.vue";
 import { useMentionSources, type MentionOutput } from "@/components/agent/mentionSources";
 import { useAgentComposerStore } from "@/stores/agentComposer";
 import { finishGroupDrag, getSelectionTree } from "./selectionNodes";
+import { normalizeNodesToGrid, snapValue } from "./snapNodes";
 import type { NodeOutput } from "@toonflow/nodes-scaffold/values";
 import type { NodeConnectionFeedback, NodeHandle } from "@toonflow/nodes-scaffold/connection";
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
 import { AGENT_NODE_STATUS_KEY, type AgentNodeStatus } from "@toonflow/nodes-scaffold/agentNode";
+import type { AgentQuestionNotice } from "@/components/agent/types";
 import type { NodeDocumentContext, NodeDocumentState } from "@toonflow/nodes-scaffold/nodeDocument";
 import { useNodeToolsContext } from "@toonflow/nodes-scaffold/nodeTools";
+import { hasRunningNodes } from "@toonflow/nodes-scaffold/nodeBusy";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { requestExitProject } from "../../exitProject";
 import { generalSettings } from "@/stores/settings";
 import { getShortcutBindings, shortcutLabel, shortcutMatches, shortcutPressed } from "@/lib/canvasShortcuts";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
@@ -546,6 +587,8 @@ async function addNodeToAgentContextFromToolbar(nodeId: string, anchor: HTMLElem
 }
 
 provide("nodeAgentContext", addNodeToAgentContextFromToolbar);
+// ACT: Agent 面板取上游快照前要先落盘——服务端按磁盘画布解析，防抖窗口内会读到旧版本。
+provide("flushCanvasSave", flushCanvasSave);
 flow.onPaneClick(() => {
   closeAgentPortMenu();
   agentNodePanelRef.value?.close();
@@ -575,12 +618,118 @@ function getCanvasContext() {
   return canvasId.value || canvasMenuRef.value?.initialized ? createCanvasContext(canvasId.value, canvasController.signal, workspaceController.signal) : undefined;
 }
 const canvasReady = computed(() => !!canvasId.value && !nodeListLoading.value && nodeLoads.size === 0);
+// ACT: 历史遗留的错位坐标不会因为修好写入路径就自动归位——旧版本建组内边距是 24/40、
+// 复制偏移带小数，落盘后就永久差几像素。所以开启网格吸附的画布在打开后做一次性归一化：
+// 绝对坐标吸附到网格，组内相对间距保持不变（整组一起对齐），整体作为一个撤销步。
+// 每个画布每次会话只跑一次，避免和用户随后的手工布局打架。
+const normalizedCanvases = new Set<string>();
+let normalizing = false;
+// ACT: 依赖只放"画布就绪/换了画布"，不要放 snapEnabled——否则运行中按一下网格按钮，
+// 所有已挂载的画布（包括后台画布）都会被挪动并写盘。开关只在真正打开画布时读一次。
+watch([canvasReady, canvasId], async ([ready, id]) => {
+  if (!ready || !id || !props.active || !snapEnabled.value || normalizing) return;
+  const directory = project.value?.directory ?? "";
+  const key = `${directory}::${id}`;
+  if (normalizedCanvases.has(key)) return;
+  normalizing = true;
+  try {
+    await nextTick();
+    // ACT: 二次校验，任何一项变了就放弃本轮且**不记账**——画布加载期间插件刷新会让
+    // canvasReady 翻回 false，提前记账等于这张画布整个会话都不再归一化。
+    if (!canvasReady.value || canvasId.value !== id || (project.value?.directory ?? "") !== directory || !props.active) return;
+    const moves = normalizeNodesToGrid(flow);
+    if (moves.length) {
+      await canvasHistory.batch(async () => {
+        for (const move of moves) flow.updateNode(move.id, { position: move.position });
+        await nextTick();
+      });
+    }
+    normalizedCanvases.add(key);
+  } catch (error) {
+    // ACT: 归一化只是纠偏，画布未就绪等失败不能影响打开画布本身；不记账，下次有机会再试。
+    console.warn("[canvas.snap] 网格归一化失败", error);
+  } finally {
+    normalizing = false;
+  }
+}, { immediate: true });
 // ACT: Agent 节点状态由对话面板写入、节点包 inject 读取。必须在画布层 provide ——
 // 面板与节点都是 <vue-flow> 的子节点，面板自己 provide 的话节点收不到（兄弟节点不共享注入）。
 // 只放内存：写进 node.data 会触发画布 500ms 防抖保存，状态每秒变化会一直写盘。
 const agentNodeStatuses = reactive<Record<string, AgentNodeStatus>>({});
 provide(AGENT_NODE_STATUS_KEY, agentNodeStatuses);
 const agentNodePanelRef = ref<InstanceType<typeof agentNodePanel>>();
+// ACT: 面板上报的未读提问；节点被删掉后按当前节点表过滤掉，避免点进一个不存在的节点。
+const agentQuestions = ref<AgentQuestionNotice[]>([]);
+const activeAgentQuestions = computed(() => agentQuestions.value.filter(item => !!flow.findNode(item.nodeId)));
+function openAgentQuestion(nodeId: string) {
+  const node = flow.findNode(nodeId);
+  if (!node) return;
+  // 面板按节点坐标定位，节点在视野外会开在一个看不见的地方，先把视图带过去。
+  void flow.fitView({ nodes: [node.id], duration: 260, maxZoom: 1, padding: 0.4 });
+  void agentNodePanelRef.value?.open(nodeId);
+}
+// ACT: 节点完成/失败的未读提醒住在 store 里，画布只负责展示与跳转。
+// 同时挂载多个画布（后台画布不卸载），所以节点名解析器按画布各自注册、随卸载撤销。
+const taskAlertsStore = useTaskAlertsStore();
+// ACT: 不按「本画布有没有这个节点」过滤——提醒是全局的，在 A 画布跑的节点完成时用户可能正在 B；
+// 过滤掉就等于窗口有焦点时什么都看不到。跨画布点击由 pendingFocus + activateCanvas 兜住。
+const canvasTaskAlerts = computed(() => taskAlertsStore.unread);
+// ACT: 提问横幅高度随条数变化，写死偏移会叠在一起；这里量一次真实高度再决定任务横幅的 top。
+const agentQuestionBannerEl = ref<HTMLElement>();
+const agentQuestionBannerHeight = ref(0);
+watch(() => activeAgentQuestions.value.length, async () => {
+  await nextTick();
+  agentQuestionBannerHeight.value = agentQuestionBannerEl.value?.offsetHeight ?? 0;
+}, { immediate: true, flush: "post" });
+// ACT: 顶部 56px 留给「画布/文档」切换器；任务横幅再按提问横幅的真实高度往下错开，两条不会叠。
+const taskAlertBannerStyle = computed(() => ({ top: `${56 + (agentQuestionBannerHeight.value ? agentQuestionBannerHeight.value + 8 : 0)}px` }));
+// ACT: 节点被删掉后它的旧提醒不该永久占着横幅，本画布内找不到节点的未读项直接清掉。
+watch(() => flow.getNodes.value.length, () => {
+  if (!props.active) return;
+  for (const alert of taskAlertsStore.unread) {
+    if (alert.canvasId === canvasId.value && !flow.findNode(alert.nodeId)) taskAlertsStore.markRead(alert.id);
+  }
+});
+const releaseLabelResolver = setNodeLabelResolver(id => {
+  const node = flow.findNode(id);
+  if (!node) return undefined;
+  const label = node.data?.label ?? node.label;
+  // ACT: 事件发生时顺手记下所属画布，才能在别的画布上点开这条提醒；canvasKey 用于容忍画布改名。
+  return { label: typeof label === "string" ? label : undefined, canvasId: canvasId.value, canvasKey: props.runtimeKey };
+});
+onBeforeUnmount(releaseLabelResolver);
+function selectAlertNode(nodeId: string) {
+  const node = flow.findNode(nodeId);
+  if (!node) return false;
+  flow.removeSelectedElements();
+  flow.addSelectedNodes([node]);
+  flow.nodesSelectionActive.value = false;
+  void flow.fitView({ nodes: [node.id], duration: 260, maxZoom: 1, padding: 0.4 });
+  return true;
+}
+async function focusTaskAlert(alert: { nodeId: string; canvasId?: string; canvasKey?: string }) {
+  // 同一节点可能攒了多条提醒，一起标记已读，避免点一次还剩几条。
+  taskAlertsStore.markReadByNode(alert.nodeId);
+  if (selectAlertNode(alert.nodeId)) return;
+  // 不在本画布：请求切过去并让目标实例自己定位（实例之间拿不到对方的 Vue Flow）。
+  if (!alert.canvasId || !props.activateCanvas) return;
+  taskAlertsStore.requestFocus({ nodeId: alert.nodeId, canvasId: alert.canvasId, canvasKey: alert.canvasKey });
+  try {
+    await props.activateCanvas(alert.canvasId);
+  } catch (error) {
+    taskAlertsStore.clearPendingFocus();
+    ElMessage.error(error instanceof Error ? error.message : "切换画布失败");
+  }
+}
+// ACT: 目标实例被激活后可能还没量过节点尺寸，等 canvasReady 再定位；消费一次就清掉。
+watch([() => props.active, canvasReady], () => {
+  if (!props.active || !canvasReady.value) return;
+  const pending = taskAlertsStore.pendingFocus;
+  if (!pending || (pending.canvasKey && pending.canvasKey !== props.runtimeKey)) return;
+  taskAlertsStore.clearPendingFocus();
+  // 尺寸未测量时 fitView 会偏，等一帧让 Vue Flow 量完再做。
+  void nextTick(() => selectAlertNode(pending.nodeId));
+});
 provide("canvas", getCanvasContext);
 // ACT: 后台画布只是 hidden + inert，不卸载；节点里的 Esc 兜底必须知道"我在不在前台画布"，
 // 否则在画布 B 按 Esc 会把画布 A 里仍在生成的节点停掉。
@@ -768,58 +917,6 @@ async function saveDocumentNode(directory: string, canvasPath: string, nodeId: s
   });
 }
 
-// ACT: 分组是一整块矩形，会把组内的连线整个盖住——线点不中、右键只有系统菜单。
-// 做法是「穿透探测」：左键按下时临时让组体退出命中测试，看光标（含 6px 容差）下有没有连线；
-// 有就当作点了那条线（弹断开气泡并挡住拖动），没有就让事件继续落到组上，拖动照旧。
-const edgeProbeOffsets: [number, number][] = [[0, 0], [6, 0], [-6, 0], [0, 6], [0, -6], [4, 4], [-4, -4], [4, -4], [-4, 4]];
-
-function edgeIdUnderGroup(group: HTMLElement, x: number, y: number) {
-  group.style.pointerEvents = "none";
-  try {
-    for (const [dx, dy] of edgeProbeOffsets) {
-      const element = document.elementFromPoint(x + dx, y + dy);
-      const edge = element?.closest?.(".vue-flow__edge");
-      const id = edge?.getAttribute("data-id");
-      if (id) return id;
-    }
-  } finally {
-    group.style.pointerEvents = "";
-  }
-  return undefined;
-}
-
-function groupBodyOf(target: EventTarget | null) {
-  if (!(target instanceof Element)) return undefined;
-  if (target.closest(".groupLabel, .groupLabelInput, .resizeCorner")) return undefined;
-  return target.closest<HTMLElement>(".vue-flow__node-canvasGroup") ?? undefined;
-}
-
-function onCanvasPointerDown(event: PointerEvent) {
-  probeGroupEdgeClick(event);
-  updateCanvasSelection(event);
-}
-
-function probeGroupEdgeClick(event: PointerEvent) {
-  if (event.button !== 0) return;
-  const group = groupBodyOf(event.target);
-  if (!group) return;
-  const id = edgeIdUnderGroup(group, event.clientX, event.clientY);
-  if (!id || !findEdge(id)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  edgeDisconnect.value = { id, x: event.clientX, y: event.clientY };
-}
-
-function forwardGroupContextMenu(event: MouseEvent) {
-  const group = groupBodyOf(event.target);
-  if (!group) return;
-  event.preventDefault();
-  event.stopPropagation();
-  // 组内右键与组外一致：走画布空白同一条路径（nodesOnly=false 才是完整操作菜单），
-  // 组自己的菜单在标题栏上。
-  nodeMenuRef.value?.openMenu(event, false);
-}
-
 function showEdgeDisconnect({ event, edge }: EdgeMouseEvent) {
   if (!(event instanceof MouseEvent)) return;
   event.stopPropagation();
@@ -872,7 +969,8 @@ function createEmptyNode(type: string) {
   const rect = canvasElement.value?.getBoundingClientRect();
   if (!rect) return;
   const center = screenToFlowCoordinate({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
-  void nodeMenuRef.value?.addNode(type, { x: center.x - 200, y: center.y - 160 });
+  // ACT: 偏移量 200/160 不是网格倍数，会把空画布的第一个节点放偏 8px，后续节点都以它为基准。
+  void nodeMenuRef.value?.addNode(type, { x: snapValue(center.x) - 192, y: snapValue(center.y) - 160 });
 }
 
 function addNodeAtPointer() {
@@ -1045,6 +1143,51 @@ function flushCanvasSave(action?: () => Promise<void>): Promise<void> {
   return next;
 }
 
+const workspaceStore = useWorkspaceStore();
+// ACT: 工作区页同时管着文档面板；切换项目要连文档一起落盘，所以优先用页面级保存。
+const flushWorkspaceSave = inject<(() => Promise<void>) | undefined>("flushWorkspaceSave", undefined);
+const relocationPicker = ref<InstanceType<typeof workspacePicker>>();
+const switchingProject = ref(false);
+
+/** 是否有节点在跑耗时任务：busy 登记表为主，Agent 节点状态兜底（思考中可能还没进 busy）。 */
+function hasBusyNodes() {
+  // ACT: 只能看不能改——这里在判断前剪枝会误删后台画布上正在跑的任务，导致切项目不提示。
+  return hasRunningNodes() || Object.values(agentNodeStatuses).some(status => status === "thinking" || status === "running" || status === "compacting");
+}
+
+// ACT: 项目切换统一走这里——先落盘当前画布，再判断运行中任务，最后交给 store 换目录，
+// 由 workspace 页按 project.directory 重挂载画布、文档与 Agent 面板。
+async function switchProject(target: { directory: string; name: string }) {
+  if (switchingProject.value || !target.directory || target.directory === project.value?.directory) return;
+  if (hasBusyNodes()) {
+    const go = await ElMessageBox.confirm("有节点正在运行，切换项目会中断正在进行的任务。是否继续切换？", "切换项目", {
+      confirmButtonText: "继续切换", cancelButtonText: "取消", type: "warning",
+    }).then(() => true, () => false);
+    if (!go) return;
+  }
+  switchingProject.value = true;
+  try {
+    // ACT: 目录一变，文档面板的 watcher 会 cancelSave() 丢弃未落盘的编辑；必须先做页面级保存。
+    if (flushWorkspaceSave) await flushWorkspaceSave();
+    else await flushCanvasSave();
+    await workspaceStore.openProject(target.directory);
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      const reselect = await ElMessageBox.confirm(`项目“${target.name}”的文件夹不存在，是否重新选择文件夹？`, "工作目录不存在", {
+        confirmButtonText: "重新选择", cancelButtonText: "取消", type: "warning",
+      }).then(() => true, () => false);
+      const directory = reselect ? await relocationPicker.value?.chooseDirectory() : null;
+      if (directory) await workspaceStore.openProject(directory, target.directory).catch(failure => {
+        ElMessage.error(axios.isAxiosError<{ message?: string }>(failure) ? failure.response?.data.message || "无法打开项目" : "无法打开项目");
+      });
+      return;
+    }
+    ElMessage.error(axios.isAxiosError<{ message?: string }>(error) ? error.response?.data.message || "切换项目失败" : error instanceof Error ? error.message : "切换项目失败");
+  } finally {
+    switchingProject.value = false;
+  }
+}
+
 let nodeSaveWarned = false;
 // ACT: 节点自身落盘失败（例如文本节点没加载成功）只影响该节点，画布结构/位置仍必须写盘；
 // 用 Promise.all 时一个坏节点会让整批 reject，删除、编组、重命名都会被永久卡死。
@@ -1100,11 +1243,18 @@ function cancelCanvasSave() {
   changedWhilePaused = false;
   saveCanvas.cancel();
 }
+// ACT: Agent 节点面板根元素是 role="dialog"，但它挂在画布上、与画布共用同一份选区，
+// 焦点落在面板内时 Cmd+C/V 仍应作用于节点；面板里的输入控件由调用方的选择器继续排除。
+function isInsideAgentNodePanel(target: EventTarget | null) {
+  return target instanceof Element && !!target.closest(".agentNodePanel");
+}
+
 function canUseCanvasClipboard(event: Event) {
   const target = event.target;
   return props.active && !event.defaultPrevented && !props.settingsVisible && !!canvasId.value && !!project.value?.directory
     && target instanceof Element
-    && !target.closest("input, textarea, select, button, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='slider'], [role='dialog'], #agentPanel")
+    && !target.closest("input, textarea, select, button, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='slider'], #agentPanel")
+    && (isInsideAgentNodePanel(target) || !target.closest("[role='dialog']"))
     && (target === document.body || target === document.documentElement || canvasElement.value?.contains(target));
 }
 
@@ -1224,12 +1374,11 @@ async function pasteClipboardNode(position: { x: number; y: number }, command?: 
   try {
     const directory = project.value.directory;
     const text = command ?? (await readClipboardText());
-    const snapshot = await readClipboardNodes(text, directory);
+    const snapshot = await readClipboardNodes(text, directory, nodes => {
+      if (nodes.some(node => node.type !== "canvasGroup" && !availableNodes.value.some(item => item.type === node.type))) throw new Error("请先安装并启用对应的节点插件");
+    });
     if (canvasSignal.aborted) return false;
     if (snapshot) {
-      if (snapshot.nodes.some(node => node.type !== "canvasGroup" && !availableNodes.value.some(item => item.type === node.type))) {
-        throw new Error("请先安装并启用对应的节点插件");
-      }
       const ids = new Map(snapshot.nodes.map(node => [node.id, crypto.randomUUID()]));
       const roots = snapshot.nodes.filter(node => !node.parentNode);
       const left = Math.min(...roots.map(node => node.position.x));
@@ -1242,6 +1391,9 @@ async function pasteClipboardNode(position: { x: number; y: number }, command?: 
         if (canvasSignal.aborted) return;
         addEdges(snapshot.edges.map(edge => ({ ...edge, id: crypto.randomUUID(), source: ids.get(edge.source)!, target: ids.get(edge.target)! })));
       });
+      const transfers = snapshot.transfers;
+      if (transfers?.copied) ElMessage.success(`已复制 ${transfers.copied} 个引用文件到当前项目`);
+      if (transfers?.unavailable) ElMessage.warning(`${transfers.unavailable} 个引用文件无法复制（源文件缺失或位于素材库），引用保留原路径`);
       return true;
     }
     const files = await readClipboardFiles().catch((error): File[] => {
@@ -1334,19 +1486,21 @@ function updateCanvasKeys(event: KeyboardEvent) {
     pressedCodes.add(event.code);
   } else pressedCodes.delete(event.code);
   if (!props.active || props.settingsVisible) return resetCanvasKeys();
+  if (event.type === "keydown" && event.key === "Escape" && !event.defaultPrevented && !event.isComposing) handleCanvasEscape(event);
   const target = event.target;
   const shortcuts = generalSettings.value.canvasShortcuts;
   const panelOpen = !!agentNodePanelRef.value?.isOpen?.();
   // ACT: 面板打开时焦点可能落在面板本身（打开即聚焦）或 body（点消息正文不改焦点）。
   // 这两种都算"面板语境"：只放行删除，分组/添加节点等其余快捷键仍被 inCanvas 拦住，
   // 避免在面板里读消息时误触画布操作。
-  const inAgentNodePanel = panelOpen && target instanceof Element && !!target.closest(".agentNodePanel");
+  const inAgentNodePanel = panelOpen && isInsideAgentNodePanel(target);
   // ACT: 素材库等其它浮层打开时不认领 body 焦点，避免在别处按 Backspace 把画布节点删了。
   const panelOpenOnBody = panelOpen && !assetsVisible.value && (target === document.body || target === document.documentElement);
   const inCanvas =
     target instanceof Element &&
     !panelOpenOnBody &&
-    !target.closest("[role='dialog'], #agentPanel") &&
+    !target.closest("#agentPanel") &&
+    (inAgentNodePanel || !target.closest("[role='dialog']")) &&
     (target === document.body || target === document.documentElement || canvasElement.value?.contains(target));
   // None 只配置默认鼠标手势，不能触发会禁用节点交互的临时抓手或节点内部缩放。
   zoomKeyPressed.value = !event.isComposing && shortcutPressed(event, getShortcutBindings(shortcuts.zoom).filter(binding => binding !== "None").join(" / "), pressedCodes);
@@ -1369,6 +1523,13 @@ function updateCanvasKeys(event: KeyboardEvent) {
     shortcutMatches(event, shortcuts[action])
   );
   if (!inCanvas && !(panelDelete && action === "delete")) return;
+  // ACT: 面板语境只放行与选区相关的复制/粘贴/删除；成组、整理、撤销等仍留在画布语境，
+  // 否则在面板里读消息时按到组合键会意外改组画布。
+  if (inAgentNodePanel && action) {
+    if (!["copy", "paste", "delete"].includes(action)) return;
+    // ACT: 面板里选中文本时 Delete/Backspace 是删字，不能顺手把选中节点删掉。
+    if (action === "delete" && hasCanvasAreaSelection()) return;
+  }
   if (!action) {
     const nativeClipboardKey = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
       && (event.code === "KeyV" || event.code === "KeyC" && flow.getSelectedNodes.value.length && !window.getSelection()?.toString());
@@ -1411,6 +1572,36 @@ function hasCanvasAreaSelection() {
   if (!selection || selection.isCollapsed || !anchor) return false;
   const element = anchor instanceof Element ? anchor : anchor.parentElement;
   return !!element?.closest(".canvas, .agentNodePanel");
+}
+
+// ACT: Element Plus 用 Esc 关弹窗时不会 preventDefault，无法靠 defaultPrevented 判断"已被别人消化"，
+// 只能在调用前自己扫一遍可见浮层，否则打开着下拉/弹窗时按 Esc 会同时弹出退出确认。
+function hasVisibleOverlay() {
+  const overlays = document.querySelectorAll<HTMLElement>(".el-overlay, .el-popper, .el-select__popper, .el-dropdown__popper");
+  return [...overlays].some(element => element.style.display !== "none" && element.getClientRects().length > 0);
+}
+
+function handleCanvasEscape(event: KeyboardEvent) {
+  if (document.fullscreenElement) return;
+  const target = event.target;
+  // 输入框里的 Esc 属于字段自身（撤销编辑/关闭联想），不认领。
+  if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='slider']")) return;
+  // 焦点在 Agent 面板、素材库等浮层里时不算"在画布中"，这些浮层自己会处理 Esc。
+  if (target instanceof Element && target.closest("#agentPanel, #assetLibraryPanel, [role='dialog'], .el-overlay")) return;
+  if (agentNodePanelRef.value?.isOpen?.()) return;
+  // ACT: 这两个自定义浮层不是 el-popper，扫不到，必须显式判断，否则它们的 Esc 会和确认框同时生效。
+  if (agentPortMenu.value || edgeDisconnect.value) return;
+  if (hasVisibleOverlay()) return;
+  // ACT: 有选区时第一次 Esc 只清空选择，再次按下才弹退出确认（用户已确认的交互）。
+  if (flow.getSelectedNodes.value.length || flow.getSelectedEdges.value.length || flow.userSelectionRect.value || hasCanvasAreaSelection()) {
+    event.preventDefault();
+    flow.removeSelectedElements();
+    // 画布里的文字选区不在 Vue Flow 的选择里，得手动清掉，否则第二次 Esc 仍落回这一支。
+    window.getSelection()?.removeAllRanges();
+    return;
+  }
+  event.preventDefault();
+  requestExitProject();
 }
 
 function resetCanvasKeys() {
@@ -1587,6 +1778,7 @@ const defaultEdgeOptions = markRaw({
 
 <style lang="scss" scoped>
 .canvas {
+  position: relative;
   width: 100%;
   height: 100%;
   // ACT: 画布内的一切（浮层、状态条、节点浮动面板）都不允许撑出页面，否则会触发窗口级滚动条。
@@ -1607,6 +1799,77 @@ const defaultEdgeOptions = markRaw({
 
   &.handMode :deep(.vue-flow__pane) {
     cursor: grab;
+  }
+
+  /* ACT: Agent 提问横幅贴顶居中，压不住节点面板（z-index 10），但要在画布内容之上。 */
+  .agentQuestionBanner {
+    position: absolute;
+    z-index: 5;
+    /* ACT: 画布/文档切换器在顶部居中（底边约 44px），横幅从它下方开始，避免压在上面互相遮挡。 */
+    top: 56px;
+    left: 50%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: min(520px, calc(100% - 32px));
+    padding: 6px;
+    border: 1px solid var(--el-color-warning-light-5);
+    border-radius: 10px;
+    background: var(--el-bg-color-overlay);
+    box-shadow: var(--el-box-shadow);
+    transform: translateX(-50%);
+
+    .agentQuestionTitle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 4px;
+      color: var(--el-color-warning);
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .agentQuestionItem {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 4px 6px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--el-text-color-regular);
+      font: inherit;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+
+      &:hover { background: var(--el-fill-color-light); }
+      &:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: -2px; }
+
+      .agentQuestionNode {
+        flex: none;
+        max-width: 120px;
+        overflow: hidden;
+        color: var(--el-text-color-primary);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .agentQuestionText {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        color: var(--el-text-color-secondary);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      svg { flex: none; color: var(--el-text-color-placeholder); }
+    }
   }
 
   &.edgesHidden :deep(.vue-flow__edges:not(:has(.edgeNodeActive))) {
@@ -1644,6 +1907,13 @@ const defaultEdgeOptions = markRaw({
     to {
       stroke-dashoffset: 0;
     }
+  }
+
+  // ACT: 分组本体必须穿透（组内空白处的框选、连线点击、右键都归画布），否则整块矩形吞掉所有命中。
+  // Vue Flow 给节点容器写了内联 pointer-events:all，只有 !important 能压过内联声明，
+  // 子元素（标题栏、缩放手柄）再各自把 pointer-events 打开。
+  :deep(.vue-flow__node-canvasGroup) {
+    pointer-events: none !important;
   }
 
   :deep(.vue-flow__nodesselection-rect) {

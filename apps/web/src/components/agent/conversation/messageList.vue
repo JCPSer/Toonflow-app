@@ -1,6 +1,6 @@
 <template>
   <div class="messageViewport t-chat t-chat--normal">
-    <div ref="messageList" class="messageList t-chat__list" :class="{ hasTurnRail: turns.length > 1 }" role="region" aria-label="对话消息" tabindex="0">
+    <div ref="messageList" class="messageList t-chat__list" :class="{ hasTurnRail: turns.length > 1 }" role="region" aria-label="对话消息" tabindex="0" @wheel.passive="cancelJump" @touchstart.passive="cancelJump">
       <chat-item v-if="!messages.length && !disabled" role="assistant" variant="text">
         <template #content>
           <section class="welcomeMessage" aria-label="开始新对话">
@@ -145,6 +145,8 @@ const displayedMessages = computed(() => props.messages.filter(message => browse
 const messageList = ref<HTMLDivElement>();
 const atLatestMessage = ref(true);
 let messageListInitialized = false;
+// 目录跳转收敛期间独占滚动位置（虚拟器的 onChange 会读它，因此声明在使用之前）。
+let jumping = false;
 let messageScrollOffset = 0;
 const messageKeys = computed(() => displayedMessages.value.map(item => item.id));
 // ACT: 只常驻当前轮的实时画面，历史浏览器消息仍按需挂载，避免长对话累积连接和 DOM。
@@ -170,6 +172,8 @@ const messageVirtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>(comput
     observeElementRect: (instance, onChange) => observeElementRect(instance, rect => { if (rect.height) onChange(rect); }),
     rangeExtractor: range => [...new Set([...defaultRangeExtractor(range), ...retained])].sort((left, right) => left - right),
     onChange(instance) {
+      // ACT: 跳转收敛期间由 jumpToTurn 独占滚动位置，这里不要用 isAtEnd 把贴底标志改回去。
+      if (jumping) return;
       if (!messageListInitialized || !props.active || !messageList.value?.clientHeight) return;
       atLatestMessage.value = instance.isAtEnd();
       messageScrollOffset = instance.scrollOffset ?? 0;
@@ -185,15 +189,73 @@ const turns = computed(() => displayedMessages.value.flatMap((message, index) =>
   return [{ id: message.id, index, label: label || (message.attachments?.length ? "（附件）" : "（引用）") }];
 }));
 
-function jumpToTurn(index: number) {
+// ACT: 目录跳转只靠 scrollToIndex 不够准——动态高度列表对未测量行只能用 240px 估算，
+// 落点误差随行号累积，且实时行测量/图片加载还会把位置再推开一次。
+// 所以粗跳之后按真实 DOM 位置收敛：每轮用 setTimeout 让一次渲染落地，最多 24 轮（约 1s），
+// 连续 3 次 |delta| ≤ 2px 才收手（冷启动时总高会连续变化，只到位一次等于没到位）。
+let jumpToken = 0;
+function nextFrame() {
+  // 用定时器而不是 rAF：窗口被遮挡时 rAF 会被节流甚至暂停，跳转就会卡在中间。
+  return new Promise<void>(resolve => setTimeout(resolve, 40));
+}
+function cancelJump() {
+  if (!jumping) return;
+  jumpToken++;
+  jumping = false;
+}
+async function jumpToTurn(index: number) {
   const instance = messageVirtualizer.value;
+  const list = messageList.value;
+  if (!list || index < 0 || index >= messageKeys.value.length) return;
+  const token = ++jumpToken;
+  jumping = true;
   // ACT: 先退出「贴底」状态，否则跳转后实时行测量完成会把视图拉回最新消息。
   atLatestMessage.value = false;
   instance.scrollToIndex(index, { align: "start" });
-  // ACT: 内容不满一屏、或点的就是当前位置时不会产生位移，也就没有 scroll 事件，
-  // atLatestMessage 会一直停在 false，右下角就会挂出一个点不掉的「回到最新消息」。
-  // 这里按跳转后的真实位置重算一次即可。
-  void nextTick(() => { atLatestMessage.value = instance.isAtEnd(); });
+  const messageId = messageKeys.value[index];
+  let stable = 0;
+  try {
+    for (let attempt = 0; attempt < 24; attempt++) {
+      await nextFrame();
+      if (token !== jumpToken) return;
+      const listTop = list.getBoundingClientRect().top;
+      // 行是绝对定位 + transform，offsetTop 不反映真实位置，只能用 rect 差值。
+      const row = messageId ? list.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`) : null;
+      if (row) {
+        const delta = row.getBoundingClientRect().top - listTop;
+        if (Math.abs(delta) <= 2) {
+          if (++stable >= 3) break;
+          continue;
+        }
+        stable = 0;
+        list.scrollTop += delta;
+        continue;
+      }
+      // 目标行没进渲染窗口：估算偏差可能把窗口带偏好几屏。用已渲染行的真实高度和位置推一步，
+      // 推完再量——每轮都会新测量一批行，误差逐轮收敛。步长夹到不足一屏，避免一次冲过头再来回摆。
+      stable = 0;
+      const samples = [...list.querySelectorAll<HTMLElement>("[data-index]")]
+        .map(element => ({ index: Number(element.dataset.index), height: element.getBoundingClientRect().height }))
+        .filter(sample => Number.isFinite(sample.index));
+      if (!samples.length) {
+        instance.scrollToIndex(index, { align: "start" });
+        continue;
+      }
+      const nearest = samples.reduce((best, sample) => Math.abs(sample.index - index) < Math.abs(best.index - index) ? sample : best);
+      const average = Math.max(60, Math.min(1200, samples.reduce((sum, sample) => sum + sample.height, 0) / samples.length));
+      const limit = Math.max(120, list.clientHeight * 0.8);
+      const step = Math.max(-limit, Math.min(limit, (index - nearest.index) * average));
+      list.scrollTop += step || Math.sign(index - nearest.index) * list.clientHeight * 0.8;
+    }
+  } finally {
+    if (token === jumpToken) {
+      jumping = false;
+      // 内容不满一屏、或点的就是当前位置时不会产生位移，也就没有 scroll 事件，
+      // atLatestMessage 会一直停在 false，右下角就会挂出一个点不掉的「回到最新消息」。
+      // 这里按跳转后的真实位置重算一次即可。
+      atLatestMessage.value = instance.isAtEnd();
+    }
+  }
 }
 let messageMeasurePending = false;
 

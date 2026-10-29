@@ -1,6 +1,7 @@
 import type { Edge, GraphEdge, GraphNode, Node } from "@vue-flow/core";
 import { isNodeOutput } from "@toonflow/nodes-scaffold/values";
 import { writeClipboardText } from "@/lib/clipboard";
+import { transferWorkspaceFiles } from "@/lib/workspaceFiles";
 
 export const nodeClipboardCommand = /^toonflow:paste-node:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -56,7 +57,7 @@ export async function copyNodesToClipboard(nodes: Node[], edges: Edge[], directo
   await writeClipboardText(command);
 }
 
-export async function readClipboardNodes(command: string, directory: string) {
+export async function readClipboardNodes(command: string, directory: string, validate?: (nodes: Node[]) => void) {
   if (!nodeClipboardCommand.test(command)) return;
   const entry = await accessClipboard();
   if (!entry || entry.command !== command) throw new Error("节点剪贴数据已失效，请重新复制");
@@ -89,10 +90,54 @@ export async function readClipboardNodes(command: string, directory: string) {
     }
     path.forEach(id => checked.add(id));
   }
-  const hasWorkspaceFile = nodes.some(node => Object.values(node.data.outputs ?? {}).some(output => isNodeOutput(output)
-    && typeof output.value === "object" && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(output.value.url)));
-  if (hasWorkspaceFile && entry.directory !== directory) {
-    throw new Error(entry.directory ? "此节点引用工作区文件，不能跨项目粘贴" : "节点剪贴数据缺少工作目录，请重新复制");
+  // ACT: 先让调用方校验节点是否可用，再搬文件——否则安装插件都会失败的粘贴会先往目标项目里留一堆孤儿素材。
+  validate?.(nodes);
+  const transfers = await transferNodeFiles(nodes, entry.directory, directory);
+  return { nodes, edges, transfers };
+}
+
+type MediaValue = { url: string; mimeType?: string };
+type OutputNode = { data: { outputs?: Record<string, unknown> } & Record<string, unknown> };
+
+/** url 是工作区相对路径（不是 http/blob/data 等可直接使用的地址）。 */
+function isWorkspaceUrl(url: unknown): url is string {
+  return typeof url === "string" && !!url && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(url);
+}
+
+function forEachOutput(node: Node, visit: (value: MediaValue) => void) {
+  const outputs = (node as unknown as OutputNode).data?.outputs;
+  if (!outputs || typeof outputs !== "object") return;
+  for (const output of Object.values(outputs)) {
+    if (!isNodeOutput(output) || typeof output.value !== "object") continue;
+    visit(output.value as MediaValue);
   }
-  return { nodes, edges };
+}
+
+/**
+ * 跨项目粘贴时把节点引用的工作区文件搬到目标项目，并把 url 改写为搬迁后的路径。
+ * ACT: 同项目粘贴不动文件；源项目已删除/不可读时报可读错误，交给调用方提示。
+ */
+async function transferNodeFiles(nodes: Node[], sourceDirectory: string | undefined, directory: string) {
+  const urls = new Set<string>();
+  for (const node of nodes) forEachOutput(node, value => { if (isWorkspaceUrl(value.url)) urls.add(value.url); });
+  if (!urls.size || sourceDirectory === directory) return;
+  if (!sourceDirectory) throw new Error("节点剪贴数据缺少工作目录，请重新复制");
+  let result;
+  try {
+    result = await transferWorkspaceFiles(sourceDirectory, directory, [...urls]);
+  } catch (error) {
+    const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    throw new Error(message ? `复制节点引用的文件失败：${message}` : "复制节点引用的文件失败，请确认源项目文件夹可访问后重试");
+  }
+  const mapping = new Map(result.files.filter(file => file.action === "copied").map(file => [file.source, file.target]));
+  for (const node of nodes) forEachOutput(node, value => { if (isWorkspaceUrl(value.url)) value.url = mapping.get(value.url) ?? value.url; });
+  // ACT: 裁剪/翻转的「恢复上一张」记录指向源项目的文件路径，跨项目后一律作废；
+  // 否则点「恢复」会把节点指到一个在目标项目里不存在的图。
+  for (const node of nodes) {
+    const data = (node as unknown as { data?: { crop?: unknown } }).data;
+    if (data && "crop" in data) delete data.crop;
+  }
+  // ACT: 素材库等应用管理目录不参与搬运，与"源文件已删除/复制失败"一样只能保留原引用，一起提示。
+  const unavailable = result.missing.length + result.skipped.length + result.failed.length;
+  return { copied: mapping.size, unavailable };
 }

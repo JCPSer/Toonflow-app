@@ -8,10 +8,32 @@
       <video v-else-if="previewUrl && selected.dataType === 'VIDEO'" :src="previewUrl" controls playsinline preload="metadata" @error="error = '无法预览该视频'" />
       <audio v-else-if="previewUrl && selected.dataType === 'AUDIO'" :src="previewUrl" controls preload="metadata" @error="error = '无法预览该音频'" />
       <p v-else-if="selected.dataType === 'FILE'" class="fileName"><icon-file :size="20" />{{ selected.label }}</p>
-      <p v-else-if="selected.dataType === 'NODE'" class="fileName"><icon-at :size="20" />节点引用含节点身份与直接上游摘要（最多 200 字预览），完整内容由助手用画布工具读取。</p>
+      <template v-else-if="selected.dataType === 'NODE'">
+        <ul v-if="selfItem" class="mentionUpstream">
+          <li>
+            <span class="mentionUpstreamSource">本节点输出<template v-if="selfItem.outputName"> · {{ selfItem.outputName }}</template></span>
+            <span class="mentionUpstreamText">{{ selfItem.preview }}</span>
+          </li>
+        </ul>
+        <ul v-if="upstreamList.length" class="mentionUpstream">
+          <li v-for="item in upstreamList" :key="`${item.targetHandle}:${item.nodeId}:${item.outputId}`">
+            <span class="mentionUpstreamSource">{{ item.nodeName }}<template v-if="item.outputName"> · {{ item.outputName }}</template><template v-if="item.targetHandleName"> → {{ item.targetHandleName }}</template></span>
+            <span class="mentionUpstreamText">{{ item.preview }}</span>
+          </li>
+        </ul>
+        <p v-else-if="!selfItem" class="fileName"><icon-at :size="20" />该节点当前既没有输出摘要，也没有直接上游，引用只含节点身份，完整内容由助手用画布工具读取。</p>
+        <p class="mentionHint">输出与上游摘要最多 150 字，完整内容由助手按路径或 nodeId 读取。</p>
+      </template>
+      <template v-else-if="textSummary">
+        <pre>{{ textSummary }}</pre>
+        <p class="mentionHint">正文摘要（最多 150 字），完整内容由助手按路径读取。</p>
+      </template>
       <template v-else>
-        <pre>{{ textValue.slice(0, 12000) }}</pre>
-        <p v-if="textValue.length > 12000">…（预览已截取，发送保留完整内容）</p>
+        <p v-if="pointerOnly" class="fileName">正文摘要不可用（内容过大或尚未生成），完整内容由助手按路径读取。</p>
+        <template v-else>
+          <pre>{{ textValue.slice(0, 12000) }}</pre>
+          <p v-if="textValue.length > 12000">…（预览已截取，发送保留完整内容）</p>
+        </template>
       </template>
       <el-button v-if="removable" text type="danger" @click="removeSelected">移除此引用</el-button>
     </div>
@@ -39,6 +61,27 @@ const error = ref("");
 const textValue = computed(() => {
   const value = selected.value?.value;
   return typeof value === "string" ? value : JSON.stringify(value, null, 2) ?? "";
+});
+// ACT: 文本输出引用现在是「指针 + 正文摘要」，气泡要直接显示摘要；只有指针（摘要读不到）时给一句说明，
+// 不要把 { path, mimeType } 的 JSON 当正文摊给用户看。
+type MentionUpstreamItem = { targetHandle: string; targetHandleName?: string; nodeId: string; nodeName: string; outputId: string; outputName?: string; preview: string };
+const valueRecord = computed(() => {
+  const value = selected.value?.value;
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+});
+const textSummary = computed(() => {
+  const summary = valueRecord.value?.summary;
+  return typeof summary === "string" ? summary : "";
+});
+const pointerOnly = computed(() => typeof valueRecord.value?.path === "string" && !textSummary.value);
+const upstreamList = computed<MentionUpstreamItem[]>(() => {
+  const upstream = valueRecord.value?.upstream;
+  return Array.isArray(upstream) ? upstream as MentionUpstreamItem[] : [];
+});
+// ACT: 节点自身的输出摘要（self）渲染在「上游」之前——模型先看到这个节点产出了什么，再看它的输入。
+const selfItem = computed<MentionUpstreamItem | undefined>(() => {
+  const self = valueRecord.value?.self;
+  return self && typeof self === "object" && !Array.isArray(self) ? self as MentionUpstreamItem : undefined;
 });
 
 function sourceLabel(mention: AgentMention) {
@@ -135,5 +178,19 @@ defineExpose({ preview });
   audio { width: 100%; }
   pre { max-height: 55vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
   .fileName { display: flex; align-items: center; gap: 8px; }
+  .mentionHint { margin: 6px 0 0; color: var(--el-text-color-secondary); font-size: 12px; }
+
+  .mentionUpstream {
+    max-height: 55vh;
+    margin: 0;
+    padding: 0;
+    overflow: auto;
+    list-style: none;
+
+    li { padding: 8px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
+    li:last-child { border-bottom: none; }
+    .mentionUpstreamSource { display: block; color: var(--el-text-color-secondary); font-size: 12px; overflow-wrap: anywhere; }
+    .mentionUpstreamText { display: block; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  }
 }
 </style>

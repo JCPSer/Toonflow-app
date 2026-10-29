@@ -170,3 +170,20 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
   // ACT: 当前目录逐次读取；跨 await 或防抖的操作传入目录字符串，固定本次目标。
   return { list, read, importImage, cloneProject, acquireUrl, thumbUrl, warmThumb, readText, readJson, readTextSnapshot, writeTextSnapshot, write, writeJson, rename, copy, reveal, remove, mkdir };
 }
+
+export type TransferResult = {
+  files: { source: string; target: string; action: "copied" | "reused" }[];
+  skipped: string[];
+  missing: string[];
+  failed: { path: string; message: string }[];
+};
+
+/**
+ * 跨项目搬运文件：把 sourceDirectory 下的相对路径复制到 targetDirectory 的同名位置。
+ * ACT: 与实例方法不同，这里两个目录都显式传入——跨项目粘贴时当前项目不是源项目。
+ * 服务端保证同路径同内容复用、不同内容改名，绝不覆盖目标项目已有文件。
+ */
+export async function transferWorkspaceFiles(sourceDirectory: string, targetDirectory: string, paths: string[]) {
+  const { data } = await client.post<{ data: TransferResult }>("/transfer", { sourceDirectory, targetDirectory, paths });
+  return data.data;
+}

@@ -39,7 +39,7 @@
       @dblclick.stop="editLabel"
       @keydown.enter.stop.prevent="editLabel"
       @contextmenu.stop.prevent="openMenu($event)">
-      {{ data.label || "分组" }}
+      <span class="groupLabelText">{{ data.label || "分组" }}</span>
     </span>
     <button
       v-for="corner in readOnly ? [] : resizeCorners"
@@ -64,6 +64,7 @@ import { inject, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useVueFlow, type GraphNode, type NodeProps } from "@vue-flow/core";
 import { ElMessage, type DropdownInstance } from "element-plus";
 import { IconPencil, IconTrash } from "@tabler/icons-vue";
+import { gridSize, snapOffset, snapPoint } from "../snapNodes";
 
 const props = withDefaults(defineProps<NodeProps & { readOnly?: boolean }>(), { readOnly: false });
 const flow = useVueFlow();
@@ -190,6 +191,29 @@ function finishResize(event?: PointerEvent) {
   resize.value = undefined;
   state.node.resizing = false;
   if (state.element.hasPointerCapture(state.pointerId)) state.element.releasePointerCapture(state.pointerId);
+  // ACT: 按了没动就不改——否则点一下手柄会把旧的小数尺寸"吸"成整格，看着像误操作。
+  const moved = state.node.position.x !== state.position.x || state.node.position.y !== state.position.y
+    || state.node.dimensions.width !== state.width || state.node.dimensions.height !== state.height;
+  if (!moved) return state.resolve();
+  // ACT: 只在收手时吸附一次。逐帧吸附会让手柄发顿，而且子节点是按帧增量平移的，反复取整会累积漂移。
+  // 尺寸往上取整（不能把子节点切掉），位置就近取整，子节点按位置变化量反向补偿，保持原位对齐。
+  const grid = gridSize(flow);
+  const width = snapOffset(state.node.dimensions.width, grid);
+  const height = snapOffset(state.node.dimensions.height, grid);
+  const position = snapPoint(state.node.position, grid);
+  const dx = position.x - state.node.position.x;
+  const dy = position.y - state.node.position.y;
+  if (dx || dy) {
+    for (const child of flow.getNodes.value) {
+      if (child.parentNode !== props.id) continue;
+      flow.updateNode(child.id, { position: { x: child.position.x - dx, y: child.position.y - dy } });
+    }
+  }
+  if (dx || dy || width !== state.node.dimensions.width || height !== state.node.dimensions.height) {
+    const style = typeof state.node.style === "object" ? state.node.style : {};
+    state.node.dimensions = { width, height };
+    flow.updateNode(props.id, { position, style: { ...style, width: `${width}px`, height: `${height}px` } });
+  }
   state.resolve();
 }
 
@@ -220,12 +244,15 @@ watch(
   border: 1px solid var(--el-border-color);
   border-radius: var(--el-border-radius-base);
   background: color-mix(in srgb, var(--el-fill-color-light) 25%, transparent);
+  // ACT: 分组本体只是一块视觉矩形，不能参与命中——否则组内空白处的框选、连线点击和右键全被它吞掉。
+  // 需要交互的部分（标题栏、缩放手柄）各自把 pointer-events 打开。
+  pointer-events: none;
 
   &.selected {
     border-color: color-mix(in srgb, var(--el-color-primary) 50%, var(--el-border-color));
   }
 
-  &:hover,
+  // ACT: 本体穿透后拿不到 :hover，缩放手柄改由选中态显形（拖动过程中保持）。
   &.selected,
   &.resizing {
     .resizeCorner { opacity: 1; }
@@ -235,25 +262,35 @@ watch(
   .groupLabelInput {
     position: absolute;
     left: 0;
+    right: 0;
     bottom: calc(100% + 8px);
-    height: 22px;
-    max-width: 100%;
+    box-sizing: border-box;
+    height: 26px;
+    padding: 0 2px;
     line-height: 20px;
     cursor: move;
+    // ACT: 标题栏要整条可拖、可右键，所以单独恢复命中；视觉上仍只有一行小字。
+    pointer-events: auto;
   }
 
   .groupLabel {
+    display: flex;
+    align-items: center;
     color: var(--el-text-color-secondary);
     font-size: 12px;
     user-select: none;
-    display: inline-block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+
+    .groupLabelText {
+      flex: 1;
+      // ACT: flex 项的自动最小尺寸是 min-content，不置 0 的话 nowrap 文本会撑破容器、省略号失效。
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
 
   .groupLabelInput {
-    box-sizing: border-box;
     width: 100%;
     padding: 0 3px;
     border: 1px solid var(--el-color-primary);

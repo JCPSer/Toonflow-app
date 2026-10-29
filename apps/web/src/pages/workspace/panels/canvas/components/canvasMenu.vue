@@ -2,12 +2,32 @@
   <panel class="canvasMenuPanel" position="top-left">
     <el-card class="canvasMenu" shadow="never" :bodyStyle="{ padding: '2px 4px' }">
       <div class="menuContent">
-        <el-input v-model="projectNameDraft" class="workspaceNameInput" :style="{ '--workspaceName': JSON.stringify(projectNameDraft || ' ') }" size="small" :title="directory" :disabled="!workspaceStore.project" aria-label="项目名称"
+        <el-input v-model="projectNameDraft" class="workspaceNameInput" :style="{ '--workspaceName': JSON.stringify(projectNameDraft || ' ') }" size="small" :title="directory" :disabled="!workspaceStore.project || switching" aria-label="项目名称"
           @keydown.stop @keydown.enter="saveProjectName" @keydown.esc.prevent="projectNameDraft = workspaceName" @blur="saveProjectName" />
+        <el-popover v-model:visible="projectListVisible" trigger="click" placement="bottom-start" :width="320" :showArrow="false" :disabled="!workspaceStore.project">
+          <template #reference>
+            <el-button class="projectTrigger" text :loading="switching" :disabled="switching || !workspaceStore.project" aria-label="切换项目" :aria-expanded="projectListVisible" title="切换项目">
+              <component :is="projectListVisible ? IconChevronUp : IconChevronDown" :size="14" aria-hidden="true" />
+            </el-button>
+          </template>
+          <div class="projectPicker" @keydown.esc="projectListVisible = false">
+            <el-input v-model="projectQuery" :prefixIcon="IconSearch" placeholder="搜索项目" aria-label="搜索项目" clearable @keydown.esc.stop="projectQuery = ''" />
+            <el-scrollbar maxHeight="min(360px, calc(100dvh - 198px))">
+              <el-button v-for="item in filteredProjects" :key="item.directory" class="projectEntry" text :title="item.directory" :aria-current="item.directory === workspaceStore.project?.directory" @click="chooseProject(item)">
+                <span class="projectEntryText">
+                  <span class="projectEntryName">{{ item.name }}</span>
+                  <span class="projectEntryPath">{{ item.directory }}</span>
+                </span>
+                <icon-check v-if="item.directory === workspaceStore.project?.directory" :size="16" aria-hidden="true" />
+              </el-button>
+              <el-text v-if="!filteredProjects.length" class="projectEmpty" type="info">没有匹配的项目</el-text>
+            </el-scrollbar>
+          </div>
+        </el-popover>
         <el-divider direction="vertical" />
         <el-popover v-model:visible="canvasListVisible" trigger="click" placement="bottom-start" :width="320" :showArrow="false" :disabled="!directory">
           <template #reference>
-            <el-button class="canvasTrigger" text :loading="busy" :disabled="busy || !directory" aria-label="切换画布" :aria-expanded="canvasListVisible">
+            <el-button class="canvasTrigger" text :loading="busy" :disabled="busy || switching || !directory" aria-label="切换画布" :aria-expanded="canvasListVisible">
               <span>{{ activeCanvasName }}</span><component :is="canvasListVisible ? IconChevronUp : IconChevronDown" :size="14" aria-hidden="true" />
             </el-button>
           </template>
@@ -98,8 +118,26 @@ const props = defineProps<{
   initialCanvasId?: string;
   activateCanvas?: (id: string, signal?: AbortSignal) => Promise<void>;
   flushSave: (action?: () => Promise<void>) => Promise<void>;
+  /** ACT: 项目切换（保存 + 换目录）进行中，避免重复点击或在保存期间再次切换。 */
+  switching?: boolean;
 }>();
 const workspaceStore = useWorkspaceStore();
+const emit = defineEmits<{ switchProject: [project: { directory: string; name: string }] }>();
+const projectListVisible = ref(false);
+const projectQuery = ref("");
+const filteredProjects = computed(() => {
+  const query = projectQuery.value.trim().toLocaleLowerCase();
+  return [...workspaceStore.projectList]
+    .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt)
+    .filter(project => !query || project.name.toLocaleLowerCase().includes(query) || project.directory.toLocaleLowerCase().includes(query));
+});
+// ACT: 只负责"选了哪个项目"；保存、运行中断判断与目录重定位都在画布层统一处理。
+function chooseProject(project: { directory: string; name: string }) {
+  projectListVisible.value = false;
+  projectQuery.value = "";
+  if (project.directory === workspaceStore.project?.directory) return;
+  emit("switchProject", project);
+}
 const balanceVisible = ref(false);
 const rechargeVisible = ref(false);
 const balanceFormat = computed(() => new Intl.NumberFormat(locale.value, { maximumFractionDigits: 6 }));
@@ -1058,6 +1096,39 @@ defineExpose({ getCanvases, peekCanvases, initialized, addCanvas, switchCanvas, 
     }
 
   }
+}
+
+.projectTrigger {
+  width: 20px;
+  height: 28px;
+  padding: 0;
+  margin: 0 2px 0 0;
+  flex-shrink: 0;
+}
+
+.projectPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  .projectEntry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: auto;
+    padding: 6px 8px;
+    margin: 0;
+    justify-content: flex-start;
+    text-align: left;
+
+    .projectEntryText { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+    .projectEntryName { font-size: 13px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .projectEntryPath { font-size: 11px; line-height: 1.3; color: var(--el-text-color-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+    svg { flex-shrink: 0; color: var(--el-color-primary); }
+  }
+
+  .projectEmpty { display: block; padding: 8px; font-size: 12px; }
 }
 
 </style>

@@ -2,6 +2,7 @@ import { nextTick } from "vue";
 import type { useVueFlow } from "@vue-flow/core";
 import { graphlib, layout } from "@dagrejs/dagre";
 import { getSelectionTree } from "./selectionNodes";
+import { snapPoint } from "./snapNodes";
 
 export async function arrangeCanvas(flow: ReturnType<typeof useVueFlow>, signal?: AbortSignal) {
   signal?.throwIfAborted();
@@ -73,7 +74,8 @@ export async function arrangeCanvas(flow: ReturnType<typeof useVueFlow>, signal?
     }
     const result = group.ids.map(id => {
       const node = group.graph.node(id);
-      const position = { x: origin.x + x + node.x - node.width / 2, y: origin.y + y + node.y - node.height / 2 };
+      // ACT: dagre 算出来的是浮点中心点，直接写回会把整张画布打回非网格；与手动整理同一口径，逐个吸附。
+      const position = snapPoint({ x: origin.x + x + node.x - node.width / 2, y: origin.y + y + node.y - node.height / 2 });
       if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) throw new Error(`节点 ${id} 的排列位置无效`);
       return { id, position };
     });

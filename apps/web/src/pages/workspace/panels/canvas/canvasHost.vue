@@ -483,8 +483,10 @@ const mentionSource: MentionCanvasSource = {
     if (!panel) return;
     const node = panel.findMentionNode(nodeId);
     if (!node) throw new Error("节点已删除，请重新选择");
-    // ACT: 引用只发指针，不再读正文——文本输出直接给 textPath，由模型按需 read。
-    return createCanvasMention(node, canvasId, outputId);
+    // ACT: 引用只发指针，但文本输出补一段正文摘要，让模型不读全文也知道这段讲什么。
+    const directory = workspaceStore.project?.directory;
+    const readText = directory ? (path: string) => useWorkspaceFiles(directory).readText(path, 200001) : undefined;
+    return createCanvasMention(node, canvasId, outputId, { readText });
   },
   // ACT: 画布未打开时同步返回 undefined，让上层回落到服务端读取；打开时返回 Promise（要读上游正文）。
   selectNode(canvasId, nodeId) {

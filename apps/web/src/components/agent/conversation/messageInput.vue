@@ -25,6 +25,19 @@
       @keydown.up.prevent="setSenderHeight((sender?.chatElement.rollBox.clientHeight ?? 44) + 16)"
       @keydown.down.prevent="setSenderHeight((sender?.chatElement.rollBox.clientHeight ?? 44) - 16)" />
     <attachmentList v-if="draftAttachments.length" class="draftAttachments" :attachments="draftAttachments" :directory="directory" removable restorable :disabled="locked" @remove="draftAttachments.splice($event, 1)" @restore="restoreTextAttachment" />
+    <div v-if="commandHints.length" class="commandHints" role="menu" aria-label="指令">
+      <button v-for="item in commandHints" :key="item.command" type="button" class="commandHint" role="menuitem" @click="fillPrompt(item.command)">
+        <code>{{ item.command }}</code><span>{{ item.hint }}</span>
+      </button>
+    </div>
+    <div v-if="props.queue?.length" class="sendQueue" role="status" aria-live="polite">
+      <span class="queueTitle">待发送 {{ props.queue.length }}</span>
+      <div v-for="(item, index) in props.queue" :key="item.id" class="queueItem">
+        <span class="queueText" :title="item.preview">{{ item.preview }}</span>
+        <el-button text size="small" :disabled="props.disabled" title="打断当前生成并立即发送" @click="emit('sendQueued', index)">立即发送</el-button>
+        <el-button text size="small" :icon="IconX" :disabled="props.disabled" aria-label="移除待发送消息" title="移除" @click="emit('removeQueued', index)" />
+      </div>
+    </div>
     <div class="senderInput" @pointerdown.capture="armVoiceInput" @contextmenu="voiceActive && $event.preventDefault()" @dragstart="voiceActive && $event.preventDefault()">
       <div ref="senderElement" class="senderEditor" @keydown.capture="handleSenderKeydown"></div>
       <div v-if="voiceActive" class="voiceOverlay" role="status" aria-live="polite">
@@ -37,17 +50,40 @@
     </div>
     <teleport v-for="target in draftMentionTargets" :key="target.key" :to="target.element"><mentionThumbnail v-bind="mentionThumbnailProps(target.mention)" :directory="directory"><icon-photo :size="14" /></mentionThumbnail></teleport>
     <mentionContent ref="draftMentionPreview" :mentions="draftMentions" :directory="directory" removable @remove="removeDraftMention" />
-    <div class="senderActions">
+    <div ref="actionsElement" class="senderActions">
       <modelPopover v-if="showModel !== false" v-model="selectedModel" v-model:reasoningEffort="reasoningEffort" :active="active" :disabled="disabled || voiceActive" />
       <input ref="attachmentInput" type="file" :accept="attachmentAccept" multiple hidden :disabled="locked" @change="selectAttachments" />
       <el-button text circle :disabled="locked" aria-label="添加附件" title="添加附件" @click="attachmentInput?.click()"><icon-paperclip :size="16" /></el-button>
       <mentionMenu ref="mentionMenuRef" :directory="directory" :active="active" :disabled="locked || !directory" :query="mentionQuery" :editor="senderElement" :currentCanvasId="createCanvasContext?.()?.id" @open="captureMentionPosition" @select="insertMentions" @dismiss="mentionQuery = undefined" />
       <skillMenu ref="skillMenuRef" :directory="directory" :active="active" :disabled="locked || !directory" :query="skillQuery" :editor="senderElement" @select="selectSkill" @dismiss="skillQuery = undefined" />
-      <el-button class="voiceButton" :class="{ voiceActive }" text circle :disabled="!voiceSupported || (!voiceActive && locked)" :aria-label="voiceButtonLabel" :aria-pressed="voiceActive" :title="voiceButtonLabel" @click="voiceActive ? cancelVoiceInput() : startVoiceInput()"><icon-microphone :size="18" /></el-button>
-      <contextUsagePopover v-model:visible="contextMenuVisible" :usage="contextUsage" :stats="stats" :contextWindow="contextWindow" :disabled="voiceActive" />
-      <el-button class="sendButton" type="primary" circle :disabled="!busy && locked" :aria-label="busy ? '停止生成' : editingId ? '重发消息' : '发送消息'" :title="busy ? '停止生成' : editingId ? '重发消息' : '发送消息'" @click="busy ? emit('stop') : emit('submit')">
-        <icon-player-stop-filled v-if="busy" :size="14" />
-        <icon-arrow-up v-else :size="16" />
+      <el-button v-if="voiceButtonVisible && !collapsed" class="voiceButton" :class="{ voiceActive }" text circle :disabled="!voiceSupported || (!voiceActive && locked)" :aria-label="voiceButtonLabel" :aria-pressed="voiceActive" :title="voiceButtonLabel" @click="voiceActive ? cancelVoiceInput() : startVoiceInput()"><icon-microphone :size="18" /></el-button>
+      <contextUsagePopover v-if="!collapsed" v-model:visible="contextMenuVisible" :usage="contextUsage" :stats="stats" :contextWindow="contextWindow" :disabled="voiceActive" />
+      <el-popover v-if="collapsed" placement="top-start" trigger="click" :width="200" :showArrow="false" popperClass="agentToolbarMorePopover">
+        <template #reference>
+          <el-button class="moreButton" text circle aria-label="更多输入工具" title="更多输入工具"><icon-dots :size="16" /></el-button>
+        </template>
+        <div class="toolbarMore">
+          <el-button v-if="voiceButtonVisible" text size="small" :disabled="!voiceSupported || (!voiceActive && locked)" @click="voiceActive ? cancelVoiceInput() : startVoiceInput()">
+            <icon-microphone :size="14" />
+            <span>语音输入</span>
+          </el-button>
+          <span class="toolbarMoreUsage">{{ contextPercentText }}</span>
+        </div>
+      </el-popover>
+      <template v-if="busy">
+        <el-button class="queueButton" text circle :disabled="props.disabled || !composable" aria-label="加入待发送队列" title="加入待发送队列，本轮结束后自动发送" @click="enqueueDraft">
+          <el-badge v-if="props.queue?.length" :value="props.queue.length" :offset="[-2, 4]"><icon-arrow-up :size="16" /></el-badge>
+          <icon-arrow-up v-else :size="16" />
+        </el-button>
+        <el-button class="interruptButton" type="primary" circle :disabled="props.disabled || !composable" aria-label="打断并立即发送" title="打断当前生成并立即发送" @click="emit('submit')">
+          <icon-bolt :size="15" />
+        </el-button>
+        <el-button class="stopButton" text circle aria-label="停止生成" title="停止生成" @click="emit('stop')">
+          <icon-player-stop-filled :size="14" />
+        </el-button>
+      </template>
+      <el-button v-else class="sendButton" type="primary" circle :disabled="locked" :aria-label="editingId ? '重发消息' : '发送消息'" :title="editingId ? '重发消息' : '发送消息'" @click="emit('submit')">
+        <icon-arrow-up :size="16" />
       </el-button>
     </div>
   </div>
@@ -55,13 +91,14 @@
 
 <script setup lang="ts">
 import { locale, t, translate } from "@toonflow/i18n/vue";
-import { computed, inject, ref, shallowRef, watch } from "vue";
-import { IconArrowUp, IconMicrophone, IconPaperclip, IconPhoto, IconPlayerStopFilled } from "@tabler/icons-vue";
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
+import { IconArrowUp, IconBolt, IconDots, IconMicrophone, IconPaperclip, IconPhoto, IconPlayerStopFilled, IconX } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
 import { getReadableFileMimeType, readableFileAccept } from "@toonflow/server/documentFormats";
 import type { AgentContext, AgentMention, AgentStats } from "@toonflow/server/agent/types";
 import type { CanvasContext } from "@toonflow/tool-canvas/runtime";
 import modelPopover from "@/components/modelPopover.vue";
+import { voiceInputEnabled } from "@/lib/agentInputSettings";
 import skillMenu from "../skillMenu.vue";
 import mentionMenu from "../mentionMenu.vue";
 import mentionContent from "../mentionContent.vue";
@@ -76,8 +113,8 @@ import useVoiceInput from "./useVoiceInput";
 import xSender, { type AnyTagProps } from "x-sender";
 import "x-sender/lib/XSender.css";
 
-const props = defineProps<{ active: boolean; disabled: boolean; busy: boolean; remoteRunning: boolean; deletingId?: string; directory?: string; contextUsage?: AgentContext; stats?: AgentStats; contextWindow: number; history?: AgentMessage[]; acceptPending?: boolean; showModel?: boolean; autoFocus?: boolean }>();
-const emit = defineEmits<{ submit: []; stop: [] }>();
+const props = defineProps<{ active: boolean; disabled: boolean; busy: boolean; remoteRunning: boolean; deletingId?: string; directory?: string; contextUsage?: AgentContext; stats?: AgentStats; contextWindow: number; history?: AgentMessage[]; acceptPending?: boolean; showModel?: boolean; autoFocus?: boolean; queue?: { id: string; preview: string }[] }>();
+const emit = defineEmits<{ submit: []; stop: []; enqueue: []; sendQueued: [index: number]; removeQueued: [index: number] }>();
 const selectedModel = defineModel<string>("selectedModel", { required: true });
 const reasoningEffort = defineModel<string>("reasoningEffort", { required: true });
 const editingId = defineModel<string>("editingId");
@@ -110,10 +147,35 @@ const senderHeight = ref(44);
 const senderMaxHeight = ref(Math.max(44, window.innerHeight / 2));
 let senderResize: { pointerId: number; y: number; height: number } | undefined;
 const contextMenuVisible = ref(false);
-const locked = computed(() => props.disabled || props.busy || props.deletingId !== undefined || restoringAttachment.value || voiceActive.value);
+// ACT: 生成中不再锁输入框——用户可以继续编辑、把内容加入待发送队列，或打断后立即发送。
+const locked = computed(() => props.disabled || props.deletingId !== undefined || restoringAttachment.value || voiceActive.value);
+/** 有内容才能入队/发送；不含"正在生成"这个条件。 */
+const senderText = ref("");
+function commandMatches(token: string) {
+  return ["goal", "compact"].some(name => name.startsWith(token.toLocaleLowerCase()));
+}
+/** 输入 / 开头且还没打空格时给指令提示；同时 suppresses 技能菜单，避免「输入 /go 只看到技能」。 */
+const commandHints = computed(() => {
+  const match = /^\/([^\s/]*)$/.exec(senderText.value.trimStart());
+  if (!match || !commandMatches(match[1] ?? "")) return [];
+  return [
+    { command: "/compact", hint: "立即压缩上下文" },
+    { command: "/goal ", hint: "设定目标并自动循环；/goal 查看状态" },
+    { command: "/goal stop", hint: "暂停目标循环" },
+    { command: "/goal reset", hint: "重置轮次或改目标" },
+    { command: "/goal off", hint: "清除目标并关闭循环" },
+  ];
+});
+const composable = computed(() => !!senderText.value.trim() || draftAttachments.value.length > 0 || draftMentions.value.length > 0);
+function enqueueDraft() {
+  if (props.disabled || (!composable.value && !draftMentions.value.length)) return;
+  emit("enqueue");
+}
+// ACT: 开关放在「设置 → 常规」；关闭后按钮与长按手势都要失效，不能只藏按钮。
 const { voiceSupported, voiceState, voiceText, voiceActive, voiceButtonLabel, voiceLevel, armVoiceInput, startVoiceInput, clearVoicePress, cancelVoiceInput } = useVoiceInput({
   getSender: () => sender,
   active: () => props.active,
+  enabled: () => voiceInputEnabled.value,
   disabled: () => props.disabled,
   locked: () => locked.value,
   onStart() {
@@ -122,15 +184,91 @@ const { voiceSupported, voiceState, voiceText, voiceActive, voiceButtonLabel, vo
     contextMenuVisible.value = false;
   },
 });
+// voiceSupported 是普通布尔（初始化时判定一次），只有开关是响应式的。
+const voiceButtonVisible = computed(() => voiceSupported && voiceInputEnabled.value);
 const voiceBars = computed(() => [0.35, 0.65, 0.85, 1, 0.85, 0.65, 0.35].map(weight => voiceLevel.value * weight));
 watch(voiceActive, value => { recording.value = value; }, { flush: "sync" });
-watch(locale, () => {
+
+// ACT: 工具条按钮多、面板窄时模型名会被压成 0 宽并和右侧按钮叠字；放不下就把
+// 「语音 + 上下文用量」一起收进「⋯」（两者在菜单里仍可达），模型名才拿得到位置。
+const actionsElement = ref<HTMLElement>();
+const collapsed = ref(false);
+/** .senderActions 的左右内边距 + 子项 gap，与样式表保持一致。 */
+const ACTIONS_PADDING = 16;
+const ACTIONS_GAP = 6;
+/** 模型按钮至少要放得下图标 + 一段省略号文字 + 思考强度（再窄才值得收按钮）。 */
+const MODEL_ROOM = 132;
+/** 折叠后展开能多出多少（语音 28 + 上下文 24 − 更多按钮 28）。 */
+const COMPACT_GAIN = 24;
+/** 展开阈值高于折叠阈值，留出滞回带，避免在临界宽度来回抖。 */
+const EXPAND_ROOM = MODEL_ROOM + 12;
+const contextPercentText = computed(() => {
+  const tokens = props.contextUsage?.tokens;
+  if (tokens == null || !props.contextWindow) return "上下文用量暂无数据";
+  return `上下文已用 ${(tokens / props.contextWindow * 100).toFixed(0)}%`;
+});
+
+function modelRoom() {
+  const element = actionsElement.value;
+  // 没有模型按钮时不存在「模型名被压扁」的问题，不需要折叠。
+  if (!element || props.showModel === false) return Number.POSITIVE_INFINITY;
+  let used = 0;
+  let count = 0;
+  for (const child of Array.from(element.children)) {
+    if (!(child instanceof HTMLElement) || child.classList.contains("modelPopover")) continue;
+    used += child.offsetWidth;
+    count++;
+  }
+  // count 是「非模型」子项数；模型按钮自己也占一格 gap 的余量，够用即可。
+  return element.clientWidth - ACTIONS_PADDING - used - (count + 1) * ACTIONS_GAP;
+}
+
+let fittingToolbar = false;
+async function fitToolbar() {
+  if (fittingToolbar) return;
+  fittingToolbar = true;
+  try {
+    // ACT: 折叠让测量结果在两种布局之间跳，最多来回一次就停，不再迭代。
+    for (let step = 0; step < 2; step++) {
+      const room = modelRoom();
+      if (!collapsed.value && room < MODEL_ROOM) {
+        collapsed.value = true;
+      } else if (collapsed.value && room + COMPACT_GAIN >= EXPAND_ROOM) {
+        collapsed.value = false;
+      } else break;
+      await nextTick();
+    }
+  } finally {
+    fittingToolbar = false;
+  }
+}
+
+function placeholderText() {
+  return translate(voiceButtonVisible.value ? "输入消息，长按语音输入，@ 提及节点输出或全局素材…" : "输入消息，@ 提及节点输出或全局素材…");
+}
+
+watch([locale, voiceButtonVisible], () => {
   if (!sender) return;
-  sender.updateConfig({ placeholder: translate(voiceSupported ? "输入消息，长按语音输入，@ 提及节点输出或全局素材…" : "输入消息，@ 提及节点输出或全局素材…") });
+  sender.updateConfig({ placeholder: placeholderText() });
   sender.chatElement.richText.setAttribute("aria-label", translate("消息"));
   for (const line of sender.chatEditor.NODES) for (const tag of line.children) {
     if (tag.type === "Mention") tag.$el.setAttribute("aria-label", t`预览 ${tag.name}`);
   }
+  void fitToolbar();
+});
+watch([() => props.busy, selectedModel, () => props.active], () => { void fitToolbar(); }, { flush: "post" });
+
+let actionsObserver: ResizeObserver | undefined;
+onMounted(() => {
+  const element = actionsElement.value;
+  if (!element || typeof ResizeObserver === "undefined") return;
+  actionsObserver = new ResizeObserver(() => { void fitToolbar(); });
+  actionsObserver.observe(element);
+  void fitToolbar();
+});
+onBeforeUnmount(() => {
+  actionsObserver?.disconnect();
+  actionsObserver = undefined;
 });
 watch([locked, () => props.active], ([locked, active]) => {
   if (!active) historyIndex = null;
@@ -545,7 +683,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   const instance = new xSender(element, {
     // ACT: 画布 Agent 节点面板打开时不抢焦点，否则点完节点再按 Backspace 只会删输入框里的字。
     autoFocus: props.autoFocus !== false && props.active,
-    placeholder: translate(voiceSupported ? "输入消息，长按语音输入，@ 提及节点输出或全局素材…" : "输入消息，@ 提及节点输出或全局素材…"),
+    placeholder: placeholderText(),
     chatStyle: { minHeight: "44px", maxHeight: "50vh", fontSize: "14px", lineHeight: "24px" },
     keyboardSendFun: event => event.key === "Enter" && !event.shiftKey && !event.isComposing,
     keyboardWrapFun: event => event.key === "Enter" && event.shiftKey && !event.isComposing,
@@ -556,7 +694,9 @@ watch(senderElement, (element, _previous, onCleanup) => {
   instance.bus.on("agentConversation", xSender.EventSet.EVENT_COMMON_CHANGE, () => {
     // ACT: 程序填充历史同样会触发 change，用 historyFilling 区分；用户真正编辑后退出历史模式。
     if (!historyFilling && historyIndex !== null) historyIndex = null;
-    skillQuery.value = /^\/([^\s/]*)$/.exec(instance.getText())?.[1];
+    senderText.value = instance.getText();
+    const token = /^\/([^\s/]*)$/.exec(instance.getText())?.[1];
+    skillQuery.value = token !== undefined && commandMatches(token) ? undefined : token;
     const targets: typeof draftMentionTargets.value = [];
     for (const line of instance.chatEditor.NODES) for (const tag of line.children) {
       if (tag.type !== "Mention") continue;
@@ -640,7 +780,12 @@ async function clearDraft() {
   await sender?.reset();
 }
 
-defineExpose({ getDraft, clearDraft, fillPrompt, fillRewind, editMessage, cancelEdit, restoreEditingDraft, insertMentions });
+/** ACT: 面板关闭时会问"还有没有没发出去的内容"，有就保留实例，避免草稿被卸载带走。 */
+function hasDraft() {
+  return !!sender?.getText().trim() || draftAttachments.value.length > 0 || draftMentions.value.length > 0 || editingId.value !== undefined;
+}
+
+defineExpose({ getDraft, clearDraft, hasDraft, fillPrompt, fillRewind, editMessage, cancelEdit, restoreEditingDraft, insertMentions });
 </script>
 
 <style lang="scss">
@@ -777,6 +922,60 @@ defineExpose({ getDraft, clearDraft, fillPrompt, fillRewind, editMessage, cancel
       padding: 12px 12px 0;
     }
 
+    .commandHints {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      padding: 6px 12px 0;
+
+      .commandHint {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        width: 100%;
+        padding: 4px 6px;
+        border: 0;
+        border-radius: var(--el-border-radius-base);
+        background: transparent;
+        color: var(--el-text-color-regular);
+        font: inherit;
+        font-size: 12px;
+        text-align: left;
+        cursor: pointer;
+
+        code { font-size: 12px; color: var(--el-color-primary); }
+        span { color: var(--el-text-color-secondary); }
+        &:hover { background: var(--el-fill-color-light); }
+      }
+    }
+
+    .sendQueue {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 6px 12px 0;
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+
+      .queueTitle { font-weight: 600; }
+
+      .queueItem {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .queueText {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--el-text-color-regular);
+      }
+    }
+
     .senderEditor .chat-placeholder-wrap {
       font-size: 14px;
       font-style: normal;
@@ -817,9 +1016,12 @@ defineExpose({ getDraft, clearDraft, fillPrompt, fillRewind, editMessage, cancel
 
     .senderActions {
       display: flex;
+      /* ACT: 面板最窄 320px 时按钮放不下，宁可折行也不能压着模型名叠字。 */
+      flex-wrap: wrap;
       justify-content: flex-end;
       align-items: center;
-      gap: 12px;
+      gap: 4px 6px;
+      min-width: 0;
       padding: 2px 8px 6px;
 
       > .el-button {
@@ -828,7 +1030,18 @@ defineExpose({ getDraft, clearDraft, fillPrompt, fillRewind, editMessage, cancel
 
       .modelPopover {
         flex: 1;
+        /* ACT: 模型名可以被省略，但不能被压到 0 宽——那正是叠字的成因。 */
+        min-width: 96px;
         margin-right: auto;
+      }
+
+      .moreButton {
+        width: 28px;
+        height: 28px;
+        flex-shrink: 0;
+        margin: 0;
+        padding: 0;
+        color: var(--el-text-color-secondary);
       }
 
       .contextButton {
@@ -842,6 +1055,16 @@ defineExpose({ getDraft, clearDraft, fillPrompt, fillRewind, editMessage, cancel
           background-color: transparent;
         }
       }
+
+      .queueButton, .interruptButton, .stopButton {
+        width: 28px;
+        height: 28px;
+        flex-shrink: 0;
+        margin: 0;
+        padding: 0;
+      }
+
+      .queueButton { color: var(--el-text-color-secondary); }
 
       .voiceButton {
         width: 28px;
@@ -864,6 +1087,19 @@ defineExpose({ getDraft, clearDraft, fillPrompt, fillRewind, editMessage, cancel
         transform: translateY(-2px);
       }
     }
+  }
+}
+
+/* 弹出层 teleport 到 body，样式必须放在 .agentConversation 之外。 */
+.agentToolbarMorePopover .toolbarMore {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+
+  .toolbarMoreUsage {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
   }
 }
 </style>

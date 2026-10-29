@@ -113,6 +113,7 @@
     <floatingAgent :inert="workspaceStore.projectLoadingVisible" @resize="agentWidth = $event" />
     <floatingAssetLibrary :inert="workspaceStore.projectLoadingVisible" @resize="assetWidth = $event" />
     <settings v-model="settingsVisible" />
+    <exitProjectDialog />
     <el-dialog v-model="contactVisible" :title="contactInfo.title" width="min(360px, calc(100vw - 32px))" alignCenter appendToBody>
       <div class="contactContent">
         <q-r-code
@@ -148,6 +149,7 @@ import { useProviderBalances } from "@/lib/providerBilling";
 import canvasPanel from "./panels/canvas/canvasHost.vue";
 import type { DocumentNodeOptions } from "./panels/canvas/canvasFiles";
 import workspaceMenu from "./components/workspaceMenu.vue";
+import exitProjectDialog from "./components/exitProjectDialog.vue";
 import floatingAgent from "./components/floatingAgent.vue";
 import floatingAssetLibrary from "./panels/assetLibrary/floatingAssetLibrary.vue";
 
@@ -231,6 +233,7 @@ function setDocumentPanel(value: Element | ComponentPublicInstance | null) {
   // KeepAlive 失活会清空模板 ref，保留同一工作区实例以协调后台文档保存和文件操作。
   if (value && directory) documentPanelCache.value = { directory, instance: value as InstanceType<typeof documentPanel> };
 }
+provide("flushWorkspaceSave", flushSave);
 provide("canvas", () => canvasPanelRef.value?.getCanvasContext());
 provide("mentionCanvas", () => canvasPanelRef.value?.mentionSource);
 provide("activateCanvasPanel", () => switchPanel("canvas"));

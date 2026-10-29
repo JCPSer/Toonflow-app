@@ -1,4 +1,5 @@
 import type { GraphNode } from "@vue-flow/core";
+import { snapPoint, snapValue, subtractPoint } from "./snapNodes";
 
 export function getSelectionRoots(selection: GraphNode[], nodes: GraphNode[]) {
   const selected = new Map(selection.map(node => [node.id, node]));
@@ -41,10 +42,14 @@ export function fitGroupBounds(nodes: GraphNode[], groups: Set<GraphNode>) {
     if (!groups.has(group)) continue;
     const children = nodes.filter(node => node.parentNode === group.id);
     if (!children.length || children.some(node => !node.dimensions.width || !node.dimensions.height)) continue;
-    const left = Math.min(...children.map(node => node.position.x)) - 24;
-    const top = Math.min(...children.map(node => node.position.y)) - 40;
-    const width = Math.max(...children.map(node => node.position.x + node.dimensions.width)) - left + 24;
-    const height = Math.max(...children.map(node => node.position.y + node.dimensions.height)) - top + 24;
+    // ACT: 内边距必须是网格（16）的倍数，否则"组落在网格上"不等于"子节点落在网格上"，
+    // 建完组子节点就永久差 8px。左右 32、上 48、下 32。
+    // left/top 再吸附一次：子节点本身可能带小数（节点包生成、粘贴、自动排版都会），
+    // 不吸附的话这次贴合就把组永久推离网格，后面拖拽也修不回来。
+    const left = snapValue(Math.min(...children.map(node => node.position.x)) - 32);
+    const top = snapValue(Math.min(...children.map(node => node.position.y)) - 48);
+    const width = Math.max(...children.map(node => node.position.x + node.dimensions.width)) - left + 32;
+    const height = Math.max(...children.map(node => node.position.y + node.dimensions.height)) - top + 32;
     if (left || top) {
       group.position = { x: group.position.x + left, y: group.position.y + top };
       for (const child of children) child.position = { x: child.position.x - left, y: child.position.y - top };
@@ -101,7 +106,9 @@ export function finishGroupDrag(nodes: GraphNode[], draggedNodes: GraphNode[]) {
     const position = rectangles.get(node.id)!;
     const parentPosition = target ? rectangles.get(target.id)! : { x: 0, y: 0 };
     node.parentNode = target?.id;
-    node.position = { x: position.x - parentPosition.x, y: position.y - parentPosition.y };
+    // ACT: 换组后要保证"绝对坐标"落在网格上，而不是相对坐标——父组本身可能不在网格上，
+    // 只吸附差值等于没吸。用父组当前的真实绝对位置换算，子节点绝对坐标才会真的对齐。
+    node.position = subtractPoint(snapPoint(position), parentPosition);
     node.extent = undefined;
     node.expandParent = false;
     reparented = true;

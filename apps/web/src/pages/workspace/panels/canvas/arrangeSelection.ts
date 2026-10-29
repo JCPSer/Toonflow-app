@@ -1,5 +1,6 @@
 import type { GraphNode, useVueFlow } from "@vue-flow/core";
 import { fitGroupBounds, getSelectionRoots } from "./selectionNodes";
+import { snapValue } from "./snapNodes";
 
 export type ArrangeSelectionMode = "horizontal" | "vertical" | "grid";
 
@@ -62,10 +63,12 @@ export function arrangeSelection(flow: ReturnType<typeof useVueFlow>, selection:
   const positions = items.map(({ node, parentPosition }, index) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
-    const position = {
-      x: columnPositions[column]! + (mode === "vertical" ? (columnWidths[column]! - node.dimensions.width) / 2 : 0) - parentPosition.x,
-      y: rowPositions[row]! + (mode === "horizontal" ? (rowHeights[row]! - node.dimensions.height) / 2 : 0) - parentPosition.y,
+    // ACT: 居中会产生 .5，节点宽度本身也可能带小数；写回前统一吸附到网格，否则整理完就有一批错位节点。
+    const absolute = {
+      x: columnPositions[column]! + (mode === "vertical" ? (columnWidths[column]! - node.dimensions.width) / 2 : 0),
+      y: rowPositions[row]! + (mode === "horizontal" ? (rowHeights[row]! - node.dimensions.height) / 2 : 0),
     };
+    const position = { x: snapValue(absolute.x) - parentPosition.x, y: snapValue(absolute.y) - parentPosition.y };
     if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) throw new Error(`节点 ${node.id} 的排列位置无效`);
     return { node, position };
   });

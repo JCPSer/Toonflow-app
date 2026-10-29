@@ -50,6 +50,8 @@ async function saveConfig() {
       plugin.config = data.data;
     }
     if (plugin.type === "node") window.dispatchEvent(new Event("toonflow:node-config-updated"));
+    // ACT: 输入框的语音开关读的是工具配置，保存后要立刻生效，不必等重新打开对话。
+    if (plugin.type === "tool") window.dispatchEvent(new Event("toonflow:tool-config-updated"));
     visible.value = false;
     ElMessage.success("插件配置已保存");
   } catch (error) {
