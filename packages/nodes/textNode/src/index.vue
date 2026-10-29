@@ -132,6 +132,24 @@ let textSaving = Promise.resolve();
 let textSnapshot: Awaited<ReturnType<typeof textFiles.readTextSnapshot>> | undefined;
 let textRevision = 0;
 const documentState = useNodeDocumentState();
+
+// ACT: 服务端文件锁按祖先路径互斥，并发的目录创建/写入会撞出 409 EBUSY（复制含多个文本节点的分组
+// 时最容易出现）。这里对该错误做有界退避重试，避免一次瞬时冲突就把节点卡进"文本尚未加载"状态。
+function isBusyError(error: unknown) {
+  return (error as { response?: { data?: { data?: { code?: string } } } })?.response?.data?.data?.code === "EBUSY";
+}
+
+async function retryWhenBusy(task: () => Promise<void>) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await task();
+      return;
+    } catch (error) {
+      if (!isBusyError(error) || attempt >= 2) throw error;
+      await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+    }
+  }
+}
 function saveText(value: string) {
   const revision = ++textRevision;
   documentState.dirty = true;
@@ -176,13 +194,16 @@ async function loadText(fromDisk = false) {
     const value = fromDisk ? textSnapshot!.text : data.value.textSnapshot !== undefined ? data.value.textSnapshot : textSnapshot?.text ?? outputs.value.text.value;
     if (typeof value !== "string") throw new Error("文本内容无效");
     if (!data.value.textPath && !fromDisk) {
-      for (const directory of ["assets", `assets/${node.id}`]) {
-        await textFiles.mkdir(directory).catch((error: { response?: { data?: { data?: { code?: string } } } }) => {
+      // ACT: 建目录 + 首次写入作为一个可重试单元，撞到 EBUSY 就整体退避重来（两步都是幂等的）。
+      await retryWhenBusy(async () => {
+        for (const directory of ["assets", `assets/${node.id}`]) {
+          await textFiles.mkdir(directory).catch((error: { response?: { data?: { data?: { code?: string } } } }) => {
+            if (error.response?.data?.data?.code !== "EEXIST") throw error;
+          });
+        }
+        await textFiles.write(textPath, value, true).catch((error: { response?: { data?: { data?: { code?: string } } } }) => {
           if (error.response?.data?.data?.code !== "EEXIST") throw error;
         });
-      }
-      await textFiles.write(textPath, value, true).catch((error: { response?: { data?: { data?: { code?: string } } } }) => {
-        if (error.response?.data?.data?.code !== "EEXIST") throw error;
       });
       textSnapshot = await textFiles.readTextSnapshot(textPath);
       if (textSnapshot.text !== value) throw new Error("文本文件已被其他编辑器修改，请重新加载节点");

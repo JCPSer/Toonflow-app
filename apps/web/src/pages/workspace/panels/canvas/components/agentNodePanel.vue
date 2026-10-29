@@ -51,6 +51,7 @@
       :extra-mentions="entry.mentions"
       :accept-pending="false"
       :show-model-picker="false"
+      :auto-focus="false"
       :node-binding="{ canvasId, nodeId: entry.nodeId }"
       @session="file => onSession(entry.nodeId, file)"
       @status="phase => onStatus(entry.nodeId, phase)"

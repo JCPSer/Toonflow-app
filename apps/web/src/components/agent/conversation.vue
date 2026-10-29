@@ -70,6 +70,9 @@
       :contextUsage="contextUsage"
       :stats="stats"
       :contextWindow="contextWindow"
+      :acceptPending="acceptPending !== false"
+      :showModel="showModelPicker !== false"
+      :autoFocus="autoFocus !== false"
       @submit="submitMessage"
       @stop="stopMessage" />
   </div>
@@ -88,6 +91,7 @@ import anonymousData from "@/lib/anonymousData";
 import { agentSettings, modelChoices } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type { AgentAttachment, AgentConversation, AgentMessage } from "./types";
+import type { AgentMention } from "@toonflow/server/agent/types";
 import type { AgentEvent } from "@toonflow/server/agent/types";
 import { createConversationStream, readAgentEvents } from "./replyStream";
 import { mentionPlainText } from "./mentionText";
@@ -95,12 +99,32 @@ import type { CanvasContext } from "@toonflow/tool-canvas/runtime";
 import messageList from "./conversation/messageList.vue";
 import messageInput from "./conversation/messageInput.vue";
 
-const props = defineProps<{ active: boolean; initialSession: AgentConversation | null; sessionFile?: string; disabled: boolean }>();
+const props = defineProps<{
+  active: boolean;
+  initialSession: AgentConversation | null;
+  sessionFile?: string;
+  disabled: boolean;
+  /** 画布 Agent 节点注入的直接上游引用；每次手动发送时补进本次请求。 */
+  extraMentions?: AgentMention[];
+  /** 节点面板不参与全局「加入对话」队列，否则会和主面板抢同一条待发消息。 */
+  acceptPending?: boolean;
+  /** 节点面板不提供模型选择入口，统一跟随全局设置。 */
+  showModelPicker?: boolean;
+  /** 打开时是否把焦点放进输入框；画布节点面板关闭它，避免点了节点就无法用 Backspace 删除。 */
+  autoFocus?: boolean;
+  /** 画布 Agent 节点绑定；服务端据此给会话打 toonflowAgentNode 标记并从历史里隐藏。 */
+  nodeBinding?: { canvasId: string; nodeId: string };
+}>();
 const emit = defineEmits<{
   session: [file: string];
   forked: [payload: { file: string; name: string }];
   rewound: [conversation: AgentConversation];
   sent: [prompt: string];
+  /** 发送开始即上报，供节点/画布在流结束前就能显示摘要。 */
+  promptStart: [prompt: string];
+  status: [phase: "idle" | "waiting" | "thinking" | "running"];
+  /** 服务端报告会话文件不存在（早期中止后 SDK 没落盘），外层应清掉绑定，下次发送重新建。 */
+  sessionLost: [];
   event: [event: AgentEvent];
   compactState: [state: { disabled: boolean; loading: boolean }];
 }>();
@@ -149,11 +173,30 @@ const compactState = computed(() => ({ disabled: compactBlocked.value, loading: 
 watch(compactState, state => emit("compactState", state), { immediate: true });
 const editingId = ref<string>();
 let controller: AbortController | undefined;
-const pendingMessage = props.initialSession?.parentFile ? undefined : workspaceStore.pendingAgentMessage;
+const pendingMessage = props.initialSession?.parentFile || props.acceptPending === false ? undefined : workspaceStore.pendingAgentMessage;
+// ACT: 节点面板用它把「理解中 / 运行中」画到节点上。四态由发送与事件推进，不能从消息推断——
+// 已下发但还没有任何 assistant 活动时，消息列表和空闲状态没有区别。
+const phase = ref<"idle" | "waiting" | "thinking" | "running">(
+  props.initialSession?.running ? "running"
+    : (props.initialSession?.messages ?? []).some(message => message.role === "user") ? "waiting" : "idle"
+);
+watch(phase, value => emit("status", value), { immediate: true });
+// ACT: 回退/删光消息后要能退回「待开始」，否则节点一直挂着「等待输入」。
+function syncPhase() {
+  if (busy.value || remoteRunning.value) return;
+  phase.value = messages.value.some(message => message.role === "user") ? "waiting" : "idle";
+}
 const selectedModel = ref(pendingMessage?.model ?? (props.initialSession?.providerId && props.initialSession.modelId
   ? JSON.stringify([props.initialSession.providerId, props.initialSession.modelId]) : ""));
 const reasoningEffort = ref(pendingMessage?.reasoningEffort ?? props.initialSession?.thinkingLevel ?? "");
 const selectedModelChoice = computed(() => modelChoices.value.find(item => item.value === selectedModel.value));
+// ACT: 新会话没有历史模型；节点面板又按需求隐藏了模型选择器，没有兜底就永远发不出去
+// （只会弹「请先选择模型」且无处可选）。这里跟主面板一样落到第一个可用模型。
+watch(modelChoices, items => {
+  if (selectedModel.value && items.some(item => item.value === selectedModel.value)) return;
+  const fallback = items.find(item => !item.hidden)?.value;
+  if (fallback) selectedModel.value = fallback;
+}, { immediate: true });
 const contextWindow = computed(() => contextUsage.value?.contextWindow ?? selectedModelChoice.value?.contextWindow ?? 262144);
 const contextPercent = computed(() => {
   const usage = contextUsage.value;
@@ -187,6 +230,9 @@ function applyEvent(event: AgentEvent) {
     case "thinking":
     case "tool":
       retryNotice.value = undefined;
+      // ACT: 收到任一 assistant 活动就算「运行中」；此前一律是「理解中」，
+      // 否则工具优先的轮次会卡在理解中好几分钟。
+      phase.value = "running";
       stream.receive(event);
       break;
     default: stream.receive(event);
@@ -197,6 +243,7 @@ function receiveEvent(event: AgentEvent) {
   if (event.type === "done" || event.type === "error") {
     remoteRunning.value = false;
     compacting.value = false;
+    phase.value = "waiting";
   } else if (["userMessage", "text", "thinking", "tool"].includes(event.type)) remoteRunning.value = true;
   lastEventAt = performance.now();
   applyEvent(event);
@@ -252,6 +299,7 @@ async function deleteMessage(item: AgentMessage) {
     }
     messages.value = messages.value.filter(message => message.id !== item.id &&
       !(item.replyTo && message.role === "assistant" && !message.report && message.replyTo === item.replyTo));
+    syncPhase();
   } catch (error) {
     const message = axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message : undefined;
     ElMessage.error(message || (error instanceof Error ? error.message : "删除消息失败"));
@@ -292,6 +340,7 @@ async function rewindMessage(item: AgentMessage) {
     stats.value = data.data.stats;
     contextUsage.value = data.data.contextUsage;
     editingId.value = undefined;
+    syncPhase();
     emit("rewound", data.data);
     await input.value?.fillRewind(item.content, item.attachments, item.mentions);
   } catch (error) {
@@ -402,18 +451,28 @@ async function sendMessage(source?: AgentMessage) {
   const instance = input.value;
   const draft = instance?.getDraft();
   const editing = source && editingId.value === source.id;
-  const prompt = (source && !editing ? source.content : (draft?.prompt ?? "")).trim();
+  let prompt = (source && !editing ? source.content : (draft?.prompt ?? "")).trim();
   const attachments = reactive((source && !editing ? source.attachments ?? [] : draft?.attachments ?? []).map(item => ({ ...item })));
   const mentionedIds = source && !editing ? (source.mentions ?? []).filter(mention => prompt.includes(`{{mention:${mention.id}}}`)).map(mention => mention.id)
     : draft?.mentionedIds ?? [];
   const references = source && !editing ? source.mentions ?? [] : draft?.mentions ?? [];
   const mentions = references.filter(mention => mentionedIds.includes(mention.id)).map(mention => ({ ...mention }));
   if (mentionedIds.some(id => !mentions.some(mention => mention.id === id))) return ElMessage.warning("存在无法读取的提及，请删除后重新选择");
+  // ACT: 节点面板注入的直接上游引用（只在新建消息时补，重发沿用原消息里的引用）。
+  // 服务端按 `{{mention:id}}` 令牌校验引用，令牌和引用必须成对出现，缺一个整条消息会被拒。
+  // 记住注入前的正文：空输入框不能因为补了引用就变成一条「只带引用、没有指令」的消息。
+  const typed = prompt;
+  for (const item of source ? [] : props.extraMentions ?? []) {
+    if (mentions.length >= 20) break;
+    if (mentions.some(mention => mention.id === item.id)) continue;
+    if (!prompt.includes(`{{mention:${item.id}}}`)) prompt = `${prompt} {{mention:${item.id}}}`.trim();
+    mentions.push({ ...item });
+  }
   if (!source && editingId.value !== undefined) return;
   const resendIndex = source ? messages.value.findIndex(item => item.id === source.id) : -1;
   if (source && (source.role !== "user" || resendIndex < 0)) return;
   const resendFrom = source ? source.entryId ?? messages.value.slice(resendIndex + 1).find(item => item.role === "user" && item.entryId)?.entryId : undefined;
-  if (locked.value || !instance || (!prompt && !attachments.length)) return;
+  if (locked.value || !instance || (!typed && !attachments.length)) return;
   const model = selectedModelChoice.value;
   if (!directory) return ElMessage.warning("请先打开项目");
   if (!model) return ElMessage.warning("请先选择模型");
@@ -438,6 +497,9 @@ async function sendMessage(source?: AgentMessage) {
   const pendingQuestions = new Map<string, string>();
   const activeChildFiles = new Set<string>();
   const finishStats = anonymousData.startAgent();
+  // ACT: 已下发即可算「理解中」；节点摘要也要在这时就更新，不能等整轮结束。
+  phase.value = "thinking";
+  emit("promptStart", mentionPlainText(prompt, mentions) || attachments[0]?.name || "新对话");
   try {
     if (!source) await instance.clearDraft();
     requestController.signal.throwIfAborted();
@@ -445,7 +507,7 @@ async function sendMessage(source?: AgentMessage) {
     const response = await fetch("/api/agent", {
       method: "POST",
       headers: { "Accept-Language": locale.value, "Content-Type": "application/json", "x-toonflow-workspace": "1" },
-      body: JSON.stringify({ prompt, mentions, attachments: attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), directory, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined, sessionFile: props.sessionFile, resendFrom, canvas: canvasContext ? { id: canvasContext.id, tools: canvasContext.tools } : undefined }),
+      body: JSON.stringify({ prompt, mentions, attachments: attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), directory, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined, sessionFile: props.sessionFile, resendFrom, nodeBinding: props.nodeBinding, canvas: canvasContext ? { id: canvasContext.id, tools: canvasContext.tools } : undefined }),
       signal: requestController.signal,
     });
     for await (const event of readAgentEvents(response, requestController.signal)) {
@@ -508,6 +570,9 @@ async function sendMessage(source?: AgentMessage) {
     const message = requestController.signal.aborted ? "已停止生成" : responseMessage || (error instanceof Error ? error.message : "发送失败，请重试");
     if ((source && !accepted) || !ownsStream) { userMessage.error = message; ElMessage.error(message); }
     else reply.error = message;
+    // ACT: 首轮在写入任何 assistant 条目之前就结束（比如立刻点停止），SDK 不会落盘，
+    // 之后再发只会一直 404。把这次失败告诉外层清掉绑定，下次发送重新建会话。
+    if (/会话不存在/.test(message)) emit("sessionLost");
     if (ownsStream && props.initialSession?.parentFile && props.sessionFile) {
       emit("event", { type: "subAgentEvent", file: props.sessionFile, event: { type: "error", message } });
     }
@@ -523,6 +588,8 @@ async function sendMessage(source?: AgentMessage) {
     if (ownsStream && !forwarded) stream.finish();
     // ACT: replyStream 处理 error 行时直接抛错、不会走到 receiveEvent，这里兜底复位。
     if (ownsStream) remoteRunning.value = false;
+    // ACT: 结束（成功/失败/被停止）统一回到「等待输入」，不新增第五个状态标签。
+    phase.value = "waiting";
     stopSilenceWatch();
     compacting.value = false;
     busy.value = false;
@@ -530,7 +597,7 @@ async function sendMessage(source?: AgentMessage) {
   }
 }
 
-watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMessage && props.active && !locked.value && !!input.value && !!createCanvasContext?.(), async ready => {
+watch(() => props.acceptPending !== false && !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMessage && props.active && !locked.value && !!input.value && !!createCanvasContext?.(), async ready => {
   const message = workspaceStore.pendingAgentMessage;
   const instance = input.value;
   if (!ready || !message || !instance || message.directory !== directory) return;

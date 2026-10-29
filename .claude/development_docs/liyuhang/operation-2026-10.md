@@ -58,3 +58,5 @@
 | 2026-10-29 01:00 | 分组穿透 + 组菜单 + 添加节点悬停展开（+Agent 面板压缩按钮） | 捕获阶段 9 点探测转发连线点击、右键转画布菜单、deleteNodeSelection 复用删除链路、el-popover 复用子菜单；构建部署 |
 | 2026-10-29 01:50 | 轮次目录条不可见修复 | `.turnRail` 改 `flex-direction:column`，列表只控高度；空槽改 `.hasTurnRail` 条件；构建部署 |
 | 2026-10-29 09:10 | 画布边缘自动平移（拖动节点/连线贴边滑动画布） | 启用内置 autoPan + 速度 20/越界 0 + 起步阈值 4px；typecheck 0 新增；构建部署完成；评审通过 |
+| 2026-10-29 09:20 | Backspace 全局拦截 + autoFocus 开关 + 面板语境放行删除 | `2026-10-29-09-20-backspace-navigation-and-panel-focus.md` |
+| 2026-10-29 10:08 | 目录选择器被遮挡 / 复制分组 EBUSY / 画布无法保存 / 拖动阈值 8px | 桌面壳激活载入面板、mkdir 幂等、EBUSY 重试、allSettled 保存；构建部署完成 |

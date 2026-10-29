@@ -38,7 +38,7 @@
     <teleport v-for="target in draftMentionTargets" :key="target.key" :to="target.element"><mentionThumbnail v-bind="mentionThumbnailProps(target.mention)" :directory="directory"><icon-photo :size="14" /></mentionThumbnail></teleport>
     <mentionContent ref="draftMentionPreview" :mentions="draftMentions" :directory="directory" removable @remove="removeDraftMention" />
     <div class="senderActions">
-      <modelPopover v-model="selectedModel" v-model:reasoningEffort="reasoningEffort" :active="active" :disabled="disabled || voiceActive" />
+      <modelPopover v-if="showModel !== false" v-model="selectedModel" v-model:reasoningEffort="reasoningEffort" :active="active" :disabled="disabled || voiceActive" />
       <input ref="attachmentInput" type="file" :accept="attachmentAccept" multiple hidden :disabled="locked" @change="selectAttachments" />
       <el-button text circle :disabled="locked" aria-label="添加附件" title="添加附件" @click="attachmentInput?.click()"><icon-paperclip :size="16" /></el-button>
       <mentionMenu ref="mentionMenuRef" :directory="directory" :active="active" :disabled="locked || !directory" :query="mentionQuery" :editor="senderElement" :currentCanvasId="createCanvasContext?.()?.id" @open="captureMentionPosition" @select="insertMentions" @dismiss="mentionQuery = undefined" />
@@ -76,7 +76,7 @@ import useVoiceInput from "./useVoiceInput";
 import xSender, { type AnyTagProps } from "x-sender";
 import "x-sender/lib/XSender.css";
 
-const props = defineProps<{ active: boolean; disabled: boolean; busy: boolean; remoteRunning: boolean; deletingId?: string; directory?: string; contextUsage?: AgentContext; stats?: AgentStats; contextWindow: number; history?: AgentMessage[] }>();
+const props = defineProps<{ active: boolean; disabled: boolean; busy: boolean; remoteRunning: boolean; deletingId?: string; directory?: string; contextUsage?: AgentContext; stats?: AgentStats; contextWindow: number; history?: AgentMessage[]; acceptPending?: boolean; showModel?: boolean; autoFocus?: boolean }>();
 const emit = defineEmits<{ submit: []; stop: [] }>();
 const selectedModel = defineModel<string>("selectedModel", { required: true });
 const reasoningEffort = defineModel<string>("reasoningEffort", { required: true });
@@ -136,7 +136,13 @@ watch([locked, () => props.active], ([locked, active]) => {
   if (!active) historyIndex = null;
   if (!active || locked) resetAttachmentDrag();
   if (!active || locked) sender?.disable();
-  else sender?.enable();
+  else {
+    // ACT: enable() 内部会 focus()；节点面板不自动聚焦时把它还回去，否则每跑完一轮焦点又跳进输入框。
+    // 用「enable 之前焦点是否已在本输入框」区分：用户自己在打字就不动他的光标。
+    const hadFocus = !!senderElement.value?.contains(document.activeElement);
+    sender?.enable();
+    if (props.autoFocus === false && !hadFocus) (document.activeElement as HTMLElement | null)?.blur?.();
+  }
 });
 watch(() => props.active, active => {
   if (!active) contextMenuVisible.value = false;
@@ -319,6 +325,8 @@ async function insertMentions(mentions: AgentMention[], focusEnd = false) {
 
 let drainingAgentComposer = false;
 async function drainAgentComposer() {
+  // ACT: 节点面板不消费全局「加入对话」队列——否则画布上点「加入对话」可能落在某个节点的输入框里。
+  if (props.acceptPending === false) return;
   if (drainingAgentComposer || !sender || locked.value || !props.active || !agentComposer.queue.length) return;
   drainingAgentComposer = true;
   try {
@@ -535,7 +543,8 @@ function addAttachments(files: File[]) {
 watch(senderElement, (element, _previous, onCleanup) => {
   if (!element) return;
   const instance = new xSender(element, {
-    autoFocus: props.active,
+    // ACT: 画布 Agent 节点面板打开时不抢焦点，否则点完节点再按 Backspace 只会删输入框里的字。
+    autoFocus: props.autoFocus !== false && props.active,
     placeholder: translate(voiceSupported ? "输入消息，长按语音输入，@ 提及节点输出或全局素材…" : "输入消息，@ 提及节点输出或全局素材…"),
     chatStyle: { minHeight: "44px", maxHeight: "50vh", fontSize: "14px", lineHeight: "24px" },
     keyboardSendFun: event => event.key === "Enter" && !event.shiftKey && !event.isComposing,

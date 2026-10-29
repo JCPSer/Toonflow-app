@@ -38,7 +38,7 @@
       :auto-pan-on-node-drag="true"
       :auto-pan-on-connect="true"
       :auto-pan-speed="autoPanSpeed"
-      :node-drag-threshold="4"
+      :node-drag-threshold="8"
       :zoom-on-double-click="false"
       :zoomOnScroll="false"
       :zoomOnPinch="active && !settingsVisible"
@@ -1045,9 +1045,24 @@ function flushCanvasSave(action?: () => Promise<void>): Promise<void> {
   return next;
 }
 
+let nodeSaveWarned = false;
+// ACT: 节点自身落盘失败（例如文本节点没加载成功）只影响该节点，画布结构/位置仍必须写盘；
+// 用 Promise.all 时一个坏节点会让整批 reject，删除、编组、重命名都会被永久卡死。
+async function saveNodeStates() {
+  const results = await Promise.allSettled(flow.getNodes.value.map((node) => useNodeEvent(node.id, flow).emit("save")));
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (!failure) {
+    nodeSaveWarned = false;
+    return;
+  }
+  if (nodeSaveWarned) return;
+  nodeSaveWarned = true;
+  ElMessage.warning(`部分节点未保存：${failure.reason instanceof Error ? failure.reason.message : "节点保存失败"}`);
+}
+
 async function saveCanvasState(action?: () => Promise<void>) {
   if (saveCancelled) throw new Error("画布保存已取消");
-  await Promise.all(flow.getNodes.value.map((node) => useNodeEvent(node.id, flow).emit("save")));
+  await saveNodeStates();
   await nextTick();
   if (saveCancelled) throw new Error("画布保存已取消");
   if (saveError && project.value?.directory && canvasId.value) saveCanvas(project.value.directory, canvasId.value);
@@ -1065,7 +1080,7 @@ async function saveCanvasState(action?: () => Promise<void>) {
       await saving;
       if (saveError) throw saveError;
       // 画布写入期间节点可能完成生成，等新增落盘后重新保存变化。
-      await Promise.all(flow.getNodes.value.map((node) => useNodeEvent(node.id, flow).emit("save")));
+      await saveNodeStates();
       await nextTick();
     } while (revision !== saveRevision);
     if (saveCancelled) throw new Error("画布保存已取消");
@@ -1321,9 +1336,13 @@ function updateCanvasKeys(event: KeyboardEvent) {
   if (!props.active || props.settingsVisible) return resetCanvasKeys();
   const target = event.target;
   const shortcuts = generalSettings.value.canvasShortcuts;
-  // ACT: 面板打开时焦点可能在 body 上（点消息正文不改焦点），这时 Delete/Backspace
-  // 会落到画布快捷键上，把正被使用的 Agent 节点删掉。
-  const panelOpenOnBody = !!agentNodePanelRef.value?.isOpen?.() && (target === document.body || target === document.documentElement);
+  const panelOpen = !!agentNodePanelRef.value?.isOpen?.();
+  // ACT: 面板打开时焦点可能落在面板本身（打开即聚焦）或 body（点消息正文不改焦点）。
+  // 这两种都算"面板语境"：只放行删除，分组/添加节点等其余快捷键仍被 inCanvas 拦住，
+  // 避免在面板里读消息时误触画布操作。
+  const inAgentNodePanel = panelOpen && target instanceof Element && !!target.closest(".agentNodePanel");
+  // ACT: 素材库等其它浮层打开时不认领 body 焦点，避免在别处按 Backspace 把画布节点删了。
+  const panelOpenOnBody = panelOpen && !assetsVisible.value && (target === document.body || target === document.documentElement);
   const inCanvas =
     target instanceof Element &&
     !panelOpenOnBody &&
@@ -1339,13 +1358,17 @@ function updateCanvasKeys(event: KeyboardEvent) {
   panKeyPressed.value = !!inCanvas && !editing && !event.isComposing
     && shortcutPressed(event, getShortcutBindings(shortcuts.pan).filter(binding => binding !== "None").join(" / "), pressedCodes);
   updateCanvasSelection(event);
-  if (event.type === "keyup" || event.defaultPrevented || event.isComposing || !inCanvas || editing) return;
+  // ACT: 焦点在 Agent 节点面板内（含落到 body）时允许 Delete/Backspace 删除选中节点：
+  // 面板与画布共用同一份选区，删除后节点面板随之关闭，撤销可恢复。
+  const panelDelete = !editing && !hasCanvasAreaSelection() && (inAgentNodePanel || panelOpenOnBody);
+  if (event.type === "keyup" || event.defaultPrevented || event.isComposing || editing) return;
   const action = ([
     "group", "mergeGroup", "ungroup", "addNode", "moveTool", "handTool", "arrange", "search",
     "delete", "copy", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView",
   ] as const).find((action) =>
     shortcutMatches(event, shortcuts[action])
   );
+  if (!inCanvas && !(panelDelete && action === "delete")) return;
   if (!action) {
     const nativeClipboardKey = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
       && (event.code === "KeyV" || event.code === "KeyC" && flow.getSelectedNodes.value.length && !window.getSelection()?.toString());
@@ -1379,6 +1402,15 @@ function updateCanvasKeys(event: KeyboardEvent) {
   else if (action === "arrange") void canvasControlsRef.value?.arrangeNodes();
   else if (action === "search") nodeSearchRef.value?.open();
   else void flow[action]();
+}
+
+// ACT: 只有选区落在画布或 Agent 节点面板内才算"用户在选字"；文档编辑器里遗留的选区不能让删除静默失效。
+function hasCanvasAreaSelection() {
+  const selection = window.getSelection();
+  const anchor = selection?.anchorNode;
+  if (!selection || selection.isCollapsed || !anchor) return false;
+  const element = anchor instanceof Element ? anchor : anchor.parentElement;
+  return !!element?.closest(".canvas, .agentNodePanel");
 }
 
 function resetCanvasKeys() {

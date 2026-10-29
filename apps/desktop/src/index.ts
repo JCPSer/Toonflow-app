@@ -168,14 +168,22 @@ async function restoreInstallRegistration(installDirectory: string) {
 
 // ACT: Electrobun 预编译层没有暴露 canCreateDirectories，NSOpenPanel 才允许在面板里新建文件夹，
 // 因此 macOS 用 JXA 直接打开面板；runModal 返回数值，需与 NSModalResponseOK 比较。
+// ACT: osascript 是独立进程，不激活的话它创建的 NSOpenPanel 会排在 Toonflow 主窗口后面（用户看不到、
+// 前端一直转圈）。先把自身设成 accessory 应用再激活，面板才会置前；两处都 try 住，失败仍会回退到
+// Electrobun 自带面板。
 const macFolderScript = `
 ObjC.import('AppKit')
+var app = $.NSApplication.sharedApplication
+try { app.setActivationPolicy($.NSApplicationActivationPolicyAccessory) } catch (e) {}
+try { app.activateIgnoringOtherApps(true) } catch (e) {}
 var panel = $.NSOpenPanel.openPanel
 panel.canChooseFiles = false
 panel.canChooseDirectories = true
 panel.canCreateDirectories = true
 panel.allowsMultipleSelection = false
 panel.resolveAliases = true
+try { panel.level = $.NSModalPanelWindowLevel } catch (e) {}
+try { panel.makeKeyAndOrderFront(null) } catch (e) {}
 if (panel.runModal != $.NSModalResponseOK) { "" } else { ObjC.unwrap(panel.URLs.objectAtIndex(0).path) }
 `;
 
@@ -533,9 +541,15 @@ async function start() {
       },
       async selectDirectory() {
         if (process.platform === "darwin") {
-          const selected = await chooseMacFolder();
-          // ACT: 取消返回 null 是有效结果；只有面板不可用（undefined）才回退到 Electrobun 自带对话框。
-          if (selected !== undefined) return selected;
+          try {
+            const selected = await chooseMacFolder();
+            // ACT: 取消返回 null 是有效结果；只有面板不可用（undefined）才回退到 Electrobun 自带对话框。
+            if (selected !== undefined) return selected;
+          } finally {
+            // ACT: 面板由 osascript 进程激活，关闭后把焦点还给主窗口，否则应用可能停在后台。
+            mainWindow.show();
+            mainWindow.activate();
+          }
         }
         const [path] = await Utils.openFileDialog({ canChooseFiles: false, canChooseDirectory: true, allowsMultipleSelection: false });
         return path ?? null;

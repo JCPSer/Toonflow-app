@@ -40,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, watch, watchEffect } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, watchEffect } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage, useZIndex } from "element-plus";
 import { elementLocales } from "@toonflow/i18n/elementPlus";
@@ -67,6 +67,21 @@ import "element-plus/theme-chalk/dark/css-vars.css";
 
 useMcpControl();
 const workspaceStore = useWorkspaceStore();
+
+// ACT: WKWebView 自带「Backspace = 后退」原生行为（与鼠标侧键同源）：焦点不在可编辑区域时按一下
+// 就会退出当前项目，正在跑的节点直接丢失。这里在 document 捕获阶段兜底拦截——必须在画布
+// （window 捕获，会先跑并 preventDefault）之后、且早于任何元素上的 keydown.stop，否则菜单里
+// 只要 stopPropagation 一下就又漏回原生后退。已有消费者先 preventDefault 过的直接跳过。
+function preventBackspaceNavigation(event: KeyboardEvent) {
+  if (event.key !== "Backspace" || event.defaultPrevented || event.isComposing) return;
+  // composedPath 能穿透 shadow DOM；closest 会在 shadow 边界处断开，导致输入框被误判成不可编辑。
+  const editable = event.composedPath().some(node =>
+    node instanceof HTMLElement && (node.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(node.tagName) || node.getAttribute("role") === "textbox"));
+  if (editable) return;
+  event.preventDefault();
+}
+onMounted(() => document.addEventListener("keydown", preventBackspaceNavigation, true));
+onBeforeUnmount(() => document.removeEventListener("keydown", preventBackspaceNavigation, true));
 
 // ACT: TDesign 缺少的语言使用英语基底，聊天控件由应用字典补齐。
 const tdesignLocales = {
