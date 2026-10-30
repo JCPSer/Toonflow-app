@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { basename, dirname, resolve } from "node:path";
-import { open, readFile, readdir, stat, unlink } from "@toonflow/file";
+import { appendFile, open, readFile, readdir, stat, unlink } from "@toonflow/file";
 import { calculateContextTokens, createAgentSession, estimateTokens, getLastAssistantUsage, parseSessionEntries, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, FileEntry, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { AgentEvent, AgentMention, AgentSubAgent, AgentToolCall } from "@/agent/runtime/types";
@@ -597,6 +597,20 @@ async function hasAgentNodeMarkerOnDisk(path: string) {
   }
 }
 
+/** 只读末字节判断是否已换行；空文件按「已换行」处理，后续解析自会报会话文件无效。 */
+async function endsWithNewline(path: string) {
+  const handle = await open(path, "r");
+  try {
+    const { size } = await handle.stat();
+    if (!size) return true;
+    const buffer = Buffer.allocUnsafe(1);
+    await handle.read(buffer, 0, 1, size - 1);
+    return buffer[0] === 0x0a;
+  } finally {
+    await handle.close();
+  }
+}
+
 /** 会话展示名：优先最新 session_info，其次首条用户消息，与 getAgentSession 的兜底口径一致。 */
 function sessionDisplayName(entries: SessionEntry[]) {
   const named = entries.findLast((entry) => entry.type === "session_info" && Boolean(entry.name?.trim()));
@@ -632,7 +646,7 @@ export async function cloneAgentSession(cwd: string, path: string) {
   if (source && !source.isFile()) throw Object.assign(new Error("会话必须是普通文件"), { status: 400 });
   // ACT: stat 期间本轮可能刚好结束并注销；重新取一次，文件不存在时仍用刚结束的内存会话兜底。
   const active = getActiveAgentSession(path) ?? (source ? undefined : known);
-  let bytes: Buffer;
+  let bytes: Buffer | undefined;
   let name: string;
   if (active) {
     // ACT: 不读盘：内存条目一定是完整条目，也不受并发追加影响。
@@ -649,8 +663,6 @@ export async function cloneAgentSession(cwd: string, path: string) {
     name = cloneSessionName(sessionDisplayName(entries) ?? "新对话");
   } else {
     const content = await readFile(path);
-    // ACT: 极少数旧文件可能没有结尾换行，补一个换行避免 session_info 与最后一行粘连。
-    bytes = content.length && content.at(-1) !== 0x0a ? Buffer.concat([content, Buffer.from("\n")]) : content;
     name = cloneSessionName(sessionDisplayName(parseSessionLines(content.toString("utf8"))) ?? "新对话");
   }
   const { path: directory } = await getAgentHost().workspace.resolveWorkspacePath(cwd, ".agent/sessions", true);
@@ -658,10 +670,20 @@ export async function cloneAgentSession(cwd: string, path: string) {
   const timestamp = new Date().toISOString();
   const fileName = `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
   const target = await getAgentHost().workspace.resolveWorkspacePath(directory, fileName, true);
-  await getAgentHost().workspace.writeWorkspaceFile(target.path, bytes, true);
   try {
+    if (bytes) {
+      await getAgentHost().workspace.writeWorkspaceFile(target.path, bytes, true);
+    } else {
+      // ACT: 未运行的会话直接写时复制源文件：APFS 上 100MB 的会话克隆几乎不占新磁盘，副本之后追加或改写才按块分叉；
+      // 运行中的会话本轮内容还没落盘，没有可复制的源文件，只能按内存快照写。
+      await getAgentHost().workspace.copyWorkspaceFile(path, target.path);
+      // ACT: 以副本实际末字节决定是否补换行：复制前那次 readFile 的结论可能已经被别的写入方（并发追加、崩溃半行）推翻，
+      // 缺换行会让紧跟的 session_info 与最后一行粘连成坏行。
+      if (!(await endsWithNewline(target.path))) await appendFile(target.path, "\n");
+    }
     await renameAgentSession(cwd, target.path, name);
   } catch (error) {
+    // ACT: 复制/追加中途失败同样要清理：残缺的 jsonl 会被历史列表当成真会话列出来。
     await unlink(target.path).catch(() => { /* 清理失败不覆盖原始错误 */ });
     throw error;
   }

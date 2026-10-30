@@ -7,7 +7,7 @@ import { getConfiguredModel, getModelLimits, providerSchema, readAiReferences, r
 import { createWorkspaceFfmpeg } from "@/modules/mediaGeneration/ffmpeg";
 import { generateMedia, listMediaModels } from "@/modules/mediaGeneration/media/generation";
 import { readDocument as readMediaDocument } from "@/modules/mediaGeneration/documents";
-import { isWithin, isHiddenWorkspaceEntry, protectWorkspaceLibraryPath, protectWorkspaceRoot, lockWorkspaceFiles, renameWorkspaceFile, resolveWorkspacePath, writeWorkspaceFile } from "@/modules/localRuntime/workspace/files";
+import { copyWorkspaceFile, isWithin, isHiddenWorkspaceEntry, protectWorkspaceLibraryPath, protectWorkspaceRoot, lockWorkspaceFiles, renameWorkspaceFile, resolveWorkspacePath, writeWorkspaceFile } from "@/modules/localRuntime/workspace/files";
 import { importImage } from "@/modules/localRuntime/workspace/chatImages";
 import { assertAssetRelativePath, getAssetsDirectory, openAssetLibrary } from "@/modules/assetLibrary/assets/roots";
 import { createAssetDirectory, importAssetFile, moveAsset, queryAssets, readAssetFile, removeAsset, writeAssetFile } from "@/modules/assetLibrary/assets";
@@ -37,6 +37,7 @@ export function createAgentHost(_context: ModuleContext): AgentHost {
       resolveWorkspacePath,
       lockWorkspaceFiles,
       writeWorkspaceFile,
+      copyWorkspaceFile,
       renameWorkspaceFile,
       isWithin,
       isHiddenWorkspaceEntry,

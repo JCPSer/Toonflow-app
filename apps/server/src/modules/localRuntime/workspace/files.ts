@@ -1,4 +1,4 @@
-import { constants, copyFile, cp, lstat, mkdir, rename, unlink, realpath, writeAtomic } from "@toonflow/file";
+import { copyFileClone, cp, lstat, rename, unlink, realpath, writeAtomic } from "@toonflow/file";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { Request } from "express";
 import { resolveWorkspace } from "@/modules/localRuntime/workspace";
@@ -10,10 +10,15 @@ export async function writeWorkspaceFile(path: string, content: string | Uint8Ar
 export async function copyWorkspaceFile(source: string, target: string) {
   const info = await lstat(source);
   if (info.isSymbolicLink() || (!info.isFile() && !info.isDirectory())) throw Object.assign(new Error("只能复制普通文件或文件夹"), { status: 403 });
-  if (!info.isDirectory()) return copyFile(source, target, constants.COPYFILE_EXCL);
+  if (!info.isDirectory()) return copyFileClone(source, target);
   if (isWithin(source, target)) throw Object.assign(new Error("不能把文件夹复制到自身或子目录"), { status: 400 });
-  await mkdir(target);
+  // ACT: 目录由 cp 自己创建，不要先 mkdir：Node 与 Bun 1.4.0 下「目标已存在 + errorOnExist」会直接 ERR_FS_CP_EEXIST
+  // （Bun 1.3.x 恰好容忍），而且 mkdir 建出来的目录会被 umask 削成 0755，丢掉源目录的 0700 / setgid / sticky。
+  if (await lstat(target).then(() => true, (error: NodeJS.ErrnoException) => error.code === "ENOENT" ? false : Promise.reject(error))) {
+    throw Object.assign(new Error("已存在同名文件或目录"), { code: "EEXIST" });
+  }
   try {
+    // ACT: 目录复制保持 fs.cp：Bun 的 cp 在 APFS 上本来就 reflink（实测 256MB 树 df 增量 0，权限位也一并保留）。
     await cp(source, target, {
       recursive: true,
       force: false,
@@ -45,7 +50,7 @@ export async function renameWorkspaceFile(source: string, target: string) {
     await rename(source, target);
     return;
   }
-  await copyFile(source, target, constants.COPYFILE_EXCL);
+  await copyFileClone(source, target);
   // ACT: 目标完整写入后才移除源文件；移除失败只回滚本次目标。
   try { await unlink(source); }
   catch (err) {

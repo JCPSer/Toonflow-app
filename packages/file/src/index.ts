@@ -44,6 +44,13 @@ export const unlink: typeof promises.unlink = path => withFileAccess([path], "wr
 export const link: typeof promises.link = (source, target) => withFileAccess([source, target], "write", () => promises.link(source, target));
 export const copyFile: typeof promises.copyFile = (source, target, mode) =>
   withFileAccess([source, target], "write", () => promises.copyFile(source, target, mode));
+// ACT: 写时复制（APFS clonefile / Btrfs、XFS reflink）：目标只占元数据，两侧各自追加或改写时才按块分叉。
+// 不支持的卷由内核自动降级为普通复制。实际能否 clone 还取决于运行时：Bun 生效；Node（libuv）在 macOS 上
+// 会静默全量复制——功能一致，只是拿不到空间收益，所以「df 增量为 0」的断言必须在 Bun 下跑。
+export function copyFileClone(source: native.PathLike, target: native.PathLike): Promise<void> {
+  return withFileAccess([source, target], "write",
+    () => promises.copyFile(source, target, native.constants.COPYFILE_EXCL | native.constants.COPYFILE_FICLONE));
+}
 export const cp: typeof promises.cp = (source, target, options) =>
   withFileAccess([source, target], "write", () => promises.cp(source, target, options));
 export const mkdir: typeof promises.mkdir = ((path: native.PathLike, options: any) =>

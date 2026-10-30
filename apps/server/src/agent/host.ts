@@ -79,6 +79,7 @@ export type AgentHost = {
     resolveWorkspacePath(root: string, path: string, allowMissingParents?: boolean): Promise<WorkspacePath>;
     lockWorkspaceFiles(paths: string[]): () => void;
     writeWorkspaceFile(path: string, content: string | Uint8Array, exclusive?: boolean): Promise<void>;
+    copyWorkspaceFile(source: string, target: string): Promise<void>;
     renameWorkspaceFile(source: string, target: string): Promise<void>;
     isWithin(root: string, path: string): boolean;
     isHiddenWorkspaceEntry(name: string): boolean;
