@@ -18,9 +18,10 @@ import { createSubAgentTool } from "@/agent/tools/subAgent";
 import { createMemoryTool } from "@/agent/tools/memory";
 import { createReportTool } from "@/agent/tools/report";
 import { runDelegatedAgent } from "@/agent/runtime/delegation";
+import { forgetMicrocompactState, wasMicrocompacted } from "@/agent/runtime/requests";
 import {
   agentAttachmentsSchema, agentNodeBindingSchema, appendAgentNodeMarker, getActiveAgentSession, getAgentContext, getAgentStats,
-  getParentSessionFile, getSubAgentInfo, getToolResultText, hasPendingAgentQuestion, registerAgentSession, updateSubAgent,
+  getParentSessionFile, getSubAgentInfo, getToolResultText, hasPendingAgentQuestion, pruneAgentSessionFile, registerAgentSession, updateSubAgent,
   type ActiveAgentSession, type AgentNodeBinding,
 } from "@/agent/runtime/sessions";
 import type { ThinkingLevel } from "@toonflow/formats/modelReasoning";
@@ -113,8 +114,11 @@ export async function run(
   let unregister = () => {};
   let mentionFiles: string[] = [];
   let messageAccepted = false;
+  let sessionFilePath: string | undefined;
+  let branchIds: string[] | undefined;
   try {
     const history = newHistory ?? SessionManager.open(sessionPath!, sessionsDir, cwd);
+    sessionFilePath = history.getSessionFile() ?? undefined;
     const file = basename(history.getSessionFile()!);
     const parentFile = getParentSessionFile(history);
     const child = getSubAgentInfo(history)?.data;
@@ -463,6 +467,8 @@ export async function run(
           send({ type: "subAgent", agent });
         }
       } finally {
+        // ACT: 分支顺序要在 dispose 前取：磁盘侧的淘汰只按当前分支数用户轮，否则回退/重发留下的旧分支会把边界往后推。
+        branchIds = history.getBranch().map((entry) => entry.id);
         session.dispose();
       }
     }
@@ -470,6 +476,21 @@ export async function run(
     unregister();
     release();
     finished.resolve();
+    // ACT: 磁盘侧淘汰放在释放锁之后、自己重新抢一把锁：抢不到（用户已经发下一条、会话正被删）就跳过，下次 run 再补。
+    // 只有「这一轮真正发给模型的请求被 microcompact 裁过」才允许淘汰，否则模型下一轮还会看到这些原文。
+    if (sessionFilePath && branchIds && wasMicrocompacted(sessionFilePath)) {
+      try {
+        const unlock = host.workspace.lockWorkspaceFiles([sessionFilePath]);
+        try {
+          await pruneAgentSessionFile(sessionFilePath, branchIds);
+        } finally {
+          unlock();
+        }
+      } catch (error) {
+        console.warn("淘汰旧工具结果跳过", error);
+      }
+    }
+    if (sessionFilePath) forgetMicrocompactState(sessionFilePath);
     if (!messageAccepted) await Promise.all(mentionFiles.map(path => unlink(path)));
   }
 }

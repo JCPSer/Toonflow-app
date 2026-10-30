@@ -8,6 +8,7 @@ import { agentMentionsSchema } from "@/agent/runtime/mentions";
 import { createAgentModel } from "@/agent/runtime/model";
 import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
 import { snapshotSessionEntries } from "@/agent/runtime/cloneSnapshot";
+import { pruneSessionEntries } from "@/agent/runtime/toolResultPrune";
 import { getAgentHost } from "@/agent/host";
 import { getReadableFileMimeType } from "@toonflow/formats/documentFormats";
 import { thinkingLevels } from "@toonflow/formats/modelReasoning";
@@ -597,6 +598,34 @@ async function hasAgentNodeMarkerOnDisk(path: string) {
   }
 }
 
+// ACT: 超过这个体积直接跳过：整文件读 + 解析 + 重写会把事件循环和几百 MB 内存占在收尾路径上。
+const pruneMaxBytes = 64 * 1024 * 1024;
+
+/**
+ * 淘汰会话文件里「模型早已看不到」的旧工具结果：保留最近 3 个用户轮，更早的按与请求侧 microcompact 相同的判定
+ * 换成一行指针。调用方负责确认「这一轮真的被 microcompact 裁过」并传当前分支的条目顺序；
+ * 没有可淘汰条目、有坏行、文件过大都不重写。返回被淘汰的条目数（0 表示文件未改动）。
+ */
+export async function pruneAgentSessionFile(path: string, branchIds?: readonly string[]) {
+  const info = await stat(path).catch(() => undefined);
+  if (!info?.isFile() || info.size > pruneMaxBytes) return 0;
+  const text = await readFile(path, "utf8").catch(() => undefined);
+  if (text === undefined) return 0;
+  const entries: SessionEntry[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    let parsed: unknown;
+    try { parsed = JSON.parse(line); } catch { return 0; }
+    // ACT: 有坏行就整次跳过重写，避免把用户手改/损坏中的文件顺手「规范化」成丢掉这些行。
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return 0;
+    entries.push(parsed as SessionEntry);
+  }
+  const result = pruneSessionEntries(entries, branchIds);
+  if (!result.pruned) return 0;
+  await getAgentHost().workspace.writeWorkspaceFile(path, result.entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  return result.pruned;
+}
+
 /** 只读末字节判断是否已换行；空文件按「已换行」处理，后续解析自会报会话文件无效。 */
 async function endsWithNewline(path: string) {
   const handle = await open(path, "r");
@@ -694,12 +723,18 @@ export async function cloneAgentSession(cwd: string, path: string) {
 export async function removeAgentSession(cwd: string, path: string) {
   if (!sessionFileNamePattern.test(basename(path))) throw Object.assign(new Error("会话标识无效"), { status: 400 });
   if (getActiveAgentSession(path)) throw Object.assign(new Error("会话正在运行，请先停止"), { status: 409 });
-  // ACT: 节点会话可能派发过子会话，只删父文件会把子会话永久留在盘上；沿用回退时的递归清理。
-  const text = await readFile(path, "utf8").catch(() => undefined);
-  if (text !== undefined) await removeSessionFiles(cwd, basename(path), subAgentFilesOf(parseSessionLines(text)));
-  await unlink(path).catch((error: NodeJS.ErrnoException) => {
-    if (error.code !== "ENOENT") throw error;
-  });
+  // ACT: 删除也要拿文件锁：run 结束后的淘汰是「读 → 临时文件 → rename」，不加锁时可能先被删掉再被 rename 写回来（会话复活）。
+  const release = getAgentHost().workspace.lockWorkspaceFiles([path]);
+  try {
+    // ACT: 节点会话可能派发过子会话，只删父文件会把子会话永久留在盘上；沿用回退时的递归清理。
+    const text = await readFile(path, "utf8").catch(() => undefined);
+    if (text !== undefined) await removeSessionFiles(cwd, basename(path), subAgentFilesOf(parseSessionLines(text)));
+    await unlink(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  } finally {
+    release();
+  }
 }
 
 export async function listAgentSessions(cwd: string, directory: string, options: { includeAgentNodes?: boolean } = {}) {

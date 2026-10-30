@@ -90,3 +90,8 @@
 - 2026-10-30 20:12 实现画布节点禁用：`data.disabled` + 无值占位（禁过滤上游）+ 唯一写入通道（flush→batch→关面板）+ 九条 Agent 路径过滤与分页签名 + 撤销快照扩展；按需求两轮、方案三轮、代码审查（1 条 P1/13 条 P2）整改。结果：typecheck/构建通过，占位契约 11/11，`deploy-local.sh --build` 完成（未重启），待用户重启实测。
 - 2026-10-30 21:20 修复组内打组错位：`groupNodes()` 子节点位置误用「绝对 − 组相对位置」改为「绝对 − 组绝对原点」，吸附改在绝对坐标上做一次；隔离实例复现（节点绝对 (992,0) → (1952,−656)、空组）并验证单节点/多节点/顶层/撤销四种场景。结果：typecheck 仅剩既有基线错误，web 构建 + `deploy-local.sh` 安装完成（未重启），待用户重启生效。
 - 2026-10-30 21:30 按审查意见补修同类吸附口径：`ungroupNodes()` / `mergeGroups()` 的 `snapPoint` 从相对差值改到绝对坐标；同时回填 bug 分析/方案文档的 §7/§5 审查结论。结果：typecheck 仅剩既有基线错误，web 重新构建并安装（未重启）。
+- 2026-10-30 23:45 会话/工程复制改写时复制：`@toonflow/file` 新增 `copyFileClone`（EXCL+FICLONE），`copyWorkspaceFile` 单文件与目录递归、`renameWorkspaceFile`、`cloneAgentSession` 未运行路径全部接入。结果：typecheck 通过；Bun 实测 2GB 克隆 0MB、目录复制 0MB、会话克隆与错误语义不变；`deploy-local.sh --build` 安装完成（未重启）。
+- 2026-10-31 00:05 按子 agent 审查意见修正 COW 改动：目录复制回退 `fs.cp` 并去掉预 mkdir（Bun 1.4.0/Node 上「已存在目标」会 ERR_FS_CP_EEXIST，且 mkdir 丢权限位）；会话克隆补原子性（复制+补换行+改名同 try，失败 unlink）与末字节判定换行；`copyFileClone` 收敛签名并注明 Bun/Node 差异。结果：typecheck 通过，Bun 1.4.0 下目录复制 0MB / 权限 700 / 409 / 符号链接错误语义均通过；重新构建安装（未重启）。
+- 2026-10-31 01:15 会话旧工具结果按轮次淘汰：新增共享纯函数 `toolResultPrune.ts`，`microCompactMessages()` 改为复用；`pruneAgentSessionFile()` 在 run 结束 dispose 后、释放锁前整文件重写。结果：typecheck 通过，单测 18/18，真实会话副本 −17%（6.06→5.04MB）；构建安装完成（未重启）。
+- 2026-10-31 01:40 按审查意见修正工具结果淘汰（P0 启用条件 + P1 分支边界 + P1 锁顺序）：新增 `wasMicrocompacted` 门控、按当前分支算边界、淘汰挪到 release 后自抢锁；补 `toolResultPrune.test.ts` 入库。结果：bun test 9/9、typecheck 通过、真实会话副本仍 −17%；重新构建安装（未重启）。
+- 2026-10-31 01:55 补齐审查提到的删除竞态：`removeAgentSession()` 加 `lockWorkspaceFiles`，避免 run 结束后的淘汰（读→临时文件→rename）与删除交错导致会话被写回。结果：typecheck 通过、bun test 9/9；重新构建安装（未重启）。
