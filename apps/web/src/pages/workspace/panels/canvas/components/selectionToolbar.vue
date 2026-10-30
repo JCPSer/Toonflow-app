@@ -165,9 +165,11 @@ function groupNodes(selection: GraphNode[]) {
   const parentNode = roots.every(node => node.parentNode === roots[0]!.parentNode) ? roots[0]!.parentNode : undefined;
   const parentPosition = flow.findNode(parentNode)?.computedPosition ?? { x: 0, y: 0 };
   // ACT: 内边距取网格（16）的倍数——32/48；否则组在网格上、子节点却永远差 8px。
-  const position = { x: bounds.x - 32, y: bounds.y - 48 };
   const grid = gridSize(flow);
-  const groupPosition = snapPoint({ x: position.x - parentPosition.x, y: position.y - parentPosition.y }, grid);
+  // ACT: 吸附只在绝对坐标上做一次。组位置存的是"绝对 − 父绝对"，子节点位置必须减"组的绝对原点"；
+  // 两者混用会让组内打组时子节点整体平移一个父组的绝对位置——表现为新组是空的、节点飞到别处。
+  const groupOrigin = snapPoint({ x: bounds.x - 32, y: bounds.y - 48 }, grid);
+  const groupPosition = subtractPoint(groupOrigin, parentPosition);
   const id = crypto.randomUUID();
   const group: Node = {
     id,
@@ -182,9 +184,9 @@ function groupNodes(selection: GraphNode[]) {
   const nodes: Node[] = flow.getNodes.value.map(node => rootIds.has(node.id) ? {
     ...node,
     parentNode: id,
-    // ACT: 子节点按"吸附后的绝对坐标 − 组位置"计算；只有组位置对齐没有意义，
+    // ACT: 子节点按"吸附后的绝对坐标 − 组的绝对原点"计算；只有组位置对齐没有意义，
     // 选中的节点本身带小数时子节点依然会错位，之后任何一次贴合都会把组再推离网格。
-    position: subtractPoint(snapPoint(node.computedPosition, grid), groupPosition),
+    position: subtractPoint(snapPoint(node.computedPosition, grid), groupOrigin),
     extent: undefined,
     expandParent: false,
   } : node);
@@ -208,7 +210,8 @@ function ungroupNodes(selection: GraphNode[]) {
     const parentPosition = flow.findNode(parentNode)?.computedPosition ?? { x: 0, y: 0 };
     flow.updateNode(node.id, {
       parentNode,
-      position: snapPoint({ x: node.computedPosition.x - parentPosition.x, y: node.computedPosition.y - parentPosition.y }, gridSize(flow)),
+      // ACT: 吸附作用在绝对坐标上，再减父组绝对位置；对相对差值吸附在父组离网时等于没吸。
+      position: subtractPoint(snapPoint(node.computedPosition, gridSize(flow)), parentPosition),
       extent: undefined,
       expandParent: false,
     });
@@ -232,7 +235,8 @@ function mergeGroups(selection: GraphNode[]) {
   const merged: GraphNode = {
     ...first,
     parentNode,
-    position: snapPoint({ x: mergedOrigin.x - parentPosition.x, y: mergedOrigin.y - parentPosition.y }, grid),
+    // ACT: mergedOrigin 已经是吸附过的绝对坐标，这里只做"绝对 − 父绝对"，不能再吸附一次相对差值。
+    position: subtractPoint(mergedOrigin, parentPosition),
     dimensions: { width: bounds.width, height: bounds.height },
     style: { ...style, width: `${bounds.width}px`, height: `${bounds.height}px` },
   };
