@@ -2,6 +2,7 @@ import { computed, nextTick, onScopeDispose, ref, shallowRef, watch } from "vue"
 import { debounce } from "lodash-es";
 import { useVueFlow, type Node, type Edge } from "@vue-flow/core";
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
+import { isNodeBusy } from "@toonflow/nodes-scaffold/nodeBusy";
 
 type CanvasSnapshot = { nodes: Node[]; edges: Edge[]; key: string };
 type CanvasHistoryOptions = {
@@ -31,8 +32,10 @@ export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: (
       Object.entries(element).filter(([key]) => !runtimeFields.has(key)),
     );
     // ACT: 只复制结构和名称；删除后恢复内容由上面的节点、连线引用保留。
+    // 禁用状态进撤销快照（只存 true，缺省即启用），其余 data 仍不落快照。
     const key = JSON.stringify({
-      nodes: flow.getNodes.value.map(node => ({ ...fields(node, nodeRuntimeFields), data: { label: node.data?.label } })),
+      nodes: flow.getNodes.value.map(node => ({ ...fields(node, nodeRuntimeFields),
+        data: { label: node.data?.label, ...(node.data?.disabled === true ? { disabled: true } : {}) } })),
       edges: flow.getEdges.value.map(edge => fields(edge, edgeRuntimeFields)),
     });
     return { ...JSON.parse(key), key };
@@ -91,11 +94,19 @@ export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: (
           restoreFields(node, saved, nodeRuntimeFields);
           if (Object.hasOwn(saved.data ?? {}, "label")) node.data.label = saved.data!.label;
           else delete node.data.label;
+          // ACT: 快照只记录 true；快照里没有该字段说明当时是启用态，必须删掉内存里的旧值。
+          // 运行中节点不写回禁用态（与主动禁用同一条保护），末尾 capture() 会按实际状态重新记录快照。
+          if (!isNodeBusy(saved.id)) {
+            if (saved.data?.disabled === true) node.data.disabled = true;
+            else delete node.data.disabled;
+          }
           return node;
         }
         const data = JSON.parse(JSON.stringify(nodeReferences.get(saved.id)?.data ?? saved.data ?? {}));
         if (Object.hasOwn(saved.data ?? {}, "label")) data.label = saved.data!.label;
         else delete data.label;
+        if (saved.data?.disabled === true) data.disabled = true;
+        else delete data.disabled;
         const restored = { ...saved, data };
         Reflect.deleteProperty(restored, "initialized");
         return restored;

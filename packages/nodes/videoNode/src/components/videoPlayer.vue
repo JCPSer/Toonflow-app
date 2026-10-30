@@ -197,7 +197,16 @@ async function enterFullscreen() {
   }
 }
 
-defineExpose({ enterFullscreen, ready, capturing, captureFrame });
+/** ACT: 节点被禁用时由宿主调用，退出本播放器发起的原生全屏；不影响其它元素的全屏。 */
+async function exitFullscreen() {
+  if (!fullscreen.value) return;
+  fullscreen.value = false;
+  if (document.fullscreenElement && document.fullscreenElement === video.value) {
+    await document.exitFullscreen().catch(() => {});
+  }
+}
+
+defineExpose({ enterFullscreen, exitFullscreen, ready, capturing, captureFrame });
 
 function formatTime(value: number) {
   const seconds = Math.floor(Number.isFinite(value) ? Math.max(0, value) : 0);

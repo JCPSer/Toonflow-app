@@ -1,7 +1,7 @@
 <template>
   <div v-if="documentTarget" class="nodeDocumentPlaceholder" :style="canvasSize" aria-hidden="true" />
   <teleport :to="documentTarget ?? 'body'" :disabled="!documentTarget">
-  <div ref="skeletonElement" v-bind="$attrs" class="nodeSkeleton" :class="{ documentNode: documentTarget, running: ringActive }" @wheel.capture="zoomCanvas" @dblclick.stop="focusNode" @contextmenu="documentTarget && openMenu($event)">
+  <div ref="skeletonElement" v-bind="$attrs" class="nodeSkeleton" :class="{ documentNode: documentTarget, running: ringActive, nodeDisabled }" @wheel.capture="zoomCanvas" @dblclick.stop="focusNode" @contextmenu="documentTarget && openMenu($event)">
     <el-dropdown
       v-if="!readOnly"
       ref="menu"
@@ -15,18 +15,27 @@
       @command="handleCommand">
       <template #dropdown>
         <el-dropdown-menu>
-          <el-dropdown-item v-if="assetOutputs.length && saveNodeToAssets" command="saveAsset" :icon="IconFolderPlus">保存到素材库</el-dropdown-item>
-          <el-dropdown-item :divided="!!(assetOutputs.length && saveNodeToAssets)" command="copy" :icon="IconCopy">复制节点</el-dropdown-item>
+          <el-dropdown-item v-if="!nodeDisabled && assetOutputs.length && saveNodeToAssets" command="saveAsset" :icon="IconFolderPlus">保存到素材库</el-dropdown-item>
+          <el-dropdown-item :divided="!nodeDisabled && !!(assetOutputs.length && saveNodeToAssets)" command="copy" :icon="IconCopy">复制节点</el-dropdown-item>
           <el-dropdown-item command="duplicate" :icon="IconCopyPlus">创建副本</el-dropdown-item>
           <el-dropdown-item command="delete" :icon="IconTrash">删除节点</el-dropdown-item>
           <el-dropdown-item divided command="clipboard" :icon="IconCopy" :disabled="!copyNodeToClipboard || copyingToClipboard">
             复制到剪贴板
           </el-dropdown-item>
+          <el-dropdown-item
+            divided
+            :command="nodeDisabled ? 'enable' : 'disable'"
+            :icon="nodeDisabled ? IconCircleCheck : IconBan"
+            :disabled="isNodeRunning"
+            :title="disabledToggleHint">
+            {{ nodeDisabled ? "解除禁用" : "禁用节点" }}
+          </el-dropdown-item>
         </el-dropdown-menu>
       </template>
     </el-dropdown>
+    <!-- ACT: 禁用时 top slot 整体不渲染（悬浮条与节点自定义动作按钮一并消失）。 -->
     <div
-      v-if="!readOnly && (documentTarget || (topVisible && slotsVisible))"
+      v-if="!readOnly && !nodeDisabled && (documentTarget || (topVisible && slotsVisible))"
       class="floatingSlot topSlot nodrag nopan nowheel"
       :style="{ width: typeof topWidth === 'number' ? `${topWidth}px` : topWidth }"
       @pointerdown.stop
@@ -83,9 +92,14 @@
         </el-card>
       </slot>
     </div>
+    <!-- ACT: 禁用时 bottom slot 必须保留渲染（只读参数仍可见），但不能交互：
+         inert 让子树退出 Tab 序与命中测试，覆盖层负责吞掉指针事件。 -->
     <div
       v-if="!readOnly && $slots.bottom && (documentTarget || bottomPinned || (bottomVisible && slotsVisible))"
       class="floatingSlot bottomSlot nodrag nopan nowheel"
+      :class="{ disabledSlot: nodeDisabled }"
+      :inert="nodeDisabled"
+      :aria-disabled="nodeDisabled || undefined"
       :style="{ width: typeof bottomWidth === 'number' ? `${bottomWidth}px` : bottomWidth }"
       @pointerdown.stop
       @mousedown.stop
@@ -93,6 +107,7 @@
       @keydown.stop
       @contextmenu.stop>
       <slot name="bottom" />
+      <div v-if="nodeDisabled" class="disabledOverlay" aria-hidden="true" title="节点已禁用" />
     </div>
     <div v-show="!documentTarget" class="titleBar">
       <component :is="icon ?? IconBox" class="titleIcon" :size="16" aria-hidden="true" />
@@ -112,14 +127,16 @@
       <span
         v-else
         class="labelText"
-        :tabindex="readOnly ? undefined : 0"
-        :title="readOnly ? label : `${label}（双击编辑名称）`"
+        :tabindex="readOnly || nodeDisabled ? undefined : 0"
+        :title="readOnly ? label : nodeDisabled ? `${label}（节点已禁用，双击不可编辑名称）` : `${label}（双击编辑名称）`"
         @dblclick="!readOnly && ($event.stopPropagation(), editLabel())"
         @keydown.enter.stop.prevent="editLabel">
         {{ label }}
       </span>
+      <span v-if="nodeDisabled" class="disabledBadge" title="节点已禁用" aria-label="节点已禁用">已禁用</span>
       <div v-if="!readOnly" class="nodeActions nodrag nopan" @pointerdown.stop @mousedown.stop @dblclick.stop>
         <el-button
+          v-if="!nodeDisabled"
           :icon="IconRefresh"
           :loading="loading || reloading"
           :disabled="loading || !reloadRemoteNode"
@@ -135,6 +152,8 @@
         class="contentCard"
         :class="{ selected: node.selected }"
         shadow="never"
+        :inert="nodeDisabled"
+        :aria-disabled="nodeDisabled || undefined"
         :bodyStyle="{ padding: '8px' }"
         :style="{ minHeight: `${cardHeight}px` }">
         <div v-if="loading" class="loadingContent" role="status" aria-label="节点加载中">
@@ -143,6 +162,9 @@
         </div>
         <slot v-else-if="previewReady || documentTarget" />
       </el-card>
+      <!-- ACT: 覆盖层是 .contentCard 的兄弟节点（不在 inert 子树里），只盖卡片本身；
+           z-index 低于 .nodeHandle，端口仍可拖线。 -->
+      <div v-if="nodeDisabled" class="disabledOverlay" aria-hidden="true" title="节点已禁用" />
       <template v-for="group in handleGroups" :key="group.type">
         <handle
           v-for="(item, index) in group.items"
@@ -194,12 +216,14 @@ import {
   IconCircleDot,
   IconLoader2,
   IconAt,
+  IconBan,
+  IconCircleCheck,
 } from "@tabler/icons-vue";
 import { ElCard, ElButton, ElDivider, ElDropdown, ElDropdownMenu, ElDropdownItem, ElMessage } from "element-plus";
 import type { DropdownInstance } from "element-plus";
 import { validateConnection } from "./connection";
 import { useNodeEvent } from "./nodeEvent";
-import { clearNodeBusy, markNodeBusy } from "./nodeBusy";
+import { clearNodeBusy, isNodeBusy, markNodeBusy, markNodeRunning } from "./nodeBusy";
 import durationBadge from "./durationBadge.vue";
 import type { NodeConnectionFeedback, NodeData, NodeHandle } from "./connection";
 import { isNodeOutput, type NodeOutput } from "./values";
@@ -281,6 +305,14 @@ const handleGroups = computed(() => [
 ]);
 const cardHeight = computed(() => Math.max(100, ...handleGroups.value.map((group) => (group.items.length + 1) * 44)));
 const { id: nodeId, node } = useNode();
+// ACT: 禁用标记只能从 node.data 读。props 里虽然有 `disabled`（NodeData 展开），但 Boolean prop
+// 在未显式传值时会被 cast 成 false，读 props.disabled 会把「缺省=启用」错判成「显式启用」，
+// 后续把默认值改掉时会连带出错。这里统一用局部 computed。
+const nodeDisabled = computed(() => node.data?.disabled === true);
+// ACT: 运行中禁止切换禁用。全局表只认 busy/running 两个来源，再用 isNodeBusy 兜底
+// （同一节点可能被别的组件、例如 Agent 会话登记为运行中）。
+const isNodeRunning = computed(() => props.busy || props.running || isNodeBusy(nodeId));
+const disabledToggleHint = computed(() => isNodeRunning.value ? (nodeDisabled.value ? "节点运行中，无法解除禁用" : "节点运行中，无法禁用") : undefined);
 // ACT: 把 busy 登记到全局表，画布据此判断切换/退出项目是否会中断正在跑的任务。
 let busyReported = false;
 watch(() => props.busy, (busy) => {
@@ -288,9 +320,19 @@ watch(() => props.busy, (busy) => {
   busyReported = busy;
   markNodeBusy(nodeId, busy);
 }, { immediate: true });
+// ACT: running 走独立集合登记——批量禁用要按「busy ∪ running」判断节点是否在跑，
+// 而 markNodeBusy 的下降沿会派发任务完成事件，running 变化不该触发提示音/通知。
+let runningReported = false;
+watch(() => props.running, (running) => {
+  if (running === runningReported) return;
+  runningReported = running;
+  markNodeRunning(nodeId, running);
+}, { immediate: true });
 onScopeDispose(() => {
-  if (!busyReported) return;
+  if (!busyReported && !runningReported) return;
   busyReported = false;
+  runningReported = false;
+  // clearNodeBusy 同时清理 busy 与 running 两条登记。
   clearNodeBusy(nodeId);
 });
 // ACT: 呼吸描边对所有节点统一生效——节点包只要上报 busy（生成、转写、导出、裁剪、上传、打光等）
@@ -408,6 +450,7 @@ const connectedHandles = computed<Set<string>>((previous) => {
 });
 
 async function focusNode(event: MouseEvent) {
+  if (nodeDisabled.value) return;
   if (documentTarget.value) return;
   const element = event.currentTarget as HTMLElement;
   await nextTick();
@@ -478,6 +521,7 @@ onNodeContextMenu(({ event, node }) => {
 });
 
 async function reloadNode() {
+  if (nodeDisabled.value) return;
   if (props.readOnly || !reloadRemoteNode || reloading.value) return;
   reloading.value = true;
   try {
@@ -528,6 +572,31 @@ const assetOutputs = computed(() =>
     return [{ label: handle.label ?? handle.id, output }];
   })
 );
+// ACT: 禁用状态的唯一写入通道由画布 provide（负责 flush 文档、关面板、批量撤销）；
+// 独立使用（插件预览、单测）取不到时退化为直接写 node.data.disabled。
+const applyNodeDisabled = inject<((ids: string[], value: boolean) => Promise<boolean>) | undefined>("toonflow:setNodeDisabled", undefined);
+const togglingDisabled = ref(false);
+async function setDisabled(value: boolean) {
+  if (togglingDisabled.value || nodeDisabled.value === value) return;
+  if (isNodeRunning.value) {
+    ElMessage.warning(value ? "节点运行中，无法禁用" : "节点运行中，无法解除禁用");
+    return;
+  }
+  togglingDisabled.value = true;
+  try {
+    if (applyNodeDisabled) {
+      await applyNodeDisabled([nodeId], value);
+      return;
+    }
+    if (value) node.data.disabled = true;
+    else delete node.data.disabled;
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "节点禁用状态切换失败");
+  } finally {
+    togglingDisabled.value = false;
+  }
+}
+
 // ACT: 快捷加入对话上下文的能力由画布注入；插件或独立使用时未注入则不渲染按钮。
 const nodeAgentContext = inject<((nodeId: string, anchor: HTMLElement) => Promise<void> | void) | undefined>("nodeAgentContext", undefined);
 const addingToAgentContext = ref(false);
@@ -553,7 +622,10 @@ async function addToAgentContext(event: MouseEvent) {
 
 async function handleCommand(command: string) {
   if (props.readOnly) return;
-  if (command === "saveAsset") saveNodeToAssets?.(props.label, assetOutputs.value);
+  // 禁用态不提供「保存到素材库」（菜单项已隐藏，这里再兜一层）。
+  if (command === "saveAsset" && !nodeDisabled.value) saveNodeToAssets?.(props.label, assetOutputs.value);
+  if (command === "disable") void setDisabled(true);
+  if (command === "enable") void setDisabled(false);
   if (command === "clipboard" && copyNodeToClipboard && !copyingToClipboard.value) {
     copyingToClipboard.value = true;
     try {
@@ -616,6 +688,7 @@ async function handleCommand(command: string) {
 }
 
 async function editLabel() {
+  if (nodeDisabled.value) return;
   if (props.readOnly) return;
   labelDraft.value = props.label;
   editingLabel.value = true;
@@ -726,6 +799,8 @@ watch(
 
       &.topSlot { order: 0; }
       &.bottomSlot { order: 2; }
+      /* 文档视图下 slot 回到文档流，覆盖层需要一个定位祖先。 */
+      &.disabledSlot { position: relative; }
     }
 
     .cardContainer {
@@ -740,6 +815,44 @@ watch(
 
   &:hover .titleBar .nodeActions {
     visibility: visible;
+  }
+
+  /* R3: 禁用外观——内容灰度 + 半透明（文字仍可读），由变量统一控制强度；标题栏角标说明状态。
+     只作用于内容子树，标题栏与端口保持正常，保证删除、拖动、连线照常。 */
+  &.nodeDisabled {
+    --nodeDisabledOpacity: 0.6;
+
+    .contentCard {
+      filter: grayscale(1);
+      opacity: var(--nodeDisabledOpacity);
+    }
+
+    .bottomSlot.disabledSlot {
+      filter: grayscale(1);
+      opacity: var(--nodeDisabledOpacity);
+    }
+  }
+
+  /* ACT: 覆盖层是 .contentCard / bottom slot 的兄弟节点，用 pointer-events 吞掉指针事件；
+     z-index 低于 .nodeHandle，端口必须保持可拖线。 */
+  .disabledOverlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: var(--el-border-radius-base);
+    cursor: not-allowed;
+  }
+
+  .disabledBadge {
+    flex-shrink: 0;
+    padding: 0 4px;
+    border: 1px solid var(--el-border-color);
+    border-radius: 3px;
+    background: var(--el-fill-color-light);
+    color: var(--el-text-color-secondary);
+    font-size: 11px;
+    line-height: 16px;
+    white-space: nowrap;
   }
 
   .floatingSlot {
@@ -877,6 +990,8 @@ watch(
     }
 
     .nodeHandle {
+      /* ACT: 高于禁用覆盖层（z-index:1），保证禁用节点的端口仍可拖出/断开连线。 */
+      z-index: 2;
       display: flex;
       align-items: center;
       justify-content: center;

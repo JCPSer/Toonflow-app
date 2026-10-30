@@ -62,6 +62,7 @@
           <div class="promptHint"><span>逐镜头观察，再归纳叙事、节奏与剪辑 · 模型需支持图片理解</span><span :class="{ overLimit: settings.focus.length > 2000 }">{{ settings.focus.length }}/2000</span></div>
         </template>
         <p v-else class="localHint">本地检测分镜、提取关键帧与原音轨，结果直接生成到画布。</p>
+        <p v-if="disabledUpstreams.length" class="upstreamHint" role="status">上游 {{ disabledUpstreams.length }} 个节点已禁用，解除禁用后才能拉片</p>
         <div class="promptFooter">
           <el-select v-if="settings.aiEnabled" v-model="settings.aiModel" class="modelSelect" :loading="modelsLoading" :disabled="busy" filterable placeholder="选择语言模型" aria-label="拉片语言模型" noDataText="请先在设置中添加模型" placement="top-start" @visible-change="visible => visible && loadModels()">
             <template #prefix><icon-sparkles :size="17" /></template>
@@ -74,8 +75,8 @@
             <el-switch v-model="settings.aiEnabled" :disabled="busy" activeText="AI 辅助" aria-label="AI 辅助拉片" />
             <el-button v-if="processing" :icon="IconPlayerStop" :disabled="cancelling" @click="cancel">{{ cancelling ? '正在取消' : '取消' }}</el-button>
             <template v-else>
-              <el-button v-if="settings.aiEnabled && lastResultMatches" :icon="IconSparkles" text :disabled="busy || !selectedModel || settings.focus.length > 2000" @click="runAi">{{ retryOverview ? '重试归纳' : lastResult?.ai ? '重新分析' : '补充分析' }}</el-button>
-              <el-button class="sendButton" :icon="IconArrowUp" :disabled="busy || !source || !hasDimensions || (settings.aiEnabled && (!selectedModel || settings.focus.length > 2000))" @click="run">{{ lastResultMatches ? '重新拉片' : '开始拉片' }}</el-button>
+              <el-button v-if="settings.aiEnabled && lastResultMatches" :icon="IconSparkles" text :disabled="busy || !selectedModel || settings.focus.length > 2000 || disabledUpstreams.length > 0" :title="disabledUpstreamsHint || undefined" :aria-label="disabledUpstreamsHint || (retryOverview ? '重试归纳' : lastResult?.ai ? '重新分析' : '补充分析')" @click="runAi">{{ retryOverview ? '重试归纳' : lastResult?.ai ? '重新分析' : '补充分析' }}</el-button>
+              <el-button class="sendButton" :icon="IconArrowUp" :disabled="busy || !source || !hasDimensions || disabledUpstreams.length > 0 || (settings.aiEnabled && (!selectedModel || settings.focus.length > 2000))" :title="runBlockedReason || (lastResultMatches ? '重新拉片' : '开始拉片')" :aria-label="runBlockedReason || (lastResultMatches ? '重新拉片' : '开始拉片')" @click="run">{{ lastResultMatches ? '重新拉片' : '开始拉片' }}</el-button>
             </template>
           </div>
         </div>
@@ -153,6 +154,17 @@ const source = computed<NodeMediaValue | undefined>(() => {
   const value = incoming.value[0];
   return value?.dataType === "VIDEO" && value.value && typeof value.value === "object" && "url" in value.value ? value.value as NodeMediaValue : undefined;
 });
+// ACT: 本节点直接用 useNodeInputs（不走 useNodeReferences），禁用上游从这里数——
+// 占位条目 value 恒为 undefined，所以 source 也会是 undefined，必须单独给出「已禁用」原因。
+const disabledUpstreams = computed(() => {
+  const ids = new Set<string>();
+  for (const item of incoming.value) if (item.disabled === true) ids.add(item.source);
+  return [...ids];
+});
+const disabledUpstreamsHint = computed(() => disabledUpstreams.value.length ? `上游 ${disabledUpstreams.value.length} 个节点已禁用` : "");
+// 按钮 title 要能区分「没有连接/没有视频」与「上游被禁用」。
+const runBlockedReason = computed(() => disabledUpstreamsHint.value || (connected.value && !source.value ? "上游节点暂无视频" : !connected.value ? "无输入" : ""));
+const nodeDisabled = computed(() => node.data?.disabled === true);
 const player = ref<InstanceType<typeof videoPlayer>>();
 let preview: HTMLVideoElement | undefined;
 const fileInput = ref<HTMLInputElement>();
@@ -266,7 +278,18 @@ function formatDuration(value: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+// ACT: 报告弹窗与节点内部的交互一起关闭；画布层拿不到这里的 ref。
+// 原生全屏（视频播放器）不受节点灰化影响，也要主动退出。
+watch(nodeDisabled, disabled => {
+  if (!disabled) return;
+  reportVisible.value = false;
+  cancel();
+  void player.value?.exitFullscreen();
+});
+
 function openReport() {
+  // ACT: 上游禁用只影响「开始拉片」，已有结果仍可查看；只有节点自身被禁用才拒绝。
+  if (nodeDisabled.value) return;
   reportVisible.value = true;
 }
 
@@ -320,11 +343,13 @@ async function cancelAndWait() {
 }
 
 function run() {
+  if (disabledUpstreams.value.length) return void ElMessage.warning(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);
   if (busy.value || disposed || !source.value || !hasDimensions.value) return;
   job = processVideo();
 }
 
 function runAi() {
+  if (disabledUpstreams.value.length) return void ElMessage.warning(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);
   if (busy.value || disposed || !source.value || !lastResultMatches.value || !selectedModel.value) return;
   job = processAi();
 }
@@ -513,6 +538,8 @@ async function processVideo() {
   .promptHint { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--el-text-color-placeholder); font-size: 11px; line-height: 1.6; margin: 6px 0 10px; }
   .overLimit { color: var(--el-color-danger); }
   .localHint { margin: 12px 0 18px; color: var(--el-text-color-secondary); font-size: 12px; }
+  /* 上游禁用提示：置灰按钮之外必须给可见原因。 */
+  .upstreamHint { margin: 8px 0; padding: 4px 8px; border-radius: 4px; background: var(--el-color-warning-light-9); color: var(--el-color-warning); font-size: 12px; line-height: 1.6; }
   .promptFooter {
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
     .modelSelect { width: 190px; min-width: 0; flex-shrink: 0;

@@ -1,0 +1,86 @@
+{
+  "task_id": "task_261030_node-disable",
+  "created_at": "2026-10-30",
+  "owner": "liyuhang",
+  "goal": "实现画布节点「禁用」：灰化、不可执行/不可预览、Agent 不可见、可批量与撤销",
+  "requirements": ".claude/development_docs/liyuhang/1_requirements_matrix/2026-10-30-19-03-node-disable.md",
+  "solution": ".claude/development_docs/liyuhang/2_requirements_solutions/2026-10-30-19-35-node-disable.md",
+  "conventions": {
+    "disabled_field": "node.data.disabled === true",
+    "provide_set_node_disabled": "toonflow:setNodeDisabled —— (ids: string[], value: boolean) => Promise<boolean>",
+    "document_expose": ["flushNodeDocuments", "closeNodeDocuments", "forceCloseNodeDocuments"],
+    "forbidden": [
+      "不要重启 /Applications/toonflow-exec.app",
+      "不要写用户真实项目/画布数据",
+      "不要部署（deploy 由 Lead 统一执行）"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "基础层：nodeScaffold / nodeShared / 6 个节点",
+      "owner_name": "base-node",
+      "files": [
+        "packages/nodeScaffold/src/connection.ts",
+        "packages/nodeScaffold/src/nodeInputs.ts",
+        "packages/nodeScaffold/src/values.ts",
+        "packages/nodeScaffold/src/nodeSkeleton.vue",
+        "packages/nodeScaffold/src/nodeTools.ts",
+        "packages/nodeScaffold/src/nodeBusy.ts",
+        "packages/nodeShared/src/useNodeReferences.ts",
+        "packages/nodeShared/src/components/referenceCard.vue",
+        "packages/nodes/imageGenerationNode/src/index.vue",
+        "packages/nodes/videoGenerationNode/src/index.vue",
+        "packages/nodes/audioGenerationNode/src/index.vue",
+        "packages/nodes/textNode/src/index.vue",
+        "packages/nodes/director3dNode/src/index.vue",
+        "packages/nodes/director3dNode/src/directorPanel.vue",
+        "packages/nodes/frameAnalysisNode/src/index.vue"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "T2",
+      "subject": "画布层：入口、外观、历史、面板、搜索、快捷键",
+      "owner_name": "canvas",
+      "files": [
+        "apps/web/src/pages/workspace/panels/canvas/index.vue",
+        "apps/web/src/pages/workspace/panels/canvas/components/selectionToolbar.vue",
+        "apps/web/src/pages/workspace/panels/canvas/components/nodeMenu.vue",
+        "apps/web/src/pages/workspace/panels/canvas/useCanvasHistory.ts",
+        "apps/web/src/pages/workspace/panels/canvas/canvasFiles.ts",
+        "apps/web/src/pages/workspace/panels/canvas/canvasHost.vue",
+        "apps/web/src/pages/workspace/panels/canvas/canvasMenu.vue",
+        "apps/web/src/pages/workspace/panels/canvas/saveSelectionToAssets.ts",
+        "apps/web/src/pages/workspace/panels/canvas/components/canvasControls.vue",
+        "apps/web/src/pages/workspace/panels/canvas/components/nodeSearch.vue",
+        "apps/web/src/pages/workspace/panels/document/index.vue",
+        "apps/web/src/pages/workspace/panels/document/components/fileTree.vue",
+        "apps/web/src/pages/workspace/panels/document/components/quickOpen.vue",
+        "apps/web/src/pages/workspace/index.vue",
+        "apps/web/src/lib/canvasShortcuts.ts"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "T3",
+      "subject": "Agent 过滤：查询工具、mention、MCP",
+      "owner_name": "agent-filter",
+      "files": [
+        "apps/web/src/pages/workspace/panels/canvas/canvasQueries.ts",
+        "apps/web/src/pages/workspace/panels/canvas/useCanvasTools.ts",
+        "apps/server/src/agent/mentionFiles.ts",
+        "apps/server/src/agent/mentionSources.ts",
+        "apps/server/src/routes/agent/mentionSource.ts",
+        "apps/server/src/modules/mcpIntegration/mcp/tools.ts"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "T4",
+      "subject": "集成、构建、测试、部署（Lead）",
+      "owner_name": "Team Lead",
+      "status": "pending"
+    }
+  ]
+}

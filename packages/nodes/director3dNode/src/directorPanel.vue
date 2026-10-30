@@ -28,6 +28,7 @@
         <p>描述模型动作和运镜要求</p>
       </template>
     </div>
+    <p v-if="disabledUpstreams.length" class="upstreamHint" role="status">上游 {{ disabledUpstreams.length }} 个节点已禁用，解除禁用后才能生成</p>
     <p class="instructionHint">{{ referenceCount ? `使用 ${referenceCount} 个关键帧生成运镜` : result ? `参考：${result.name}` : '模型动画与运镜同步生成' }}</p>
     <footer class="chatFooter">
       <div class="inputContent"><slot name="input" /></div>
@@ -37,7 +38,8 @@
             <el-option v-for="item in provider.models" :key="item.modelId" :label="item.label" :value="JSON.stringify([item.providerId, item.modelId])" />
           </el-option-group>
         </el-select>
-        <el-button class="sendButton" type="primary" round :disabled="initializing || !prompt.trim() || !model" aria-label="生成动画" @click="sendInstruction">
+        <!-- ACT: 上游有节点被禁用时按钮置灰；disabled 按钮的 title 不弹，原因另用上方 upstreamHint 明示。 -->
+        <el-button class="sendButton" type="primary" round :disabled="initializing || !prompt.trim() || !model || disabledUpstreams.length > 0" :title="disabledUpstreams.length ? disabledUpstreamsHint : undefined" :aria-label="disabledUpstreamsHint || '生成动画'" @click="sendInstruction">
           <icon-sparkles :size="14" /><span>生成方案</span>
         </el-button>
       </div>
@@ -54,13 +56,25 @@ import { groupNodeModels } from "@toonflow/node-shared/groupNodeModels";
 
 import type { DirectorPlan, DirectorPlanItem, DirectorGeneration } from "./sceneAnimation";
 
-const props = defineProps<{ result?: DirectorPlan; referenceCount: number; initializing: boolean; plans: DirectorPlanItem[]; selectedPlanId: string; tasks: DirectorGeneration[]; models: NodeAiModel[]; modelsLoading: boolean }>();
+const props = withDefaults(defineProps<{
+  result?: DirectorPlan;
+  referenceCount: number;
+  initializing: boolean;
+  plans: DirectorPlanItem[];
+  selectedPlanId: string;
+  tasks: DirectorGeneration[];
+  models: NodeAiModel[];
+  modelsLoading: boolean;
+  /** ACT: 上游被禁用的节点 id（来自 useNodeReferences），非空时禁止发起生成。 */
+  disabledUpstreams?: string[];
+}>(), { disabledUpstreams: () => [] });
 const emit = defineEmits<{ editInstruction: [value: string]; selectPlan: [id: string]; send: []; loadModels: [] }>();
 const prompt = defineModel<string>("prompt", { default: "" });
 const model = defineModel<string>("model", { default: "" });
 const modelGroups = computed(() => groupNodeModels(props.models, model.value));
+const disabledUpstreamsHint = computed(() => `上游 ${props.disabledUpstreams.length} 个节点已禁用`);
 function sendInstruction() {
-  if (props.initializing || !prompt.value.trim() || !model.value) return;
+  if (props.initializing || !prompt.value.trim() || !model.value || props.disabledUpstreams.length) return;
   emit("send");
 }
 
@@ -120,6 +134,19 @@ function sendInstruction() {
   }
 
   .instructionHint { flex-shrink: 0; margin: 12px; font-size: 11px; line-height: 1.5; color: var(--el-text-color-secondary); overflow-wrap: anywhere; }
+
+  /* 上游禁用提示：置灰按钮之外必须给可见原因。 */
+  .upstreamHint {
+    flex-shrink: 0;
+    margin: 12px 12px 0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--el-color-warning-light-9);
+    color: var(--el-color-warning);
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
 
   .chatFooter {
     flex-shrink: 0;

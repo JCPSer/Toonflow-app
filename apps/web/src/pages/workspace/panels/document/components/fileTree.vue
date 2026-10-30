@@ -531,6 +531,8 @@ function canvasItems(canvas: Record<string, unknown>, path: string): FileTreeIte
   if (!Array.isArray(canvas.nodes)) return [];
   const items = canvas.nodes.flatMap((node): FileTreeItem[] => {
     if (!isRecord(node) || typeof node.id !== "string" || !node.id || !isRecord(node.data)) return [];
+    // ACT: 只在文件树展示层隐藏禁用节点；素材归属走 readNodeIndex，仍能看到这些节点。
+    if (node.data.disabled === true) return [];
     return [{
       key: JSON.stringify(["node", path, node.id]),
       name: typeof node.data.label === "string" && node.data.label.trim() ? node.data.label : node.id,
@@ -676,7 +678,7 @@ async function readCanvasItems(currentDirectory: string, path: string, signal: A
   signal.throwIfAborted();
   if (props.params?.params.readNodes) {
     const nodes = await props.params.params.readNodes(currentDirectory, { canvasPath: path, includeGroups: true, signal });
-    return canvasItems({ nodes: nodes.map(node => ({ id: node.nodeId, type: node.nodeType, parentNode: node.parentNode, data: { label: node.label } })) }, path);
+    return canvasItems({ nodes: nodes.map(node => ({ id: node.nodeId, type: node.nodeType, parentNode: node.parentNode, data: { label: node.label, disabled: node.disabled } })) }, path);
   }
   const canvas = await useWorkspaceFiles(currentDirectory).readJson(path, signal);
   if (!isRecord(canvas) || canvas.toonflowCanvas !== true || !Array.isArray(canvas.nodes)) throw new Error("不是有效的画布文件");

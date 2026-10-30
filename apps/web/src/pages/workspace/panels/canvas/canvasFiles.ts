@@ -5,7 +5,8 @@ import { isCanvasFile } from "@/pages/workspace/canvasFile";
 
 type Files = ReturnType<typeof useWorkspaceFiles>;
 type CanvasFile = { toonflowCanvas: true; nodes: Node[]; edges: Edge[]; viewport: ViewportTransform };
-export type DocumentNode = { canvasPath: string; nodeId: string; label: string; nodeType?: string; parentNode?: string };
+// ACT: 只携带禁用标记供展示层过滤，readDocumentNodes 本身不过滤——素材归属仍要包含禁用节点。
+export type DocumentNode = { canvasPath: string; nodeId: string; label: string; nodeType?: string; parentNode?: string; disabled?: boolean };
 export type DocumentNodeOptions = { canvasPath?: string; includeGroups?: boolean; signal?: AbortSignal; onError?: (path: string, error: unknown) => void;
   skipDirectories?: string[]; skipPrefixes?: string[]; failOnMissing?: boolean };
 

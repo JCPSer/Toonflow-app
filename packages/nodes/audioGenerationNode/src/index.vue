@@ -25,6 +25,7 @@
     <template #bottom>
       <div v-if="actions?.mode === 'speed'" ref="speedTarget" />
       <el-card v-else class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }">
+        <div v-if="disabledUpstreams.length" class="upstreamHint" role="status">上游 {{ disabledUpstreams.length }} 个节点已禁用，解除禁用后才能生成</div>
         <referenceItem v-if="refList.length" v-model="refList" @preview="setReferencePreview" @remove="removeReference" />
         <promptInput v-model="data.promptModel" v-model:text="data.prompt" :references="referenceMentions" placeholder="描述您想要的音频效果或输入待朗读文本" expandable />
         <div class="promptFooter">
@@ -50,16 +51,17 @@
             <el-button
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
-              :disabled="deleting || uploading || transcribing || actions?.processing || (!generating && (!generationPrompt || !selectedModel))"
-              :title="generating ? '停止生成' : '生成音频'"
-              :aria-label="generating ? '停止生成' : '生成音频'"
+              :disabled="deleting || uploading || transcribing || actions?.processing || (!generating && (!generationPrompt || !selectedModel || disabledUpstreams.length > 0))"
+              :title="generating ? '停止生成' : disabledUpstreamsHint || '生成音频'"
+              :aria-label="generating ? '停止生成' : disabledUpstreamsHint || '生成音频'"
               @click="generating ? generationController?.abort() : startGeneration().catch(error => showNodeError(error, '音频生成失败'))" />
           </div>
         </div>
       </el-card>
     </template>
   </nodeSkeleton>
-  <audioActions ref="actions" :file="outputFile" :src="previewUrl" :target="speedTarget" :disabled="generating || deleting || uploading || transcribing" @pause="player?.pause()" />
+  <!-- ACT: 禁用时把 nodeDisabled 交给 audioActions，它内部随 disabled 关闭剪辑/变速弹层。 -->
+  <audioActions ref="actions" :file="outputFile" :src="previewUrl" :target="speedTarget" :disabled="nodeDisabled || generating || deleting || uploading || transcribing" @pause="player?.pause()" />
 </template>
 
 <script setup lang="ts">
@@ -99,7 +101,10 @@ data.value.model ??= "";
 data.value.language ??= "zh-CN";
 data.value.sampleRate ??= 24000;
 data.value.format ??= "wav";
-const { refList, referenceMentions, setReferencePreview, removeReference } = useNodeReferences();
+// ACT: disabledUpstreams 只用于「按钮置灰 + 说明原因」，禁用上游仍留在 refList 里（占位），不下发到请求。
+const { refList, referenceMentions, disabledUpstreams, setReferencePreview, removeReference } = useNodeReferences();
+const nodeDisabled = computed(() => node.data?.disabled === true);
+const disabledUpstreamsHint = computed(() => disabledUpstreams.value.length ? `上游 ${disabledUpstreams.value.length} 个节点已禁用` : "");
 const models = ref<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
 const uploading = ref(false);
@@ -200,6 +205,7 @@ function loadModels() {
 }
 
 async function startGeneration() {
+  if (disabledUpstreams.value.length) throw new Error(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);
   if (busy.value || disposed) throw new Error("音频正在处理或节点已关闭，请稍后重试");
   const input = generationInput.value;
   if (!input) throw new Error("请先选择音频模型");
@@ -335,6 +341,17 @@ nodeTools.register({
 </script>
 
 <style scoped lang="scss">
+/* 上游禁用提示：disabled 按钮的 title 在多数浏览器里不会弹出，必须给可见原因。 */
+.upstreamHint {
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .audioContent {
   position: relative;
   min-height: 144px;

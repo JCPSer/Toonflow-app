@@ -240,6 +240,19 @@ provide("activateCanvasPanel", () => switchPanel("canvas"));
 provide("showAgentPanel", showAgentPanel);
 provide("performWorkspaceFileAction", (directory: string, action: "copy" | "rename" | "move" | "delete", path: string, target?: string, entryType: "canvas" | "directory" = "canvas") =>
   documentPanelRef.value ? documentPanelRef.value.performFileAction(directory, action, path, target, entryType) : performFileAction(directory, action, path, target));
+// ACT: 画布不是文档面板的祖先，禁用节点时要关文档标签只能由工作区页自上而下注入这三个通道。
+async function flushNodeDocuments(directory: string, canvasPath: string, nodeId: string) {
+  await documentPanelRef.value?.flushNodeDocuments(directory, canvasPath, nodeId);
+}
+async function closeNodeDocuments(directory: string, canvasPath: string, nodeId: string) {
+  await documentPanelRef.value?.closeNodeDocuments(directory, canvasPath, nodeId);
+}
+async function forceCloseNodeDocuments(directory: string, canvasPath: string, nodeId: string) {
+  await documentPanelRef.value?.forceCloseNodeDocuments(directory, canvasPath, nodeId);
+}
+provide("flushNodeDocuments", flushNodeDocuments);
+provide("closeNodeDocuments", closeNodeDocuments);
+provide("forceCloseNodeDocuments", forceCloseNodeDocuments);
 
 const controlLifetime = new AbortController();
 onScopeDispose(() => {

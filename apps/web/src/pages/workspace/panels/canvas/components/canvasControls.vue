@@ -5,7 +5,7 @@
     position="bottom-left"
     :pannable="true"
     :zoomable="true"
-    node-color="var(--el-fill-color-dark)"
+    :node-color="nodeColor"
     mask-color="var(--el-mask-color-extra-light)"
     @click="onMiniMapClick" />
   <panel class="canvasControlsPanel" position="bottom-left">
@@ -130,7 +130,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { Panel, useVueFlow, type XYPosition } from "@vue-flow/core";
+import { Panel, useVueFlow, type GraphNode, type XYPosition } from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
 import { IconArrowGuide, IconBell, IconBellOff, IconFocusCentered, IconFolders, IconMagnet, IconMap, IconSitemap } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
@@ -152,6 +152,10 @@ const zoomMenuVisible = ref(false);
 const flow = useVueFlow();
 const { viewport, zoomTo, zoomIn, zoomOut, fitView, getNodes, updateNode, setCenter } = flow;
 const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
+// ACT: 小地图只按禁用状态换色，分组等其它节点保持原色。
+function nodeColor(node: GraphNode) {
+  return node.data?.disabled === true ? "var(--el-text-color-disabled)" : "var(--el-fill-color-dark)";
+}
 // ACT: 工具条上的铃铛只切提示音档位；系统通知是另一件事，放在设置页，避免一个按钮有两种含义。
 const completionSoundModes = ["always", "background", "off"] as const;
 const completionSoundLabel = computed(() => ({

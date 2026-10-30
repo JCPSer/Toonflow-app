@@ -9,19 +9,20 @@
     :downloadUrl="downloadUrl"
     :downloadName="`${nodeProps.label || '文本'}.md`"
     :bottomWidth="660"
-    @fullscreen="fullscreen = true; editing = true">
+    @fullscreen="fullscreen = true; openEditor()">
     <div class="textContent" :class="{ empty: !outputs.text.value.trim() }">
       <el-alert v-if="documentState.error" :title="documentState.error" type="error" :closable="false" showIcon>
-        <el-button text size="small" :disabled="generating || textReloading" @click="editing = true">查看并复制当前正文</el-button>
+        <el-button text size="small" :disabled="generating || textReloading || nodeDisabled" @click="openEditor">查看并复制当前正文</el-button>
         <el-button text size="small" :disabled="generating" :loading="textReloading" @click="reloadText">重新读取磁盘</el-button>
       </el-alert>
       <div v-if="outputs.text.value.trim() && previewReady" class="textPreview nopan nowheel" aria-label="文本内容">
         <markdownPreview :modelValue="outputs.text.value" :files="textReady ? textFiles : undefined" :path="textPath" :active="previewReady" />
       </div>
-      <el-button class="editButton nodrag nopan" :icon="IconEdit" :disabled="generating || !textReady" text @dblclick.stop @click.stop="editing = true">编辑</el-button>
+      <el-button class="editButton nodrag nopan" :icon="IconEdit" :disabled="generating || !textReady || nodeDisabled" text @dblclick.stop @click.stop="openEditor">编辑</el-button>
     </div>
     <template #bottom>
       <el-card class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }" @keydown.esc="handlePromptEsc">
+        <div v-if="disabledUpstreams.length" class="upstreamHint" role="status">上游 {{ disabledUpstreams.length }} 个节点已禁用，解除禁用后才能生成</div>
         <div class="promptHeader" v-if="refList.length">
           <referenceItem
             v-model="refList"
@@ -40,9 +41,9 @@
             <el-button
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
-              :disabled="generating ? false : (!prompt.trim() || !selectedModel || !textReady)"
-              :title="generating ? '停止生成' : '生成'"
-              :aria-label="generating ? '停止生成' : '生成'"
+              :disabled="generating ? false : (!prompt.trim() || !selectedModel || !textReady || disabledUpstreams.length > 0)"
+              :title="generating ? '停止生成' : disabledUpstreamsHint || '生成'"
+              :aria-label="generating ? '停止生成' : disabledUpstreamsHint || '生成'"
               @click="generating ? stopGeneration() : generateText()" />
           </div>
         </div>
@@ -84,9 +85,22 @@ const { node, nodeProps, outputs, ai, files, nodeEvent, previewReady } = useNode
   label: "文本",
   outputs: { text: { dataType: "STRING", value: "" } },
 });
-const { refList, referenceMentions, setReferencePreview, removeReference } = useNodeReferences();
+// ACT: disabledUpstreams 只用于「按钮置灰 + 说明原因」，禁用上游仍留在 refList 里（占位）。
+const { refList, referenceMentions, disabledUpstreams, setReferencePreview, removeReference } = useNodeReferences();
+const nodeDisabled = computed(() => node.data?.disabled === true);
+const disabledUpstreamsHint = computed(() => disabledUpstreams.value.length ? `上游 ${disabledUpstreams.value.length} 个节点已禁用` : "");
 const editing = ref(false);
 const fullscreen = ref(false);
+// ACT: 编辑器是 appendToBody 的弹窗；禁用后必须在这里关掉（画布层拿不到这个 ref）。
+watch(nodeDisabled, disabled => {
+  if (!disabled) return;
+  editing.value = false;
+  fullscreen.value = false;
+});
+function openEditor() {
+  if (nodeDisabled.value) return;
+  editing.value = true;
+}
 const downloadUrl = ref("");
 const documentContext = inject<NodeDocumentContext | undefined>("nodeDocument", undefined);
 watch([() => outputs.value.text.value, () => node.selected || !!documentContext?.targets.has(node.id)], ([text, visible], _previous, onCleanup) => {
@@ -276,6 +290,7 @@ const { getSelectedNodes } = useVueFlow();
 const canvasActive = inject<ComputedRef<boolean>>("canvasActive", computed(() => true));
 
 async function generateText() {
+  if (disabledUpstreams.value.length) return void ElMessage.warning(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);
   const choice = selectedModel.value;
   if (!textReady.value || generating.value || stopping.value || !choice || !prompt.value.trim()) return;
   const controller = new AbortController();
@@ -381,6 +396,17 @@ nodeTools.register({
 </script>
 
 <style lang="scss" scoped>
+/* 上游禁用提示：disabled 按钮的 title 在多数浏览器里不会弹出，必须给可见原因。 */
+.upstreamHint {
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .textEditor {
   height: min(560px, calc(100dvh - 144px));
   min-height: 0;

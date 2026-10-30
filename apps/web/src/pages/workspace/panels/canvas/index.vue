@@ -268,7 +268,7 @@ import { AGENT_NODE_STATUS_KEY, type AgentNodeStatus } from "@toonflow/nodes-sca
 import type { AgentQuestionNotice } from "@/components/agent/types";
 import type { NodeDocumentContext, NodeDocumentState } from "@toonflow/nodes-scaffold/nodeDocument";
 import { useNodeToolsContext } from "@toonflow/nodes-scaffold/nodeTools";
-import { hasRunningNodes } from "@toonflow/nodes-scaffold/nodeBusy";
+import { hasRunningNodes, isNodeBusy, NODE_BUSY_CHANGE_EVENT } from "@toonflow/nodes-scaffold/nodeBusy";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { requestExitProject } from "../../exitProject";
 import { generalSettings } from "@/stores/settings";
@@ -371,6 +371,10 @@ flow.onNodeDragStop(({ nodes }) => {
   else finishGroupDrag(flow.getNodes.value, nodes);
 });
 const requestNodeAssetsCleanup = inject<((directory: string, nodeIds: string[]) => void) | undefined>("requestNodeAssetsCleanup");
+// ACT: 文档面板是画布的兄弟节点，禁用节点时要 flush/关闭它的标签只能由 workspace 页 provide 下来。
+const flushNodeDocuments = inject<((directory: string, canvasPath: string, nodeId: string) => Promise<void>) | undefined>("flushNodeDocuments", undefined);
+const closeNodeDocuments = inject<((directory: string, canvasPath: string, nodeId: string) => Promise<void>) | undefined>("closeNodeDocuments", undefined);
+const forceCloseNodeDocuments = inject<((directory: string, canvasPath: string, nodeId: string) => Promise<void>) | undefined>("forceCloseNodeDocuments", undefined);
 // ACT: Agent 节点的会话文件不能随节点删除立刻删——撤销历史里还留着这个节点，撤销回来就成了空壳。
 // 这里在节点离开画布时先记账，等它被撤销栈淘汰（onNodesDropped）再真正删除；撤销回来则划掉账。
 const pendingAgentSessionCleanup = new Map<string, string>();
@@ -617,6 +621,8 @@ flow.onNodeDragStart(closeAgentPortMenu);
 flow.onNodeClick(({ node, event }) => {
   if (event.target instanceof Element && event.target.closest("[data-node-agent-context]")) return;
   closeAgentPortMenu();
+  // ACT: 禁用节点不打开面板，也要关掉之前选中的节点面板（同一时刻只留一个）。
+  if (isNodeDisabled(node)) { agentNodePanelRef.value?.close(); return; }
   // ACT: 单击 Agent 节点即打开它自己的对话面板，点其它节点或画布空白关闭——同一时刻只留一个。
   if (node.type === "remote-agentNode") void agentNodePanelRef.value?.open(node.id);
   else agentNodePanelRef.value?.close();
@@ -678,12 +684,156 @@ watch([canvasReady, canvasId], async ([ready, id]) => {
 const agentNodeStatuses = reactive<Record<string, AgentNodeStatus>>({});
 provide(AGENT_NODE_STATUS_KEY, agentNodeStatuses);
 const agentNodePanelRef = ref<InstanceType<typeof agentNodePanel>>();
+/** 禁用态的唯一口径：node.data.disabled === true。 */
+function isNodeDisabled(node?: { data?: unknown } | null) {
+  return (node?.data as { disabled?: boolean } | undefined)?.disabled === true;
+}
+
+// ACT: busy 登记表是跨 UMD 的全局 Map，宿主侧读不到写方的响应式依赖；节点包改动时会派发事件，
+// 这里用一个计数 ref 把「运行态变化」变成宿主可追踪的依赖，按钮/菜单才能实时置灰。
+const busyTick = ref(0);
+if (typeof window !== "undefined") {
+  const onBusyChange = () => { busyTick.value++; };
+  window.addEventListener(NODE_BUSY_CHANGE_EVENT, onBusyChange);
+  onScopeDispose(() => window.removeEventListener(NODE_BUSY_CHANGE_EVENT, onBusyChange));
+}
+
+/** 运行中 = busy 登记表 + Agent 状态；waiting 是等回答，不算运行中。 */
+function isNodeRunning(nodeId: string) {
+  void busyTick.value;
+  const status = agentNodeStatuses[nodeId];
+  return isNodeBusy(nodeId) || status === "thinking" || status === "running" || status === "compacting";
+}
+provide("toonflow:isNodeRunning", isNodeRunning);
+
+/** 统一关闭入口：主动禁用与撤销/重做/外部写入共用，文档面板走 force 版本。 */
+async function closePanelsForDisabled(ids: string[], force = false) {
+  const directory = project.value?.directory;
+  const canvasPath = canvasId.value;
+  for (const nodeId of ids) {
+    agentNodePanelRef.value?.close(nodeId);
+    if (!directory || !canvasPath) continue;
+    try {
+      if (force) await forceCloseNodeDocuments?.(directory, canvasPath, nodeId);
+      else await closeNodeDocuments?.(directory, canvasPath, nodeId);
+    } catch (error) {
+      ElMessage.warning(error instanceof Error ? error.message : "文档关闭失败");
+    }
+  }
+}
+
+/**
+ * 禁用/解除禁用的唯一写入通道（快捷键、右键菜单、浮动工具栏都调用它，不直接写 data）。
+ * 顺序按方案 §7：过滤分组与运行中 → flush 文档 → 任一失败整体不写 → 二次检查运行态 → batch 写入 → 关面板。
+ */
+async function setNodeDisabled(ids: string[], value: boolean) {
+  const directory = project.value?.directory;
+  const canvasPath = canvasId.value;
+  if (!directory || !canvasPath) return false;
+  const running = new Set<string>();
+  const targets: GraphNode[] = [];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const node = findNode(id);
+    // 分组只是容器；已是目标状态的节点不重复写；运行中节点先跳过。
+    if (!node || node.type === "canvasGroup" || isNodeDisabled(node) === value) continue;
+    if (isNodeRunning(id)) { running.add(id); continue; }
+    targets.push(node);
+  }
+  if (!targets.length) {
+    if (running.size) ElMessage.warning(`${running.size} 个节点运行中，${value ? "未禁用" : "未解除禁用"}`);
+    return false;
+  }
+  // 只 flush 文档、不关标签：任一失败则整体不写，避免禁用后还有未落盘的编辑。
+  try {
+    for (const node of targets) await flushNodeDocuments?.(directory, canvasPath, node.id);
+  } catch {
+    ElMessage.error(value ? "文档保存失败，未禁用" : "文档保存失败，未解除禁用");
+    return false;
+  }
+  // flush 可能跨过切画布/切项目；目标节点已不属于当前画布时整批作废。
+  if (canvasId.value !== canvasPath || project.value?.directory !== directory) return false;
+  // 二次检查：flush 期间可能有节点新进入运行态，从这批里剔除。
+  const writable = targets.filter(node => {
+    if (!isNodeRunning(node.id)) return true;
+    running.add(node.id);
+    return false;
+  });
+  const written: string[] = [];
+  if (writable.length) {
+    try {
+      await canvasHistory.batch(async () => {
+        for (const node of writable) {
+          const current = findNode(node.id);
+          if (!current) continue;
+          const data = (current.data ??= {}) as { disabled?: boolean };
+          if (value) data.disabled = true;
+          else delete data.disabled;
+          // 同步基线：禁用集合 watcher 只处理撤销/重做/外部写入，不再重复关一次面板。
+          if (value) knownDisabled.add(node.id);
+          else knownDisabled.delete(node.id);
+          written.push(node.id);
+        }
+        await nextTick();
+      });
+    } catch (error) {
+      for (const id of written) (value ? knownDisabled.delete(id) : knownDisabled.add(id));
+      ElMessage.error(error instanceof Error ? error.message : "节点禁用失败");
+      return false;
+    }
+  }
+  await closePanelsForDisabled(written, false);
+  if (running.size) ElMessage.warning(`${running.size} 个节点运行中，${value ? "未禁用" : "未解除禁用"}`);
+  return written.length > 0;
+}
+provide("toonflow:setNodeDisabled", setNodeDisabled);
+
+// ACT: 撤销/重做与外部写入绕过 setNodeDisabled，靠「新出现的禁用节点」差分触发同一套关闭逻辑。
+function disabledNodeIds() {
+  return flow.getNodes.value.filter(node => isNodeDisabled(node)).map(node => node.id);
+}
+let knownDisabled = new Set<string>();
+let disabledBaselineReady = false;
+watch([canvasId, () => disabledNodeIds().sort().join("|")], ([id], previous) => {
+  const previousId = previous?.[0];
+  const current = new Set(disabledNodeIds());
+  // 首次装载或切换画布只记基线：加载出来的禁用节点不会有已打开的面板要关。
+  if (!disabledBaselineReady || id !== previousId) {
+    knownDisabled = current;
+    disabledBaselineReady = true;
+    return;
+  }
+  const added = [...current].filter(nodeId => !knownDisabled.has(nodeId));
+  knownDisabled = current;
+  if (added.length) void closePanelsForDisabled(added, true);
+}, { flush: "post" });
+
+function toggleDisabledSelection() {
+  const nodes = flow.getSelectedNodes.value.filter(node => node.type !== "canvasGroup");
+  if (!nodes.length) return;
+  // 有启用中的节点就禁用它们；否则把已禁用的全部解除。运行中节点留给写入通道跳过，
+  // 不能先按运行态过滤——否则「全部启用但都在运行」会被误判成「没有可禁用的」而反向解禁。
+  const enabled = nodes.filter(node => !isNodeDisabled(node));
+  if (enabled.length) {
+    void setNodeDisabled(enabled.map(node => node.id), true);
+    return;
+  }
+  const disabled = nodes.filter(node => isNodeDisabled(node));
+  if (disabled.length) void setNodeDisabled(disabled.map(node => node.id), false);
+}
+
 // ACT: 面板上报的未读提问；节点被删掉后按当前节点表过滤掉，避免点进一个不存在的节点。
 const agentQuestions = ref<AgentQuestionNotice[]>([]);
-const activeAgentQuestions = computed(() => agentQuestions.value.filter(item => !!flow.findNode(item.nodeId)));
+// ACT: 禁用节点不展示未读提问横幅，也不允许从横幅跳转打开面板。
+const activeAgentQuestions = computed(() => agentQuestions.value.filter(item => {
+  const node = flow.findNode(item.nodeId);
+  return !!node && !isNodeDisabled(node);
+}));
 function openAgentQuestion(nodeId: string) {
   const node = flow.findNode(nodeId);
-  if (!node) return;
+  if (!node || isNodeDisabled(node)) return;
   // 面板按节点坐标定位，节点在视野外会开在一个看不见的地方，先把视图带过去。
   void flow.fitView({ nodes: [node.id], duration: 260, maxZoom: 1, padding: 0.4 });
   void agentNodePanelRef.value?.open(nodeId);
@@ -793,7 +943,7 @@ async function prepareCanvasDelete() {
   }
 }
 
-type DocumentNodeData = { label?: string; handles?: NodeHandle[]; outputs?: Record<string, NodeOutput | undefined>; textPath?: string };
+type DocumentNodeData = { label?: string; handles?: NodeHandle[]; outputs?: Record<string, NodeOutput | undefined>; textPath?: string; disabled?: boolean };
 
 function checkDocumentDirectory(directory: string) {
   if (!directory || directory !== project.value?.directory) throw new Error("工作目录已切换，请重新打开节点");
@@ -801,7 +951,9 @@ function checkDocumentDirectory(directory: string) {
 
 function observeDocumentNode(directory: string, canvasPath: string, nodeId: string, onState: (state: NodeDocumentState) => void) {
   checkDocumentDirectory(directory);
-  if (canvasId.value !== canvasPath || !findNode(nodeId)) throw new Error("节点不存在，请刷新文件树");
+  const observed = canvasId.value === canvasPath ? findNode(nodeId) : undefined;
+  if (!observed) throw new Error("节点不存在，请刷新文件树");
+  if (isNodeDisabled(observed)) throw new Error("节点已禁用，无法查看或编辑");
   const stop = watch((): NodeDocumentState => {
     const node = findNode(nodeId);
     const state = nodeDocument.states.get(nodeId);
@@ -828,6 +980,7 @@ async function mountDocumentNode(directory: string, canvasPath: string, nodeId: 
   checkDocumentDirectory(directory);
   const node = findNode(nodeId);
   if (!node) throw new Error("节点已删除，请刷新文件树");
+  if (isNodeDisabled(node)) throw new Error("节点已禁用，无法查看或编辑");
   if (nodeErrors.value[node.type]) throw new Error(nodeErrors.value[node.type]);
   const mount = nodeDocument.mounts.get(nodeId);
   if (!mount) throw new Error("当前节点未提供文档视图，请确认节点正常加载并更新节点插件");
@@ -868,6 +1021,8 @@ async function readDocumentCanvas(directory: string, canvasPath: string, nodeId:
   if (node.data !== undefined && (!node.data || typeof node.data !== "object" || Array.isArray(node.data))) throw new Error("节点数据无效");
   const liveNode = canvasId.value === canvasPath ? findNode(nodeId) : undefined;
   if (canvasId.value === canvasPath && !liveNode) throw new Error("节点已删除，请刷新文件树");
+  // ACT: 磁盘与内存任一侧是禁用态都拒绝读写，避免禁用后还能通过文档面板改正文。
+  if (isNodeDisabled(node) || isNodeDisabled(liveNode)) throw new Error("节点已禁用，无法查看或编辑");
   const textPath = node.data?.textPath;
   if (
     textPath !== undefined &&
@@ -1118,8 +1273,9 @@ watch(
       );
       const stopData = watch(() => element.data, scheduleCanvasSave, { deep: true, flush: "post" });
       const stopName = isNode(element)
+        // ACT: 禁用状态也进撤销历史；与 label 合并成同一条记录链，不能落进只保存的 stopData。
         ? watch(
-            () => element.data?.label,
+            () => [element.data?.label, element.data?.disabled],
             () => canvasHistory.record(),
             { flush: "post" }
           )
@@ -1554,7 +1710,7 @@ function updateCanvasKeys(event: KeyboardEvent) {
   if (event.type === "keyup" || event.defaultPrevented || event.isComposing || editing) return;
   const action = ([
     "group", "mergeGroup", "ungroup", "addNode", "moveTool", "handTool", "arrange", "search",
-    "delete", "copy", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView",
+    "delete", "copy", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView", "toggleDisabled",
   ] as const).find((action) =>
     shortcutMatches(event, shortcuts[action])
   );
@@ -1591,6 +1747,7 @@ function updateCanvasKeys(event: KeyboardEvent) {
   }
   if (action === "copy") void copySelectedNodes();
   else if (action === "paste") void pasteNodeAtCenter();
+  else if (action === "toggleDisabled") toggleDisabledSelection();
   else if (action === "undo" || action === "redo") void changeHistory(action);
   else if (action === "group" || action === "mergeGroup" || action === "ungroup") {
     void selectionToolbarRef.value?.operate(action);
@@ -1804,8 +1961,15 @@ const defaultEdgeOptions = markRaw({
   type: "simplebezier",
   animated: false,
   class: ({ sourceNode, targetNode }: GraphEdge) => {
-    if (!sourceNode.selected && !sourceNode.dragging && !targetNode.selected && !targetNode.dragging) return "";
-    return ["edgeNodeActive", generalSettings.value.canvasEdgeColorMode !== "none" && "edgeActive", generalSettings.value.canvasEdgeAnimationEnabled && "animated"].filter(Boolean).join(" ");
+    // ACT: 任一端点禁用就连线一起降透明度；只改 stroke-opacity，不拦截点击/断开。
+    const disabled = isNodeDisabled(sourceNode) || isNodeDisabled(targetNode);
+    const active = sourceNode.selected || sourceNode.dragging || targetNode.selected || targetNode.dragging;
+    return [
+      disabled && "edgeDisabled",
+      active && "edgeNodeActive",
+      active && generalSettings.value.canvasEdgeColorMode !== "none" && "edgeActive",
+      active && generalSettings.value.canvasEdgeAnimationEnabled && "animated",
+    ].filter(Boolean).join(" ");
   },
   focusable: false,
   selectable: false,
@@ -1920,6 +2084,11 @@ const defaultEdgeOptions = markRaw({
 
   :deep(.vue-flow__edge.edgeActive .vue-flow__edge-path) {
     stroke: var(--canvasEdgeColor);
+  }
+
+  // ACT: 禁用只降透明度，不隐藏、不拦截点击（断开连线的交互仍可用）。
+  :deep(.vue-flow__edge.edgeDisabled .vue-flow__edge-path) {
+    stroke-opacity: 0.35;
   }
 
   &:has(.selectionConnection) :deep(.vue-flow__node:not(.selected) .nodeHandle.target .handleIcon) {

@@ -960,7 +960,8 @@ async function saveCanvas(event?: Event) {
 
 function syncDocumentNode(canvasId: string, nodeId: string, handleId: string, text: string, inline: boolean) {
   const node = canvases.value.find(canvas => canvas.id === canvasId)?.flow?.nodes.find(node => node.id === nodeId);
-  if (!node) return;
+  // ACT: 禁用节点禁止同步正文，避免文档写入链路绕过禁用守卫。
+  if (!node || (node.data as { disabled?: boolean } | undefined)?.disabled === true) return;
   const data = node.data ??= {};
   const output = data.outputs?.[handleId];
   if (output?.dataType === "STRING") output.value = text;

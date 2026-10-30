@@ -37,6 +37,21 @@
             <span>整理选中节点</span>
             <icon-chevron-right class="nextIcon" :size="14" />
           </el-dropdown-item>
+          <!-- ACT: 只对非分组节点生效；纯分组选区两个入口都不出现。运行中节点会由写入通道跳过。 -->
+          <el-dropdown-item
+            v-if="disableCandidates.length"
+            command="disableSelection"
+            :icon="IconCircleOff"
+            :disabled="selectionBusy || deleting || !canDisableSelection">
+            禁用
+          </el-dropdown-item>
+          <el-dropdown-item
+            v-if="enableCandidates.length"
+            command="enableSelection"
+            :icon="IconCircleCheck"
+            :disabled="selectionBusy || deleting || !canEnableSelection">
+            解除禁用
+          </el-dropdown-item>
           <el-dropdown-item
             command="deleteSelection"
             :icon="IconTrash"
@@ -113,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch, type Component } from "vue";
+import { computed, inject, nextTick, onBeforeUnmount, ref, shallowRef, watch, type Component } from "vue";
 import { useVueFlow, type ConnectingHandle, type GraphNode, type HandleType } from "@vue-flow/core";
 import { isTypeCompatible, useNodeEvent, validateConnection, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
 import { ElMessage } from "element-plus";
@@ -136,6 +151,8 @@ import {
   IconArrowForwardUp,
   IconChevronLeft,
   IconChevronRight,
+  IconCircleCheck,
+  IconCircleOff,
   IconLayoutColumns,
   IconLayoutRows,
   IconLayoutGrid,
@@ -231,6 +248,14 @@ const canArrangeSelection = computed(() => {
       && Number.isFinite(node.dimensions.width) && node.dimensions.width > 0
       && Number.isFinite(node.dimensions.height) && node.dimensions.height > 0);
 });
+// ACT: 选区禁用只作用于非分组节点；运行中节点由画布写入通道统一跳过，这里只决定按钮是否可点。
+const setNodeDisabled = inject<((ids: string[], value: boolean) => Promise<boolean>) | undefined>("toonflow:setNodeDisabled", undefined);
+const isNodeRunning = inject<((nodeId: string) => boolean) | undefined>("toonflow:isNodeRunning", undefined);
+const eligibleNodes = computed(() => selectedNodes.value.filter(node => node.type !== "canvasGroup" && flow.findNode(node.id) === node));
+const disableCandidates = computed(() => eligibleNodes.value.filter(node => node.data?.disabled !== true));
+const enableCandidates = computed(() => eligibleNodes.value.filter(node => node.data?.disabled === true));
+const canDisableSelection = computed(() => disableCandidates.value.some(node => !isNodeRunning?.(node.id)));
+const canEnableSelection = computed(() => enableCandidates.value.some(node => !isNodeRunning?.(node.id)));
 const filteredNodes = computed(() => {
   const nodes = remoteNodes.map(node => ({
     ...node,
@@ -369,6 +394,20 @@ async function handleCommand(command: unknown) {
     if (selectionBusy || deleting.value || !selectedNodes.value.length) return;
     menu.value?.handleClose();
     emit("duplicateSelection");
+    return;
+  }
+  if (command === "disableSelection" || command === "enableSelection") {
+    if (selectionBusy || deleting.value) return;
+    const value = command === "disableSelection";
+    const ids = (value ? disableCandidates.value : enableCandidates.value).map(node => node.id);
+    menu.value?.handleClose();
+    if (!ids.length) return;
+    try {
+      // ACT: 写入通道内部会 flush 文档、二次检查运行态并统一关闭面板，这里不再自己 batch 写 data。
+      await setNodeDisabled?.(ids, value);
+    } catch (error) {
+      ElMessage.error(error instanceof Error ? error.message : "节点禁用失败");
+    }
     return;
   }
   if (command === "upload") {

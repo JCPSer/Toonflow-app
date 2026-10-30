@@ -147,6 +147,7 @@
         :selectedPlanId="selectedPlanId"
         :tasks="tasks"
         :initializing="addingMannequin || !scene.objectList.length && tasks.some((task) => !task.error)"
+        :disabledUpstreams="disabledUpstreams"
         @selectPlan="selectPlan"
         :models="models"
         :modelsLoading="modelsLoading"
@@ -188,6 +189,8 @@ const props = defineProps<{
   exportingVideo: boolean;
   exportingImage: string;
   exportProgress?: number;
+  /** ACT: 上游被禁用的节点 id，最终交给 directorPanel 置灰「生成方案」按钮。 */
+  disabledUpstreams?: string[];
 }>();
 const emit = defineEmits<{ editInstruction: [value: string]; selectPlan: [id: string]; generate: []; loadModels: []; close: []; addMannequin: []; exportVideo: [aspect: number]; exportImage: [anchor: CameraAnchor, aspect: number, time: number] }>();
 const anchors = defineModel<CameraAnchor[]>("anchors", { default: () => [] });

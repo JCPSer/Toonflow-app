@@ -21,6 +21,8 @@ export type NodeData = {
   label?: string;
   handles?: NodeHandle[];
   outputs?: NodeOutputs;
+  /** 实例级禁用（类似 ComfyUI 的 mute）：仅 `true` 表示禁用，缺省视为启用。 */
+  disabled?: boolean;
 };
 
 function getDataTypes(dataType: NodeHandle["dataType"]) {

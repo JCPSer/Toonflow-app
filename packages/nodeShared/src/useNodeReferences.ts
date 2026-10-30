@@ -18,6 +18,16 @@ export function useNodeReferences(handleId = "in") {
       node.data.referenceOrder = { ...node.data.referenceOrder, [handleId]: values.map(referenceKey) };
     },
   });
+  /**
+   * ACT: 上游被禁用的节点 id（按 source 去重）。禁用上游仍保留在 refList 里（value === undefined），
+   * 这里只做计数用途——下游据此把运行按钮置灰并说明「上游 N 个节点已禁用」，
+   * 不参与任何过滤，避免出现「没有参考也照样生成」。
+   */
+  const disabledUpstreams = computed(() => {
+    const ids = new Set<string>();
+    for (const item of refList.value) if (item.disabled === true) ids.add(item.source);
+    return [...ids];
+  });
   const referenceMentions = computed(() => refList.value.flatMap((item, index) =>
     typeof item.dataType === "string" && ["IMAGE", "VIDEO", "AUDIO", "STRING", "FILE"].includes(item.dataType)
       ? [{
@@ -47,7 +57,7 @@ export function useNodeReferences(handleId = "in") {
     ));
   }
 
-  return { refList, referenceMentions, setReferencePreview, removeReference };
+  return { refList, referenceMentions, disabledUpstreams, setReferencePreview, removeReference };
 }
 
 function referenceKey(item: NodeInputValue) {

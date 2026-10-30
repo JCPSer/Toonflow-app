@@ -254,7 +254,9 @@ const flushCanvasSave = inject<(() => Promise<void>) | undefined>("flushCanvasSa
 async function buildMentions(nodeId: string): Promise<AgentMention[]> {
   if (!directory.value || !props.canvasId || !generalSettings.value.agentUpstreamContext) return [];
   const sources = getTargetSources(nodeId, "in", getNodes.value, getEdges.value);
-  const ids = [...new Set(sources.map(source => source.node.id))].filter(id => id !== nodeId).slice(0, 20);
+  // ACT: 禁用节点不进入自动上游上下文；服务端也会拒绝，这里先过滤避免一次无谓请求与丢弃。
+  const ids = [...new Set(sources.filter(source => source.node.data?.disabled !== true).map(source => source.node.id))]
+    .filter(id => id !== nodeId).slice(0, 20);
   if (!ids.length) return [];
   // ACT: 服务端按磁盘画布解析上游，先把待写盘的画布刷下去，否则刚连的线、刚改的正文会读到旧版本。
   await flushCanvasSave?.().catch(() => undefined);

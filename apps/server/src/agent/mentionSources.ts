@@ -31,6 +31,28 @@ export function mentionNodeName(node: MentionCanvasNode) {
   return (typeof label === "string" && label.trim() ? label : node.id).slice(0, 255);
 }
 
+// ACT: 画布节点禁用后对 Agent 不可见；只认 === true，旧画布缺字段视为启用。
+export function mentionNodeDisabled(node: MentionCanvasNode) {
+  return mentionRecord(node.data) && node.data.disabled === true;
+}
+
+function assertMentionNodeEnabled(node: MentionCanvasNode) {
+  if (mentionNodeDisabled(node)) throw new Error(`节点已禁用：${node.id}`);
+}
+
+// ACT: 禁用集合要进分页游标——节点数不变但禁用状态变化时，旧 offset 会跳过或重复条目。
+// 顺序相关的短哈希（FNV-1a），避免长画布的 0/1 串把 cursor 撑大。
+function mentionDisabledSignature(nodes: readonly MentionCanvasNode[]) {
+  let hash = 0x811c9dc5;
+  let disabled = 0;
+  for (const node of nodes) {
+    const bit = mentionNodeDisabled(node) ? 1 : 0;
+    disabled += bit;
+    hash = Math.imul(hash ^ bit, 0x01000193);
+  }
+  return `${nodes.length}.${disabled}.${(hash >>> 0).toString(36)}`;
+}
+
 export function mentionOutputValue(node: MentionCanvasNode, outputId: string) {
   const data = nodeData(node);
   const outputs = mentionRecord(data.outputs) ? data.outputs : {};
@@ -87,19 +109,22 @@ export function mentionNodeOutputs(node: MentionCanvasNode): MentionOutput[] {
 export async function queryMentionNodes(nodes: readonly MentionCanvasNode[], revision: string, options: MentionQuery = {}): Promise<MentionPage<MentionNode>> {
   const query = options.query?.trim().toLocaleLowerCase() ?? "";
   const limit = Math.max(1, Math.min(50, options.limit ?? 20));
+  // ACT: 禁用节点对 Agent 不可见；offset 与 nextCursor 都基于过滤后的数组，revision 纳入禁用签名。
+  const visible = nodes.filter(node => !mentionNodeDisabled(node));
+  const pageRevision = `${revision}:${mentionDisabledSignature(nodes)}`;
   let offset = 0;
   if (options.cursor) {
     let cursor: unknown;
     try { cursor = JSON.parse(options.cursor); } catch { throw new Error("分页已失效，请重新搜索"); }
-    if (!Array.isArray(cursor) || cursor[0] !== revision || cursor[1] !== query || !Number.isSafeInteger(cursor[2]) || cursor[2] < 0) throw new Error("分页已失效，请重新搜索");
+    if (!Array.isArray(cursor) || cursor[0] !== pageRevision || cursor[1] !== query || !Number.isSafeInteger(cursor[2]) || cursor[2] < 0) throw new Error("分页已失效，请重新搜索");
     offset = cursor[2];
   }
   const items: MentionNode[] = [];
-  const end = Math.min(nodes.length, offset + 2000);
+  const end = Math.min(visible.length, offset + 2000);
   // ACT: 名称搜索每页最多扫描 2000 节点；不复制画布，不读输出正文，不为所有节点建立深响应对象。
   for (; offset < end && items.length < limit; offset++) {
     options.signal?.throwIfAborted();
-    const node = nodes[offset];
+    const node = visible[offset];
     if (!node || typeof node.id !== "string") continue;
     const name = mentionNodeName(node);
     if (query && !`${node.id} ${name}`.toLocaleLowerCase().includes(query)) continue;
@@ -110,7 +135,7 @@ export async function queryMentionNodes(nodes: readonly MentionCanvasNode[], rev
     items.push({ id: node.id, name, outputCount: outputs.length, available: !!available,
       dataType: (media ?? available ?? outputs[0])?.dataType, ...(thumbnail ? { thumbnail } : {}) });
   }
-  return { items, ...(offset < nodes.length ? { nextCursor: JSON.stringify([revision, query, offset]) } : {}) };
+  return { items, ...(offset < visible.length ? { nextCursor: JSON.stringify([pageRevision, query, offset]) } : {}) };
 }
 
 /**
@@ -136,6 +161,8 @@ async function mentionTextSummary(node: MentionCanvasNode, textPath: string, rea
 
 export async function createCanvasMention(node: MentionCanvasNode, canvasId: string, outputId: string,
   options: { readText?: MentionTextReader } = {}): Promise<AgentMention> {
+  // ACT: 按 ID 直取禁用节点一律拒绝；实时与离线 mention 共用这一道闸。
+  assertMentionNodeEnabled(node);
   const output = mentionNodeOutputs(node).find(output => output.id === outputId);
   const selected = mentionOutputValue(node, outputId);
   if (!output?.available || !selected) throw new Error("这个输出暂无内容，请重新选择");
@@ -200,9 +227,13 @@ export function collectUpstream(node: MentionCanvasNode, edges: readonly Mention
   nodesById: ReadonlyMap<string, MentionCanvasNode> | undefined,
   readText?: (path: string) => Promise<string>): Promise<{ upstream: MentionNodeUpstream[]; truncated?: boolean }> {
   if (!edges?.length) return Promise.resolve({ upstream: [] });
-  // ACT: 悬空边（端点节点已删）与空端口边对模型没有意义，统一在这里过滤；实时与离线共用同一口径。
-  const incoming = edges.filter(edge => edge.target === node.id && !!edge.sourceHandle && !!edge.targetHandle
-    && (!nodesById || nodesById.has(edge.source)));
+  // ACT: 悬空边（端点节点已删）、空端口边与禁用上游对模型没有意义，统一在这里过滤；实时与离线共用同一口径。
+  const incoming = edges.filter(edge => {
+    if (edge.target !== node.id || !edge.sourceHandle || !edge.targetHandle) return false;
+    const source = nodesById?.get(edge.source);
+    if (nodesById && !source) return false;
+    return !source || !mentionNodeDisabled(source);
+  });
   const upstream = incoming.slice(0, upstreamLimit).map(async edge => {
     const source = nodesById?.get(edge.source);
     const output = source ? mentionNodeOutputs(source).find(item => item.id === edge.sourceHandle) : undefined;
@@ -287,6 +318,8 @@ export async function createNodeMention(node: MentionCanvasNode, canvasId: strin
     /** ACT: Agent 节点额外带会话摘要与产出文件索引；拿不到时返回 undefined，不影响普通节点引用。 */
     extraValue?: () => Promise<Record<string, unknown> | undefined>;
   }): Promise<AgentMention> {
+  // ACT: 按 ID 直取禁用节点一律拒绝；实时与离线 mention 共用这一道闸。
+  assertMentionNodeEnabled(node);
   const canvasName = canvasId.replace(/\.json$/i, "").slice(0, 255);
   const nodeName = mentionNodeName(node);
   // ACT: 上游、自身摘要、Agent 附加信息互不依赖，三者并发，避免串行读文件拖慢发送。

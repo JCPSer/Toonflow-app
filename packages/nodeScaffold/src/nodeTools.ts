@@ -109,11 +109,20 @@ export const nodeTools = {
 export function useNodeToolsContext() {
   const flow = useVueFlow();
   const { registry, index } = getRegistry(flow);
-  function* list(nodeIds: string[], names?: string[]): IterableIterator<NodeToolInfo> {
+  /**
+   * @param options.skipDisabled 全量枚举（`tools` getter）用：静默跳过禁用节点，
+   * 不能因为画布上有一个禁用节点就让整次枚举失败；显式传 nodeIds 的调用方则不传，
+   * 命中禁用节点直接抛错，避免 Agent 按 ID 绕过禁用。
+   */
+  function* list(nodeIds: string[], names?: string[], options?: { skipDisabled?: boolean }): IterableIterator<NodeToolInfo> {
     const nameSet = names ? new Set(names) : undefined;
     for (const nodeId of new Set(nodeIds)) {
       const node = flow.findNode(nodeId);
       if (!node) continue;
+      if (node.data?.disabled === true) {
+        if (options?.skipDisabled) continue;
+        throw new Error(`节点已禁用：${nodeId}`);
+      }
       for (const entry of index.nodes.get(nodeId)?.values() ?? []) {
         if (nameSet && !nameSet.has(entry.name)) continue;
         const { execute: _execute, ...info } = entry;
@@ -122,7 +131,7 @@ export function useNodeToolsContext() {
     }
   }
   return (): NodeToolsContext => ({
-    get tools() { return [...list([...index.nodes.keys()])]; },
+    get tools() { return [...list([...index.nodes.keys()], undefined, { skipDisabled: true })]; },
     get version() { return index.version; },
     list,
     async call({ nodeId, name, args }, signal) {
@@ -133,6 +142,8 @@ export function useNodeToolsContext() {
       const entry = registry.get(key);
       if (!entry) throw new Error(`节点未注册函数 ${name}，请先通过 getNodeTools 查询可用节点函数`);
       if (!flow.findNode(nodeId)) throw new Error("节点函数已卸载或不属于本轮画布");
+      // 禁用节点不参与执行：即便 Agent 拿到了过期快照里的函数名，也在这里拒绝。
+      if (flow.findNode(nodeId)?.data?.disabled === true) throw new Error(`节点已禁用：${nodeId}`);
       let cancel: () => void = () => {};
       try {
         const result = await Promise.race([

@@ -22,6 +22,8 @@ export function getTargetSources(targetId: string, targetHandleId: string, nodes
 }
 
 function readSourceValue(node: Node<NodeData>, handle: NodeHandle): NodeOutput | undefined {
+  // ACT: 禁用节点一律视为「无值」；判定收口在这里，getSourceValue 与 getTargetValues 同步生效。
+  if (node.data?.disabled === true) return;
   const outputs = node.data?.outputs;
   if (!outputs) return;
   // 先读取 key，让端口首次新增输出时也能触发监听。
@@ -44,6 +46,11 @@ export function getTargetValues(targetId: string, targetHandleId: string, nodes:
   if (!target) return [];
 
   return getTargetSources(targetId, targetHandleId, nodes, edges).flatMap<NodeInputValue>(({ node, handle }) => {
+    // P0: 禁用上游必须保留占位（`disabled: true`），绝不能在这里被过滤掉——
+    // 否则下游 refList 丢掉该上游，现有的 `value === undefined` 守卫不触发，会缺参考静默生成。
+    if (node.data?.disabled === true) {
+      return [{ source: node.id, sourceHandle: handle.id, dataType: handle.dataType, value: undefined, disabled: true }];
+    }
     const output = readSourceValue(node, handle);
     if (!output) return [{ source: node.id, sourceHandle: handle.id, dataType: handle.dataType, value: undefined }];
     if (!isTypeCompatible(output.dataType, target.dataType)) return [];

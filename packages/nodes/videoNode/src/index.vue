@@ -65,7 +65,8 @@
       </el-button>
     </div>
   </nodeSkeleton>
-  <videoActions ref="actions" :file="outputFile" :src="previewUrl" :disabled="uploading || exporting" />
+  <!-- ACT: 禁用时把 nodeDisabled 交给 videoActions，它内部随 disabled 关闭剪辑/拉片弹层。 -->
+  <videoActions ref="actions" :file="outputFile" :src="previewUrl" :disabled="nodeDisabled || uploading || exporting" />
 </template>
 
 <script setup lang="ts">
@@ -91,6 +92,12 @@ const actions = ref<InstanceType<typeof videoActions>>();
 const exportProgress = computed(() => (node.data as typeof node.data & { exportProgress?: number }).exportProgress);
 const exporting = computed(() => typeof exportProgress.value === "number");
 const videoWidth = ref(0);
+const nodeDisabled = computed(() => node.data?.disabled === true);
+// ACT: 禁用后必须退出本播放器的全屏（原生全屏不受节点灰化影响）；剪辑弹层随 props.disabled 自行 reset。
+watch(nodeDisabled, (disabled) => {
+  if (!disabled) return;
+  void player.value?.exitFullscreen();
+});
 
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
 // ACT: 默认只取服务端首帧图，点播放才把整段视频读成 Blob；闲置后自动释放。
@@ -100,11 +107,13 @@ const { url: previewUrl, posterUrl, activate, deactivate } = files.useLazyFileUr
 );
 
 async function resolveDownload() {
+  if (nodeDisabled.value) return "";
   await activate();
   return previewUrl.value;
 }
 
 async function resolveFullscreen() {
+  if (nodeDisabled.value) return;
   await activate();
   await nextTick();
   await player.value?.enterFullscreen();

@@ -24,6 +24,7 @@
           @mouseenter="activeIndex = index"
           @click="selectNode(index)">
           <span class="nodeLabel">{{ item.label }}</span>
+          <span v-if="item.disabled" class="nodeDisabled">已禁用</span>
           <span class="nodeType">{{ item.node.type === 'canvasGroup' ? '分组' : item.node.type?.replace(/^remote-/, '') }}</span>
         </button>
         <p v-if="!results.length" class="empty">没有匹配的节点</p>
@@ -47,8 +48,9 @@ const searchInput = ref<InputInstance>();
 const resultList = ref<HTMLElement>();
 const results = computed(() => {
   const keyword = query.value.trim().toLocaleLowerCase();
+  // ACT: 禁用节点仍可搜索/定位，只在行尾标注状态。
   return flow.getNodes.value.filter(node => !node.hidden).map(node => ({
-    node, label: String(node.data.label || node.type || "未命名节点"),
+    node, label: String(node.data.label || node.type || "未命名节点"), disabled: node.data?.disabled === true,
   })).filter(item => `${item.label} ${item.node.type} ${item.node.id}`.toLocaleLowerCase().includes(keyword));
 });
 watch(query, () => { activeIndex.value = 0; });
@@ -114,6 +116,7 @@ defineExpose({ open });
 
       &[aria-selected="true"] { background: var(--el-color-primary-light-9); }
       .nodeLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .nodeDisabled { flex-shrink: 0; padding: 0 6px; border-radius: 8px; background: var(--el-fill-color-dark); color: var(--el-text-color-secondary); font-size: 11px; line-height: 18px; }
       .nodeType { flex-shrink: 0; color: var(--el-text-color-secondary); font-size: 12px; }
     }
     .empty { margin: 24px 0; color: var(--el-text-color-secondary); text-align: center; }

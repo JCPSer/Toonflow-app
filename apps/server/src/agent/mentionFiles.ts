@@ -1,7 +1,7 @@
 import { open, opendir, readFile, stat } from "@toonflow/file";
 import { basename } from "node:path";
 import { getAgentHost } from "@/agent/host";
-import { createCanvasMention, createNodeMention, mentionAssetType, mentionNodeOutputs, mentionRecord, queryMentionNodes,
+import { createCanvasMention, createNodeMention, mentionAssetType, mentionNodeDisabled, mentionNodeOutputs, mentionRecord, queryMentionNodes,
   type MentionCanvasNode, type MentionEdge, type MentionQuery } from "./mentionSources";
 import type { AgentMention } from "./runtime/types";
 import { decodeTextFile } from "@toonflow/formats/documentFormats";
@@ -92,13 +92,21 @@ export async function queryStoredMentionNodes(directory: string, canvasId: strin
   options.signal?.throwIfAborted();
   const canvas = await readCanvas(directory, canvasId);
   options.signal?.throwIfAborted();
+  // ACT: 传完整节点表，禁用过滤交给 queryMentionNodes —— 它的分页 revision 含禁用签名，
+  // 预过滤会让签名只反映可见节点数，一禁一解时签名不变导致游标失效。
   return queryMentionNodes(canvas.nodes, `${canvasId}:${canvas.revision}`, options);
+}
+
+/** 显式按 ID 命中禁用节点时要报「已禁用」而不是「已删除」，两者对用户的后续操作不同。 */
+function assertMentionNodeEnabled(node: MentionCanvasNode) {
+  if (mentionNodeDisabled(node)) throw Object.assign(new Error(`节点已禁用：${node.id}`), { status: 403 });
 }
 
 export async function storedMentionOutput(directory: string, canvasId: string, nodeId: string, outputId?: string) {
   const canvas = await readCanvas(directory, canvasId);
   const node = canvas.byId.get(nodeId);
   if (!node) throw Object.assign(new Error("节点已删除，请重新选择"), { status: 404 });
+  assertMentionNodeEnabled(node);
   // ACT: 文本输出引用要带正文摘要，离线链路只能靠工作区文件读，口径与节点引用一致。
   return outputId === undefined ? mentionNodeOutputs(node)
     : createCanvasMention(node, canvasId, outputId, { readText: path => readMentionText(directory, path) });
@@ -108,6 +116,7 @@ export async function storedNodeMention(directory: string, canvasId: string, nod
   const canvas = await readCanvas(directory, canvasId);
   const node = canvas.byId.get(nodeId);
   if (!node) throw Object.assign(new Error("节点已删除，请重新选择"), { status: 404 });
+  assertMentionNodeEnabled(node);
   // ACT: readText 让上游 textNode 的预览能取到正文（画布里 outputs 已被 toJSON 清空，只剩 textPath）。
   return createNodeMention(node, canvasId, {
     edges: canvas.edges, nodesById: canvas.byId, readText: path => readMentionText(directory, path),

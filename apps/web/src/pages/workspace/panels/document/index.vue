@@ -393,6 +393,51 @@ async function flushSave() {
 function cancelSave() { for (const session of uniqueSessions()) session.cancelSave(); }
 function currentSession() { return sessions.get(editorApi.value?.activePanel?.id ?? ""); }
 
+// ACT: 画布禁用节点要从文档侧关闭标签（画布不是文档面板的祖先，只能由 workspace 把这三个方法 provide 下去）。
+// 匹配口径与 openSelection 一致：目录 + pathIdentity(canvasPath) + nodeId，一个资源可能有多个 viewId。
+function nodeSessionEntries(directoryPath: string, canvasPath: string, nodeId: string) {
+  let identity: string;
+  try { identity = pathIdentity(canvasPath); } catch { return []; }
+  return [...sessions].filter(([, session]) => {
+    const resource = session.context.resource;
+    return resource.kind === "canvasNode" && resource.directory === directoryPath
+      && resource.nodeId === nodeId && pathIdentity(resource.path) === identity;
+  });
+}
+
+/** 只落盘、不关标签；供画布在写入禁用状态前做原子性检查。 */
+async function flushNodeDocuments(directoryPath: string, canvasPath: string, nodeId: string) {
+  const unique = [...new Set(nodeSessionEntries(directoryPath, canvasPath, nodeId).map(([, session]) => session))];
+  const held = unique.map(session => ({ session, release: session.lock() }));
+  try { await Promise.all(held.map(({ session }) => session.context.flushSave())); }
+  finally { held.forEach(({ release }) => release()); }
+}
+
+/** 保存后关闭该节点的全部标签（自动关闭不进「重新打开」历史）。 */
+async function closeNodeDocuments(directoryPath: string, canvasPath: string, nodeId: string) {
+  // ACT: 单个标签保存失败不能让其余分屏标签留在打开状态；逐个关闭后统一抛出第一个错误。
+  let firstError: unknown;
+  for (const [viewId] of nodeSessionEntries(directoryPath, canvasPath, nodeId)) {
+    try { await closeEditor(viewId, false); }
+    catch (error) { firstError ??= error; }
+  }
+  if (firstError) throw firstError;
+}
+
+/** 撤销/重做、外部写入等非互动路径：保存失败时取消保存并强制关闭，提示内容未保存。 */
+async function forceCloseNodeDocuments(directoryPath: string, canvasPath: string, nodeId: string) {
+  let unsaved = false;
+  for (const [viewId] of nodeSessionEntries(directoryPath, canvasPath, nodeId)) {
+    try { await closeEditor(viewId, false); }
+    catch {
+      unsaved = true;
+      sessions.get(viewId)?.cancelSave();
+      editorApi.value?.getPanel(viewId)?.api.close();
+    }
+  }
+  if (unsaved) ElMessage.warning("文档未保存，已强制关闭");
+}
+
 function snapshot(session: DocumentSession | undefined, includeText: boolean) {
   return {
     selection: session ? selectionOf(session.context.resource) : null,
@@ -662,7 +707,8 @@ onBeforeUnmount(() => {
   sessionWatchers.forEach(stop => stop());
   disposables.forEach(disposable => disposable.dispose());
 });
-defineExpose({ ready, flushSave, cancelSave, getDocument, openDocument, writeDocument, performFileAction });
+defineExpose({ ready, flushSave, cancelSave, getDocument, openDocument, writeDocument, performFileAction,
+  flushNodeDocuments, closeNodeDocuments, forceCloseNodeDocuments });
 </script>
 
 <style lang="scss">

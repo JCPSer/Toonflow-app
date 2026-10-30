@@ -27,15 +27,17 @@ export function useCanvasTools(options: {
   const getNodeTools = useNodeToolsContext();
   let nodeRevision = 0;
   let edgeRevision = 0;
-  // 只跟踪列表结构，不深读节点 data；批量更新合并到同一 tick。
-  watch(flow.nodes, () => nodeRevision++, { deep: 1 });
-  watch(flow.edges, () => edgeRevision++, { deep: 1 });
+  // ACT: 只跟踪显式结构签名，不深读节点 data（deep:1 追不到 data.disabled）；禁用/解除后分页游标必须失效。
+  watch(() => flow.nodes.value.map(node => `${node.id}:${node.data?.disabled === true ? 1 : 0}`).join("|"), () => nodeRevision++);
+  watch(() => flow.edges.value.map(edge => edge.id).join("|"), () => edgeRevision++);
+  // ACT: 同 id 整体替换（setNodes/撤销恢复）时上面的签名不变，但节点对象已换，旧 cursor 不能再放行。
+  watch(() => flow.nodes.value, () => nodeRevision++, { flush: "post" });
+  watch(() => flow.edges.value, () => edgeRevision++, { flush: "post" });
   const readCanvas = createCanvasQueries({
     nodes: () => flow.nodes.value,
     edges: () => flow.edges.value,
     findNode: flow.findNode,
     viewport: () => flow.viewport.value,
-    selectedCount: () => flow.getSelectedNodes.value.length,
     nodeRevision: () => nodeRevision,
     edgeRevision: () => edgeRevision,
     canvases: signal => options.menu().getCanvases(signal),
@@ -43,10 +45,16 @@ export function useCanvasTools(options: {
     nodeTools: getNodeTools,
   });
 
+  // ACT: 按 ID 的读写工具统一走这里；禁用节点一律抛错。扫描/回执类自行过滤，不走该断言。
   function findNode(nodeId: string) {
     const node = flow.findNode(nodeId);
     if (!node) throw new Error(`节点不存在：${nodeId}`);
+    if (node.data?.disabled === true) throw new Error(`节点已禁用：${nodeId}`);
     return node;
+  }
+
+  function isNodeDisabled(nodeId: string) {
+    return flow.findNode(nodeId)?.data?.disabled === true;
   }
 
   function nodeInfo(nodeId: string) {
@@ -249,22 +257,24 @@ export function useCanvasTools(options: {
         });
         flow.addEdges(entries.filter(entry => entry.isNew).map(entry => ({ id: entry.id, ...entry.connection })));
         await nextTick();
-        return { edges: entries.map(entry => canvasEdgeSummary(flow.findEdge(entry.id)!)) };
+        // ACT: 端点虽然已按断言校验，回执仍统一剔除禁用端点，防止后续放宽断言时泄露。
+        return { edges: entries.map(entry => canvasEdgeSummary(flow.findEdge(entry.id)!)).filter(edge => !isNodeDisabled(edge.source) && !isNodeDisabled(edge.target)) };
       }
       case "deleteEdges": {
         const { edgeIds } = canvasSchemas.deleteEdges.parse(request.args);
-        edgeIds.forEach(edgeId => {
+        const edges = edgeIds.map(edgeId => {
           const edge = flow.findEdge(edgeId);
           if (!edge) throw new Error(`连线不存在：${edgeId}`);
           if (edge.deletable === false) throw new Error(`连线不允许删除：${edgeId}`);
+          return edge;
         });
-        const nodeIds = [...new Set(edgeIds.flatMap(id => {
-          const edge = flow.findEdge(id)!;
-          return [edge.source, edge.target];
-        }))];
+        // ACT: 端点摘要必须在 removeEdges 之前用非断言查找收集——走统一断言会形成
+        // 「边已删、回执却抛错」的半完成状态；禁用节点的摘要不回显。
+        const nodeIds = [...new Set(edges.flatMap(edge => [edge.source, edge.target]))];
+        const nodes = nodeIds.flatMap(id => (flow.findNode(id) && !isNodeDisabled(id) ? [nodeInfo(id)] : []));
         flow.removeEdges(edgeIds);
         await nextTick();
-        return { edgeIds, nodes: nodeIds.map(id => nodeInfo(id)) };
+        return { edgeIds, nodes };
       }
       case "selectNodes": {
         const { nodeIds } = canvasSchemas.selectNodes.parse(request.args);
@@ -279,20 +289,30 @@ export function useCanvasTools(options: {
       case "arrangeCanvas": {
         canvasSchemas.arrangeCanvas.parse(request.args);
         const { arrangedNodeIds, viewport } = await arrangeCanvas(flow, signal);
-        return { arrangedNodeIds: arrangedNodeIds.slice(0, 100), arrangedCount: arrangedNodeIds.length, truncated: arrangedNodeIds.length > 100, viewport };
+        // ACT: 整理是选择级操作，禁用节点照常参与排版，但回执不列出它们的 ID。
+        const visible = arrangedNodeIds.filter(id => !isNodeDisabled(id));
+        return { arrangedNodeIds: visible.slice(0, 100), arrangedCount: visible.length, truncated: visible.length > 100, viewport };
       }
       case "fitCanvas": {
         const { nodeIds } = canvasSchemas.fitCanvas.parse(request.args);
+        // ACT: 显式 nodeIds 走统一断言（禁用即抛错）；省略时静默过滤，计数也只算可见节点。
         nodeIds?.forEach(findNode);
         await nextTick();
         signal.throwIfAborted();
-        flow.updateNodeInternals(nodeIds ?? flow.getNodes.value.map(node => node.id));
-        const fitted = await flow.fitView({ nodes: nodeIds, padding: 0.2, duration: 0 });
+        const targetIds = nodeIds ?? flow.getNodes.value.filter(node => node.data?.disabled !== true).map(node => node.id);
+        // ACT: 省略 nodeIds 且画布上全是禁用节点时不要回落成「适配全部」——那会把已屏蔽的节点重新框进视口。
+        if (nodeIds === undefined && !targetIds.length) {
+          return { fitted: false, nodeIds: [], nodeCount: 0, truncated: false, viewport: { ...flow.viewport.value } };
+        }
+        flow.updateNodeInternals(targetIds);
+        const fitted = await flow.fitView({ nodes: targetIds, padding: 0.2, duration: 0 });
         signal.throwIfAborted();
-        return { fitted, nodeIds: nodeIds?.slice(0, 100), nodeCount: nodeIds?.length ?? flow.nodes.value.length, truncated: (nodeIds?.length ?? 0) > 100, viewport: { ...flow.viewport.value } };
+        return { fitted, nodeIds: nodeIds?.slice(0, 100), nodeCount: targetIds.length, truncated: (nodeIds?.length ?? 0) > 100, viewport: { ...flow.viewport.value } };
       }
       case "nodeTools": {
         const args = canvasSchemas.nodeTools.parse(request.args);
+        // ACT: 调用目标节点必须是启用状态；显式按 ID 命中禁用节点直接抛错。
+        findNode(args.nodeId);
         return getNodeTools().call(args, signal);
       }
       default: throw new Error(`未知画布操作：${request.name}`);

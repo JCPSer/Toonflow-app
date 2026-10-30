@@ -168,8 +168,17 @@ const text = computed(() => (typeof data.noteText === "string" ? data.noteText :
 const editing = ref(false);
 const draft = ref("");
 const editorEl = ref<HTMLTextAreaElement>();
+const nodeDisabled = computed(() => node.data?.disabled === true);
+// ACT: 禁用后卡片内容变 inert——编辑框既失焦事件也可能收不到，缩放 pointer capture 也可能断。
+// 这里主动收尾：提交未保存的正文（等同失焦）并结束正在进行的缩放（释放历史分组）。
+watch(nodeDisabled, (disabled) => {
+  if (!disabled) return;
+  commitEdit();
+  finishResize();
+});
 
 async function startEdit() {
+  if (nodeDisabled.value) return;
   if (editing.value) return;
   draft.value = text.value;
   editing.value = true;

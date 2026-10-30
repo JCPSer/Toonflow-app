@@ -17,7 +17,12 @@ export type NodeOutput = {
 }[keyof NodeValueMap];
 
 export type NodeOutputs = Record<string, NodeOutput | undefined>;
-export type NodeInputValue = (NodeOutput | { dataType: string | string[]; value: undefined }) & { source: string; sourceHandle: string };
+export type NodeInputValue = (NodeOutput | { dataType: string | string[]; value: undefined }) & {
+  source: string;
+  sourceHandle: string;
+  /** ACT: 上游节点被禁用时的占位标记——条目保留，但 `value` 恒为 undefined。 */
+  disabled?: true;
+};
 
 export function isNodeOutput(output: unknown): output is NodeOutput {
   if (!output || typeof output !== "object" || !("dataType" in output) || !("value" in output)) return false;

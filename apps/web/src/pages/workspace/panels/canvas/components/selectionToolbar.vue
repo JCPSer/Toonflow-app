@@ -30,16 +30,33 @@
           <el-button text :icon="IconLibraryPlus" :loading="saving" :disabled="busy || disabled || !canSaveToAssets" @click="saveToAssets">加入素材库</el-button>
         </span>
       </el-tooltip>
+      <template v-if="disableTargets.length || enableTargets.length">
+        <span class="toolbarDivider" aria-hidden="true" />
+        <el-button
+          v-if="disableTargets.length"
+          text
+          :icon="IconCircleOff"
+          title="禁用选中节点"
+          :disabled="busy || disabled || !canDisableSelection"
+          @click="setSelectionDisabled(true)">禁用</el-button>
+        <el-button
+          v-if="enableTargets.length"
+          text
+          :icon="IconCircleCheck"
+          title="解除选中节点的禁用"
+          :disabled="busy || disabled || !canEnableSelection"
+          @click="setSelectionDisabled(false)">解除禁用</el-button>
+      </template>
     </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, inject, nextTick, ref } from "vue";
 import { getRectOfNodes, useVueFlow, type GraphNode, type Node, type XYPosition } from "@vue-flow/core";
 import { ElButton, ElCard, ElMessage, ElTooltip } from "element-plus";
 import {
-  IconCopyPlus, IconBoxMultiple, IconDeselect, IconLibraryPlus,
+  IconCopyPlus, IconBoxMultiple, IconDeselect, IconLibraryPlus, IconCircleCheck, IconCircleOff,
   IconLayoutGrid, IconLayoutColumns, IconLayoutRows,
 } from "@tabler/icons-vue";
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
@@ -71,8 +88,25 @@ const canArrangeSelection = computed(() => !busy.value && !props.disabled && sel
     && Number.isFinite(node.dimensions.height) && node.dimensions.height > 0));
 const hasGroup = computed(() => flow.getSelectedNodes.value.some(node => node.type === "canvasGroup"));
 // ACT: 分组只是容器，先展开到叶子节点再判定，选一个分组就等于选它里面的所有图片/视频。
-const assetSelection = computed(() => expandSelectionForAssets(flow.getSelectedNodes.value, flow.getNodes.value));
+// 禁用节点既不能入库也不参与可入库判定，和「禁用」按钮用同一套 eligible 口径。
+const assetSelection = computed(() => expandSelectionForAssets(flow.getSelectedNodes.value, flow.getNodes.value)
+  .filter(node => node.data?.disabled !== true));
 const canSaveToAssets = computed(() => assetSelection.value.length > 0 && assetSelection.value.every(node => !!getAssetSource(node)));
+const setNodeDisabled = inject<((ids: string[], value: boolean) => Promise<boolean>) | undefined>("toonflow:setNodeDisabled", undefined);
+const isNodeRunning = inject<((nodeId: string) => boolean) | undefined>("toonflow:isNodeRunning", undefined);
+const eligibleNodes = computed(() => flow.getSelectedNodes.value.filter(node => node.type !== "canvasGroup"));
+const disableTargets = computed(() => eligibleNodes.value.filter(node => node.data?.disabled !== true));
+const enableTargets = computed(() => eligibleNodes.value.filter(node => node.data?.disabled === true));
+// ACT: 运行中的节点实际会被写入通道跳过；全部都在跑时按钮直接置灰，避免点了没反应。
+const canDisableSelection = computed(() => !busy.value && !props.disabled && disableTargets.value.some(node => !isNodeRunning?.(node.id)));
+const canEnableSelection = computed(() => !busy.value && !props.disabled && enableTargets.value.some(node => !isNodeRunning?.(node.id)));
+
+async function setSelectionDisabled(value: boolean) {
+  if (busy.value || props.disabled) return;
+  const ids = (value ? disableTargets.value : enableTargets.value).map(node => node.id);
+  if (!ids.length) return;
+  await setNodeDisabled?.(ids, value);
+}
 const visible = computed(() => !props.disabled && !flow.userSelectionActive.value && flow.getSelectedNodes.value.length > 0
   && (flow.nodesSelectionActive.value || hasGroup.value));
 const toolbarStyle = computed(() => {
@@ -300,7 +334,8 @@ async function saveToAssets() {
   const directory = workspace.project?.directory;
   if (saving.value || busy.value || props.disabled || !directory || !canSaveToAssets.value) return;
   // ACT: 固定开始时的选中集合；批量入库期间用户继续点选不会把范围和序号带偏。
-  const selection = [...flow.getSelectedNodes.value];
+  // 只传 eligible：分组已展开，禁用节点在上面的 assetSelection 里已剔除。
+  const selection = [...assetSelection.value];
   saving.value = true;
   try {
     const result = await saveSelectionToAssets(flow, selection, directory);

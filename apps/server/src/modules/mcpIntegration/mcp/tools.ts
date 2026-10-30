@@ -118,6 +118,10 @@ export async function getMcpTools(): Promise<McpTool[]> {
       const { connection, directory } = await resolveTarget(target, !["openProject", "getSettings", "updateSettings"].includes(name));
       if (!connection) throw new Error("请先打开 Toonflow 桌面或网页");
       if (name === "openProject") await resolveDirectory((args as { directory: string }).directory);
+      // ACT: openDocument/getDocument/writeDocument 只是在这里把请求转给前端文档面板，MCP 侧不读画布
+      // JSON 判断节点状态；禁用画布节点的拒绝统一由前端文档入口完成（document 面板 openDocument →
+      // readDocumentNode/mountDocumentNode，writeDocument → saveDocumentNode 的禁用守卫），
+      // 且禁用成功时会自动关闭该节点的文档会话，因此本入口无需也无法重复判断。
       const result = await callControl(connection.id, name, args, signal, directory);
       return name === "getSettings" || name === "updateSettings" ? redactSecrets(result) : result;
     }));

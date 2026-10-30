@@ -67,9 +67,11 @@ async function open() {
         if (++visited > 10000) { error.value = "工作区超过 10000 个条目，仅搜索已读取部分；其余文件可从文件树打开。"; return; }
         if (child.type === "directory") { pending.push(child.path); continue; }
         if (/\.json$/i.test(child.path) && await isCanvasFile(files, child.path, request.signal)) {
-          const canvas = await files.readJson<{ nodes?: { id: string; data?: { label?: string } }[] }>(child.path, request.signal);
+          const canvas = await files.readJson<{ nodes?: { id: string; data?: { label?: string; disabled?: boolean } }[] }>(child.path, request.signal);
           if (Array.isArray(canvas.nodes)) for (const node of canvas.nodes) {
             if (typeof node.id !== "string") continue;
+            // ACT: 快速打开自行读 JSON，禁用节点与文件树保持同一口径不展示。
+            if (node.data?.disabled === true) continue;
             found.push({ key: JSON.stringify([child.path, node.id]), path: child.path,
               selection: { canvasPath: child.path, nodeId: node.id, label: typeof node.data?.label === "string" ? node.data.label : node.id } });
           }

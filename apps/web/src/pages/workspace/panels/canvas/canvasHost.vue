@@ -212,6 +212,7 @@ async function focusDocumentNode(directory: string, canvasPath: string, nodeId: 
   await nextTick();
   const node = panel.findMentionNode(nodeId);
   if (!node) throw new Error("节点已删除，请刷新文件树");
+  if ((node.data as { disabled?: boolean } | undefined)?.disabled === true) throw new Error("节点已禁用，无法在画布上聚焦");
   if (node.hidden) throw new Error("节点已隐藏，无法在画布上聚焦");
   const context = panel.getCanvasContext();
   if (!context) throw new Error("画布尚未就绪");
@@ -277,6 +278,7 @@ async function readDocumentNodes(directory: string, options: DocumentNodeOptions
   return [...sources.values()].flatMap(source => source.nodes.filter(node => options.includeGroups || node.type !== "canvasGroup").map(node => ({
     canvasPath: source.path, nodeId: node.id, nodeType: node.type, parentNode: node.parentNode,
     label: typeof node.data?.label === "string" && node.data.label.trim() ? node.data.label : node.id,
+    disabled: (node.data as { disabled?: boolean } | undefined)?.disabled === true,
   })));
 }
 
@@ -476,6 +478,8 @@ const mentionSource: MentionCanvasSource = {
     if (!panel) return;
     const node = panel.findMentionNode(nodeId);
     if (!node) throw new Error("节点已删除，请重新选择");
+    // ACT: 禁用节点按 ID 读取输出名/预览也拒绝，口径与 selectNode/selectCanvas 一致。
+    if ((node.data as { disabled?: boolean } | undefined)?.disabled === true) throw new Error("节点已禁用");
     return mentionNodeOutputs(node);
   },
   selectCanvas(canvasId, nodeId, outputId) {
@@ -483,6 +487,7 @@ const mentionSource: MentionCanvasSource = {
     if (!panel) return;
     const node = panel.findMentionNode(nodeId);
     if (!node) throw new Error("节点已删除，请重新选择");
+    if ((node.data as { disabled?: boolean } | undefined)?.disabled === true) throw new Error("节点已禁用");
     // ACT: 引用只发指针，但文本输出补一段正文摘要，让模型不读全文也知道这段讲什么。
     const directory = workspaceStore.project?.directory;
     const readText = directory ? (path: string) => useWorkspaceFiles(directory).readText(path, 200001) : undefined;
@@ -494,6 +499,7 @@ const mentionSource: MentionCanvasSource = {
     if (!panel) return;
     const node = panel.findMentionNode(nodeId);
     if (!node) throw new Error("节点已删除，请重新选择");
+    if ((node.data as { disabled?: boolean } | undefined)?.disabled === true) throw new Error("节点已禁用");
     // ACT: 节点引用要带直接上游摘要，实时画布直接取当前连线快照；未接端口的边不参与上游。
     const nodes = panel.getMentionNodes();
     const edges = panel.getMentionEdges().flatMap(edge => edge.sourceHandle && edge.targetHandle

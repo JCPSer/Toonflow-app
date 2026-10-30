@@ -51,6 +51,7 @@
     </div>
     <template #bottom>
       <el-card class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }">
+        <div v-if="disabledUpstreams.length" class="upstreamHint" role="status">上游 {{ disabledUpstreams.length }} 个节点已禁用，解除禁用后才能生成</div>
         <referenceItem
           v-if="refList.length"
           v-model="refList"
@@ -95,16 +96,17 @@
             <el-button
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
-              :disabled="deleting || uploading || (!generating && (!generationPrompt || !selectedModel))"
-              :title="generating ? '停止生成' : '生成视频'"
-              :aria-label="generating ? '停止生成' : '生成视频'"
+              :disabled="deleting || uploading || (!generating && (!generationPrompt || !selectedModel || disabledUpstreams.length > 0))"
+              :title="generating ? '停止生成' : disabledUpstreamsHint || '生成视频'"
+              :aria-label="generating ? '停止生成' : disabledUpstreamsHint || '生成视频'"
               @click="generating ? generationController?.abort() : startGeneration().catch((error) => showNodeError(error, '视频生成失败'))" />
           </div>
         </div>
       </el-card>
     </template>
   </nodeSkeleton>
-  <videoActions ref="actions" :file="outputFile" :src="previewUrl" :disabled="generating || deleting || uploading" />
+  <!-- ACT: 禁用时把 nodeDisabled 一起交给 videoActions：它内部 watch(disabled) → reset() 会关闭剪辑弹窗。 -->
+  <videoActions ref="actions" :file="outputFile" :src="previewUrl" :disabled="nodeDisabled || generating || deleting || uploading" />
 </template>
 
 <script setup lang="ts">
@@ -146,7 +148,10 @@ data.value.resolution ??= "";
 data.value.mode ??= "";
 data.value.generateAudio ??= true;
 data.value.ratio ??= "9:16";
-const { refList, referenceMentions, setReferencePreview, removeReference } = useNodeReferences();
+// ACT: disabledUpstreams 只用于「按钮置灰 + 说明原因」，禁用上游仍留在 refList 里（占位），不下发到请求。
+const { refList, referenceMentions, disabledUpstreams, setReferencePreview, removeReference } = useNodeReferences();
+const nodeDisabled = computed(() => node.data?.disabled === true);
+const disabledUpstreamsHint = computed(() => disabledUpstreams.value.length ? `上游 ${disabledUpstreams.value.length} 个节点已禁用` : "");
 const models = ref<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
 const uploading = ref(false);
@@ -154,6 +159,11 @@ const fileInput = ref<HTMLInputElement>();
 let disposed = false;
 const deleting = ref(false);
 const player = ref<InstanceType<typeof videoPlayer>>();
+// ACT: 原生全屏不受节点灰化影响，禁用后必须主动退出本播放器发起的全屏。
+watch(nodeDisabled, (disabled) => {
+  if (!disabled) return;
+  void player.value?.exitFullscreen();
+});
 const actions = ref<InstanceType<typeof videoActions>>();
 const videoWidth = ref(0);
 let generationController: AbortController | undefined;
@@ -258,6 +268,7 @@ async function resolveDownload() {
 }
 
 async function resolveFullscreen() {
+  if (nodeDisabled.value) return;
   await activate();
   await nextTick();
   await player.value?.enterFullscreen();
@@ -265,11 +276,13 @@ async function resolveFullscreen() {
 
 // ACT: 剪辑类操作需要真实 src 预览，先激活再打开，避免打开后被 src 变化重置。
 async function openAction(command: "extractAudio" | "separate" | "trim") {
+  if (nodeDisabled.value) return;
   await activate();
   actions.value?.open(command);
 }
 
 async function createAnalysis() {
+  if (nodeDisabled.value) return;
   await activate();
   actions.value?.createFrameAnalysis();
 }
@@ -346,6 +359,7 @@ function loadModels() {
 }
 
 async function startGeneration() {
+  if (disabledUpstreams.value.length) throw new Error(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);
   const choice = selectedModel.value;
   const input = generationInput.value;
   if (generating.value) throw new Error("视频正在生成，请等待完成");
@@ -495,6 +509,17 @@ nodeTools.register({
 </script>
 
 <style scoped lang="scss">
+/* 上游禁用提示：disabled 按钮的 title 在多数浏览器里不会弹出，必须给可见原因。 */
+.upstreamHint {
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .videoContent {
   position: relative;
   display: grid;

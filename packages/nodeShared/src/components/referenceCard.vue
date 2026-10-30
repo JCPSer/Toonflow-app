@@ -1,5 +1,5 @@
 <template>
-  <div class="referenceItem" role="group" :title="title" :aria-label="title" @keydown.enter.self.stop.prevent="imageRef?.showPreview()" @keydown.space.self.stop.prevent="imageRef?.showPreview()">
+  <div class="referenceItem" :class="{ isDisabled: item.disabled }" role="group" :title="title" :aria-label="title" @keydown.enter.self.stop.prevent="imageRef?.showPreview()" @keydown.space.self.stop.prevent="imageRef?.showPreview()">
     <el-image
       v-if="item.dataType === 'IMAGE' && displayUrl"
       ref="imageRef"
@@ -35,6 +35,8 @@
       @dblclick.stop
       @click.stop="emit('remove')" />
     <span class="indexBadge" aria-hidden="true">{{ index }}</span>
+    <!-- ACT: 上游被禁用时仍然保留这张卡片（仍可通过右上角移除连线），只是明确标注不可用。 -->
+    <span v-if="item.disabled" class="disabledBadge" title="上游节点已禁用">已禁用</span>
     <div v-if="item.dataType === 'VIDEO' && previewUrl && !previewError" class="videoInfo" aria-hidden="true">
       <icon-player-play :size="12" />
       <span v-if="duration">{{ duration }}</span>
@@ -58,7 +60,7 @@ const videoThumbnail = ref("");
 const media = computed(() => props.item.value !== undefined && (props.item.dataType === "IMAGE" || props.item.dataType === "VIDEO") ? { ...props.item.value } : undefined);
 const itemIcon = computed(() => props.item.dataType === "IMAGE" ? IconPhoto : props.item.dataType === "VIDEO" ? IconVideo : props.item.dataType === "AUDIO" ? IconMusic : IconFileText);
 const title = computed(() => {
-  const content = props.item.value === undefined ? "暂无内容" : props.item.dataType === "STRING" ? props.item.value : props.item.dataType === "FILE" ? props.item.value.url.split(/[\\/]/).pop() || "文件" : props.item.dataType === "VIDEO" ? "视频" : props.item.dataType === "AUDIO" ? "音频" : "图片";
+  const content = props.item.disabled ? "节点已禁用" : props.item.value === undefined ? "暂无内容" : props.item.dataType === "STRING" ? props.item.value : props.item.dataType === "FILE" ? props.item.value.url.split(/[\\/]/).pop() || "文件" : props.item.dataType === "VIDEO" ? "视频" : props.item.dataType === "AUDIO" ? "音频" : "图片";
   return `引用 ${props.index}：${content}${previewError.value ? `（${previewError.value}）` : ""}`;
 });
 
@@ -135,6 +137,31 @@ function readDuration(event: Event) {
 
   &.referenceGhost {
     opacity: 0.35;
+  }
+
+  &.isDisabled {
+    border-style: dashed;
+    background: var(--el-fill-color-lighter);
+
+    .preview,
+    .typeIcon {
+      filter: grayscale(1);
+      opacity: 0.5;
+    }
+  }
+
+  .disabledBadge {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    padding: 1px 0;
+    background: color-mix(in srgb, var(--el-bg-color-overlay) 85%, transparent);
+    color: var(--el-text-color-secondary);
+    font-size: 9px;
+    line-height: 12px;
+    text-align: center;
+    pointer-events: none;
   }
 
   &:focus-visible {

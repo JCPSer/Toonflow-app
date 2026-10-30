@@ -10,7 +10,7 @@
   <sceneEditor v-if="editing" v-model:anchors="anchors" v-model:prompt="prompt" v-model:model="model" v-model:lighting="lighting" v-model:sceneSettings="sceneSettings"
     :scene="scene" :result="selectedPlan" :models="models" :modelsLoading="modelsLoading" :addingMannequin="addingMannequin"
     :plans="plans" :selectedPlanId="data.selectedPlanId ?? ''" :tasks="tasks"
-    :exportingVideo="exportingVideo" :exportingImage="exportingImage" :exportProgress="exportProgress"
+    :exportingVideo="exportingVideo" :exportingImage="exportingImage" :exportProgress="exportProgress" :disabledUpstreams="disabledUpstreams"
     @exportVideo="exportVideo" @exportImage="exportImage" @addMannequin="addMannequin"
     @selectPlan="data.selectedPlanId = $event" @loadModels="loadModels" @generate="generate" @editInstruction="setPrompt" @close="editing = false">
     <template #input>
@@ -69,7 +69,9 @@ const data = computed(() => node.data as typeof node.data & {
   anchors?: CameraAnchor[];
   selectedPlanId?: string;
 });
-const { refList, referenceMentions, setReferencePreview, removeReference } = useNodeReferences();
+// ACT: disabledUpstreams 交给 sceneEditor → directorPanel，由面板置灰「生成方案」并说明原因。
+const { refList, referenceMentions, disabledUpstreams, setReferencePreview, removeReference } = useNodeReferences();
+const nodeDisabled = computed(() => node.data?.disabled === true);
 const promptModel = computed({ get: () => data.value.promptModel ?? [], set: (value: PromptModel) => { data.value.promptModel = value; } });
 const anchors = computed({ get: () => data.value.anchors ?? [], set: (value: CameraAnchor[]) => { data.value.anchors = value; } });
 const prompt = computed({ get: () => data.value.prompt ?? "", set: (value: string) => { data.value.prompt = value; } });
@@ -82,6 +84,8 @@ const scene = computed(() => modelDocument.value.scene);
 const lighting = computed({ get: () => ({ ...getSceneLighting(scene.value), ...data.value.lighting }), set: (value: LightingSettings) => { data.value.lighting = value; } });
 const sceneSettings = computed({ get: () => ({ gridVisible: true, skyVisible: true, ...data.value.sceneSettings }), set: (value: SceneSettings) => { data.value.sceneSettings = value; } });
 const editing = ref(false);
+// ACT: 导演台是全屏编辑器；禁用后必须关闭（画布层拿不到这个 ref）。
+watch(nodeDisabled, disabled => { if (disabled) editing.value = false; });
 const tasks = ref<DirectorGeneration[]>([]);
 const modelsLoading = ref(false);
 const models = ref<NodeAiModel[]>([]);
@@ -140,6 +144,7 @@ async function loadModel() {
 
 let modelReady = loadModel();
 async function openEditor() {
+  if (nodeDisabled.value) return;
   if (modelError.value) modelReady = loadModel();
   await modelReady;
   if (!disposed && !modelError.value) editing.value = true;
@@ -336,6 +341,7 @@ function setPrompt(value: string) {
 }
 
 async function generate() {
+  if (disabledUpstreams.value.length) return void ElMessage.warning(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);
   if (modelLoading.value || modelError.value || addingMannequin.value) return;
   const choice = selectedModel.value;
   const requirement = prompt.value.trim();

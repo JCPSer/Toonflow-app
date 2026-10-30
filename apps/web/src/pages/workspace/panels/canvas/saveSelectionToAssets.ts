@@ -144,7 +144,8 @@ function wait(ms: number) {
  * 只做复制，不移动也不删除工作区文件，所以源节点文件被清理后素材库里的副本仍然有效。
  */
 export async function saveSelectionToAssets(flow: VueFlowStore, nodes: GraphNode[], directory: string): Promise<SaveSelectionToAssetsResult> {
-  const items = expandSelectionForAssets(nodes, flow.getNodes.value);
+  // ACT: 禁用节点不产物入库；分组在上面已经展开成叶子，这里只按节点自身状态过滤。
+  const items = expandSelectionForAssets(nodes, flow.getNodes.value).filter(node => nodeData(node).disabled !== true);
   const result: SaveSelectionToAssetsResult = { saved: 0, failed: [], renamed: 0 };
   let cursor = 0;
 

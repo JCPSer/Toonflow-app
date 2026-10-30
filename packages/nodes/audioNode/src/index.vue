@@ -46,11 +46,12 @@
     </div>
     <template v-if="actions?.mode === 'speed'" #bottom><div ref="speedTarget" /></template>
   </nodeSkeleton>
-  <audioActions ref="actions" :file="outputFile" :src="previewUrl" :target="speedTarget" :disabled="uploading || transcribing" @pause="player?.pause()" />
+  <!-- ACT: 禁用时把 nodeDisabled 交给 audioActions，它内部随 disabled 关闭剪辑/变速弹层。 -->
+  <audioActions ref="actions" :file="outputFile" :src="previewUrl" :target="speedTarget" :disabled="nodeDisabled || uploading || transcribing" @pause="player?.pause()" />
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { IconMusic, IconUpload, IconTransfer, IconScissors, IconGauge, IconTextRecognition, IconPlayerStop } from "@tabler/icons-vue";
 import { ElButton, ElMessage } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
@@ -71,6 +72,13 @@ const uploading = ref(false);
 const player = ref<InstanceType<typeof audioPlayer>>();
 const actions = ref<InstanceType<typeof audioActions>>();
 const speedTarget = ref<HTMLElement>();
+const nodeDisabled = computed(() => node.data?.disabled === true);
+// ACT: 禁用后 card 变 inert，播放器控件点不到但音频会继续响；这里主动暂停。
+// 剪辑/变速弹层随 audioActions 的 props.disabled 自行 reset 关闭。
+watch(nodeDisabled, (disabled) => {
+  if (!disabled) return;
+  player.value?.pause();
+});
 
 const outputFile = computed(() => outputs.value.audio?.dataType === "AUDIO" ? outputs.value.audio.value : undefined);
 const { processing: transcribing, transcribe, cancel: cancelTranscription, cancelAndWait: cancelTranscriptionAndWait } = useAudioTranscription(outputFile);

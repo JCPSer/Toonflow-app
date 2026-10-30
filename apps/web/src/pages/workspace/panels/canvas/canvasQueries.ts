@@ -131,12 +131,29 @@ export function canvasEdgeSummary(edge: CanvasEdge) {
   return { id: edge.id, source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle };
 }
 
+// ACT: 禁用节点对 Agent 不可见；data 来自画布 JSON，运行时可能缺字段，统一按 === true 判定。
+export function isDisabledNode(node: CanvasNode) {
+  return node.data?.disabled === true;
+}
+
+// ACT: 禁用集合必须进入分页游标——节点数不变但禁用状态变化时，按旧 offset 翻页会跳过或重复条目。
+// 用顺序相关的短哈希（FNV-1a），避免长画布的 0/1 串把游标撑过 4096 字节上限。
+function disabledSignature(nodes: readonly CanvasNode[]) {
+  let hash = 0x811c9dc5;
+  let disabled = 0;
+  for (const node of nodes) {
+    const bit = isDisabledNode(node) ? 1 : 0;
+    disabled += bit;
+    hash = Math.imul(hash ^ bit, 0x01000193);
+  }
+  return `${nodes.length}.${disabled}.${(hash >>> 0).toString(36)}`;
+}
+
 export function createCanvasQueries(source: {
   nodes(): readonly CanvasNode[];
   edges(): readonly CanvasEdge[];
   findNode(id: string): CanvasNode | undefined;
   viewport(): { x: number; y: number; zoom: number };
-  selectedCount(): number;
   nodeRevision(): number;
   edgeRevision(): number;
   canvases(signal?: AbortSignal): Promise<{ id: string; name: string }[]>;
@@ -144,9 +161,11 @@ export function createCanvasQueries(source: {
   nodeTools(): NodeToolsContext;
 }) {
   const sessionId = crypto.randomUUID();
+  // ACT: 按 ID 的读工具统一走这里；禁用节点一律抛错，扫描类自行过滤、不走该断言。
   function findNode(id: string) {
     const node = source.findNode(id);
     if (!node) throw new Error(`节点不存在：${id}`);
+    if (isDisabledNode(node)) throw new Error(`节点已禁用：${id}`);
     return node;
   }
 
@@ -163,7 +182,12 @@ export function createCanvasQueries(source: {
     const digest = await crypto.subtle.digest("SHA-256", encoder.encode(JSON.stringify([name, filters, metadata])));
     signal.throwIfAborted();
     const key = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
-    const revision = name === "getCanvasEdges" ? source.edgeRevision() : name === "getNodeTools" ? `${source.nodeRevision()}:${source.nodeTools().version}` : source.nodeRevision();
+    // ACT: 分页 cursor 必须随禁用集合失效；getCanvas 分页的是画布/类型清单，与节点无关，不纳入签名。
+    const disabled = disabledSignature(source.nodes());
+    const revision = name === "getCanvasEdges" ? `${source.edgeRevision()}:${disabled}`
+      : name === "getNodeTools" ? `${source.nodeRevision()}:${source.nodeTools().version}:${disabled}`
+        : name === "findCanvasNodes" ? `${source.nodeRevision()}:${disabled}`
+          : source.nodeRevision();
     let offset = 0;
     if (cursor) {
       let page: unknown;
@@ -208,16 +232,21 @@ export function createCanvasQueries(source: {
           if (type) typeItems.push(type);
           offset++;
         }
+        // ACT: 概览计数一律剔除禁用节点与触边，否则 Agent 能凭数量差反推被隐藏的内容。
+        const enabledNodes = source.nodes().filter(node => !isDisabledNode(node));
+        const enabledIds = new Set(enabledNodes.map(node => node.id));
+        const edgeCount = source.edges().filter(edge => enabledIds.has(edge.source) && enabledIds.has(edge.target)).length;
         return finish("", offset < total, {
-          id: canvasId, nodeCount: source.nodes().length, edgeCount: source.edges().length,
-          selectedCount: source.selectedCount(), viewport: { ...source.viewport() },
+          id: canvasId, nodeCount: enabledNodes.length, edgeCount,
+          selectedCount: enabledNodes.filter(node => node.selected).length, viewport: { ...source.viewport() },
           ...(args.include?.includes("canvases") ? { canvases: canvasItems, canvasCount: canvases.length } : {}),
           ...(args.include?.includes("nodeTypes") ? { availableNodeTypes: typeItems, nodeTypeCount: types.length } : {}),
         });
       }
       case "findCanvasNodes": {
         const args = canvasSchemas.findCanvasNodes.parse(request.args);
-        const nodes = source.nodes();
+        // ACT: 扫描类静默跳过禁用节点；offset 基于过滤后的数组，totalNodes/scanned 也只统计可见节点。
+        const nodes = source.nodes().filter(node => !isDisabledNode(node));
         const keyword = args.query?.trim().toLocaleLowerCase();
         const types = args.types?.length ? new Set(args.types) : undefined;
         const start = offset;
@@ -277,8 +306,11 @@ export function createCanvasQueries(source: {
       case "getCanvasEdges": {
         const args = canvasSchemas.getCanvasEdges.parse(request.args);
         const ids = args.nodeIds ? new Set(args.nodeIds) : undefined;
+        // ACT: 显式 nodeIds 走统一断言（命中禁用即抛错）；不带 nodeIds 时静默过滤触边。
         ids?.forEach(findNode);
-        const edges = source.edges();
+        // ACT: 边的两端 ID 会进回执，因此触到禁用节点的边一律不返回，否则等于泄露被隐藏的节点。
+        const enabledIds = new Set(source.nodes().filter(node => !isDisabledNode(node)).map(node => node.id));
+        const edges = source.edges().filter(edge => enabledIds.has(edge.source) && enabledIds.has(edge.target));
         const start = offset;
         while (offset < edges.length && offset - start < scanLimit && items.length < args.limit) {
           const edge = edges[offset]!;

@@ -38,7 +38,7 @@
         :src="previewUrl"
         :previewSrc="thumbUrl"
         :toolbarTarget="paintToolbar"
-        :disabled="cropping || scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy"
+        :disabled="nodeDisabled || cropping || scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy"
         alt="节点图片"
         @load="resizeImage"
         @error="ElMessage.error('无法预览该图片')" />
@@ -61,13 +61,13 @@
       <div v-else ref="inpaintTarget" />
     </template>
   </nodeSkeleton>
-  <imageInpaintPrompt v-if="editor?.mode === 'inpaint'" ref="inpaintPrompt" :target="inpaintTarget" :createDraft="createInpaint" :disabled="cropping || scaling || uploading" />
-  <imageLighting v-if="lightingVisible" ref="lighting" :src="previewUrl" :source="outputFile" :target="lightingTarget" :disabled="cropping || scaling || uploading || gridSplit?.splitting" @close="lightingVisible = false" />
-  <imageMultiAngle v-if="multiAngleVisible" ref="multiAngle" :src="previewUrl" :source="outputFile" :target="multiAngleTarget" :disabled="cropping || scaling || uploading || gridSplit?.splitting" @close="multiAngleVisible = false" />
-  <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="cropping || scaling || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating" @open="openPanorama" />
-  <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="cropping || scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
-  <imageScale ref="scale" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="cropping || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleScaleApplied" @restore="handleScaleRestore" />
-  <imageCrop ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="uploading || scaling || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
+  <imageInpaintPrompt v-if="editor?.mode === 'inpaint'" ref="inpaintPrompt" :target="inpaintTarget" :createDraft="createInpaint" :disabled="nodeDisabled || cropping || scaling || uploading" />
+  <imageLighting v-if="lightingVisible" ref="lighting" :src="previewUrl" :source="outputFile" :target="lightingTarget" :disabled="nodeDisabled || cropping || scaling || uploading || gridSplit?.splitting" @close="lightingVisible = false" />
+  <imageMultiAngle v-if="multiAngleVisible" ref="multiAngle" :src="previewUrl" :source="outputFile" :target="multiAngleTarget" :disabled="nodeDisabled || cropping || scaling || uploading || gridSplit?.splitting" @close="multiAngleVisible = false" />
+  <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="nodeDisabled || cropping || scaling || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating" @open="openPanorama" />
+  <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="nodeDisabled || cropping || scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
+  <imageScale ref="scale" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || cropping || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleScaleApplied" @restore="handleScaleRestore" />
+  <imageCrop ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || uploading || scaling || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
   <el-image-viewer
     v-if="previewVisible && previewUrl"
     :urlList="[previewUrl]"
@@ -125,6 +125,17 @@ const panorama = ref<InstanceType<typeof imagePanorama>>();
 const uploading = ref(false);
 const previewVisible = ref(false);
 const imageWidth = ref(0);
+const nodeDisabled = computed(() => node.data?.disabled === true);
+// ACT: 禁用后必须关掉本节点 teleport 出去的编辑器 / 全屏预览 / 弹层；画布层拿不到这些内部 ref，
+// 只能在节点自己的 index.vue 里收口。crop / gridSplit / scale 会随 props.disabled 自行关闭。
+watch(nodeDisabled, (disabled) => {
+  if (!disabled) return;
+  previewVisible.value = false;
+  lightingVisible.value = false;
+  multiAngleVisible.value = false;
+  editor.value?.cancel();
+  if (panorama.value) panorama.value.visible = false;
+});
 
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
 const previewUrl = files.useFileUrl(
@@ -201,6 +212,7 @@ function openPanorama() {
 }
 
 function openLighting() {
+  if (nodeDisabled.value) return;
   if (scaling.value || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting || !previewUrl.value) return;
   editor.value?.cancel();
   multiAngleVisible.value = false;
@@ -208,6 +220,7 @@ function openLighting() {
 }
 
 function openMultiAngle() {
+  if (nodeDisabled.value) return;
   if (scaling.value || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting || !previewUrl.value) return;
   editor.value?.cancel();
   lightingVisible.value = false;
@@ -215,6 +228,7 @@ function openMultiAngle() {
 }
 
 function startEditor(mode: "inpaint" | "mark") {
+  if (nodeDisabled.value) return;
   if (scaling.value || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting) return;
   lightingVisible.value = false;
   multiAngleVisible.value = false;

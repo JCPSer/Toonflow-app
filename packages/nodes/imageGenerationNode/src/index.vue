@@ -48,6 +48,7 @@
       <div v-if="lightingVisible" ref="lightingTarget" />
       <div v-else-if="multiAngleVisible" ref="multiAngleTarget" />
       <el-card v-else class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }">
+        <div v-if="disabledUpstreams.length" class="upstreamHint" role="status">上游 {{ disabledUpstreams.length }} 个节点已禁用，解除禁用后才能生成</div>
         <el-button v-if="inpaintGuideUrl && editor?.mode !== 'inpaint'" class="inpaintInfo" text :icon="IconBrush" @click="inpaintPreviewVisible = true">查看重绘标注</el-button>
         <referenceItem
           v-if="refList.length"
@@ -85,26 +86,26 @@
             :sizes="sizeOptions"
             :ratios="ratioOptions"
             :disabled="cropping || generating || deleting || !selectedModel" />
-          <el-button v-if="editor?.mode === 'inpaint'" class="confirmButton" type="primary" :icon="IconCheck" :loading="editor.busy" :disabled="deleting || uploading || !generationPrompt" @click="confirmInpaint().catch(error => showNodeError(error, '重绘节点创建失败'))">确认</el-button>
+          <el-button v-if="editor?.mode === 'inpaint'" class="confirmButton" type="primary" :icon="IconCheck" :loading="editor.busy" :disabled="deleting || uploading || !generationPrompt || disabledUpstreams.length > 0" :title="disabledUpstreamsHint || '确认局部重绘'" :aria-label="disabledUpstreamsHint || '确认局部重绘'" @click="confirmInpaint().catch(error => showNodeError(error, '重绘节点创建失败'))">确认</el-button>
           <div v-else class="generationActions">
             <mediaPrice v-if="priceInput" :input="{ ...priceInput, mediaType: 'image' }" :supported="selectedModel?.supportsPrice === true" />
             <el-button
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
-              :disabled="deleting || uploading || (!generating && (editor?.busy || !generationPrompt || !selectedModel))"
-              :title="generating ? '停止生成' : '生成图片'"
-              :aria-label="generating ? '停止生成' : '生成图片'"
+              :disabled="deleting || uploading || (!generating && (editor?.busy || !generationPrompt || !selectedModel || disabledUpstreams.length > 0))"
+              :title="generating ? '停止生成' : disabledUpstreamsHint || '生成图片'"
+              :aria-label="generating ? '停止生成' : disabledUpstreamsHint || '生成图片'"
               @click="generating ? generationController?.abort() : startGeneration().catch((error) => showNodeError(error, '图片生成失败'))" />
           </div>
         </div>
       </el-card>
     </template>
   </nodeSkeleton>
-  <imageLighting v-if="lightingVisible" ref="lighting" :src="previewUrl" :source="outputFile" :target="lightingTarget" :disabled="cropping || generating || deleting || uploading || gridSplit?.splitting" @close="lightingVisible = false" />
-  <imageMultiAngle v-if="multiAngleVisible" ref="multiAngle" :src="previewUrl" :source="outputFile" :target="multiAngleTarget" :disabled="cropping || generating || deleting || uploading || gridSplit?.splitting" @close="multiAngleVisible = false" />
-  <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="cropping || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting" @open="openPanorama" />
-  <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
-  <imageCrop ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
+  <imageLighting v-if="lightingVisible" ref="lighting" :src="previewUrl" :source="outputFile" :target="lightingTarget" :disabled="nodeDisabled || cropping || generating || deleting || uploading || gridSplit?.splitting" @close="lightingVisible = false" />
+  <imageMultiAngle v-if="multiAngleVisible" ref="multiAngle" :src="previewUrl" :source="outputFile" :target="multiAngleTarget" :disabled="nodeDisabled || cropping || generating || deleting || uploading || gridSplit?.splitting" @close="multiAngleVisible = false" />
+  <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="nodeDisabled || cropping || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting" @open="openPanorama" />
+  <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="nodeDisabled || cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
+  <imageCrop ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
   <el-image-viewer v-if="inpaintPreviewVisible && inpaintGuideUrl" :urlList="[inpaintGuideUrl]" teleported @close="inpaintPreviewVisible = false" />
   <el-image-viewer
     v-if="previewVisible && previewUrl"
@@ -159,7 +160,10 @@ data.value.inpaintPromptModel ??= [];
 data.value.model ??= "";
 data.value.size ??= "";
 data.value.ratio ??= "16:9";
-const { refList, referenceMentions, setReferencePreview, removeReference } = useNodeReferences();
+// ACT: disabledUpstreams 只用于「按钮置灰 + 说明原因」，禁用上游仍留在 refList 里（占位），不下发到请求。
+const { refList, referenceMentions, disabledUpstreams, setReferencePreview, removeReference } = useNodeReferences();
+const nodeDisabled = computed(() => node.data?.disabled === true);
+const disabledUpstreamsHint = computed(() => disabledUpstreams.value.length ? `上游 ${disabledUpstreams.value.length} 个节点已禁用` : "");
 const models = ref<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
 const uploading = ref(false);
@@ -180,6 +184,17 @@ let disposed = false;
 const deleting = ref(false);
 const previewVisible = ref(false);
 const inpaintPreviewVisible = ref(false);
+// ACT: 禁用后必须关掉本节点 teleport 出去的编辑器 / 全屏预览 / 弹窗；画布层拿不到这些内部 ref，
+// 只能在节点自己的 index.vue 里收口。crop / gridSplit 会随 props.disabled 自行关闭。
+watch(nodeDisabled, (disabled) => {
+  if (!disabled) return;
+  previewVisible.value = false;
+  inpaintPreviewVisible.value = false;
+  lightingVisible.value = false;
+  multiAngleVisible.value = false;
+  editor.value?.cancel();
+  if (panorama.value) panorama.value.visible = false;
+});
 const imageWidth = ref(0);
 let generationController: AbortController | undefined;
 const generationState = useNodeGeneration(outputs, () => generationController?.abort());
@@ -373,6 +388,7 @@ function loadModels() {
 }
 
 async function confirmInpaint() {
+  if (disabledUpstreams.value.length) throw new Error(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);
   const inpaintEditor = editor.value;
   if (!inpaintEditor || inpaintEditor.mode !== "inpaint") throw new Error("请先进入局部重绘");
   if (inpaintEditor.busy || generating.value || deleting.value || uploading.value) return;
@@ -386,6 +402,7 @@ async function confirmInpaint() {
 }
 
 async function startGeneration() {
+  if (disabledUpstreams.value.length) throw new Error(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);
   if (cropping.value) return void ElMessage.warning("正在处理图片，请稍候");
   const input = generationInput.value;
   if (generating.value) throw new Error("图片正在生成，请等待完成");
@@ -457,6 +474,7 @@ function openPanorama() {
 }
 
 function openLighting() {
+  if (nodeDisabled.value) return;
   if (generating.value || deleting.value || uploading.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting || !previewUrl.value) return;
   editor.value?.cancel();
   multiAngleVisible.value = false;
@@ -464,6 +482,7 @@ function openLighting() {
 }
 
 function openMultiAngle() {
+  if (nodeDisabled.value) return;
   if (generating.value || deleting.value || uploading.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting || !previewUrl.value) return;
   editor.value?.cancel();
   lightingVisible.value = false;
@@ -471,6 +490,7 @@ function openMultiAngle() {
 }
 
 function startEditor(mode: "inpaint" | "mark") {
+  if (nodeDisabled.value) return;
   if (generating.value || deleting.value || uploading.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting) return;
   lightingVisible.value = false;
   multiAngleVisible.value = false;
@@ -554,6 +574,17 @@ nodeTools.register({
 </script>
 
 <style scoped lang="scss">
+/* 上游禁用提示：按钮置灰之外必须给可见原因，disabled 按钮的 title 在多数浏览器里不会弹出。 */
+.upstreamHint {
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .panoramaButton {
   &[aria-expanded="true"] .menuChevron { transform: rotate(180deg); }
 }
