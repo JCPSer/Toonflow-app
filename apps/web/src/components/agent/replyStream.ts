@@ -70,6 +70,10 @@ export function createReplyStream(reply: AgentMessage) {
         finishThinking();
         parts.push({ id: event.blockId, type: "tool", tool: event.tool });
       }
+      // ACT: 服务端只在 running 事件里带 question；Object.assign 不会删键，回答完必须清掉，
+      // 否则提问卡片会一直单独显示、不并回工具聚合行。
+      const current = part ?? parts.find((item): item is Extract<AgentMessagePart, { type: "tool" }> => item.type === "tool" && item.id === event.blockId);
+      if (current && event.tool.status !== "running") delete current.tool.question;
       return;
     }
     const existing = parts.find((part): part is Exclude<AgentMessagePart, { type: "tool" }> => part.type !== "tool" && part.id === event.blockId);
@@ -98,7 +102,11 @@ export function createReplyStream(reply: AgentMessage) {
     reply.content = parts.filter(part => part.type === "text").map(part => part.content).join("\n\n");
     reply.streaming = false;
     for (const part of parts) {
-      if (part.type === "tool" && part.tool.status === "running") part.tool.status = "interrupted";
+      if (part.type !== "tool") continue;
+      // ACT: 停止/报错/断流时不会再收到非 running 的工具事件，残留的 question 会让提问卡片永远单列，
+      // 这里一并清掉，回答结束后统一并回工具聚合行。
+      delete part.tool.question;
+      if (part.tool.status === "running") part.tool.status = "interrupted";
     }
   }
 

@@ -221,7 +221,11 @@ watch([searchQuery, treeEntries], async () => { await nextTick(); canvasTree.val
 watch(canvasListVisible, opened => {
   if (!opened) { treeRequest++; loadingTree.value = false; itemMenu.value?.handleClose(); cancelFolder(); }
 });
-onBeforeUnmount(() => treeController.abort());
+onBeforeUnmount(() => {
+  treeController.abort();
+  // 离开画布后停止缩略图预热，避免继续向服务端发无效请求。
+  thumbnailWarmToken++;
+});
 
 function treeChildren(path: string): CanvasEntry[] {
   let entries = treeEntries.value;
@@ -495,6 +499,35 @@ function checkCanvasDirectory(directory: string, signal?: AbortSignal) {
   if (props.directory !== directory) throw new Error("工作目录已切换，本次画布操作已停止");
 }
 
+// ACT: 打开画布后按顺序预热图片缩略图。单张服务端生成约 0.3 s，提前排队能让用户第一次平移时
+// 不再逐张等待；串行（等上一张返回再发下一张，服务端全局并发只有 2）避免把视口内的 <img> 挤到队尾。
+// 切换画布/卸载时 token 失效即停。
+const thumbnailPathPattern = /\.(?:png|jpe?g|webp|bmp|avif)$/i;
+let thumbnailWarmToken = 0;
+function preheatThumbnails(directory: string, nodes: { data?: unknown }[], signal?: AbortSignal) {
+  const files = useWorkspaceFiles(directory);
+  const warm = files.warmThumb;
+  if (!warm) return;
+  const paths = new Set<string>();
+  for (const node of nodes) {
+    const outputs = (node.data as { outputs?: Record<string, { dataType?: string; value?: { url?: string } } | undefined> } | undefined)?.outputs;
+    for (const output of Object.values(outputs ?? {})) {
+      const url = output?.value?.url;
+      // 服务端按扩展名判定，这里同样只看扩展名（mimeType 由调用方传入，不可信）。
+      if (output?.dataType === "IMAGE" && url && thumbnailPathPattern.test(url)) paths.add(url);
+    }
+  }
+  if (!paths.size) return;
+  const token = ++thumbnailWarmToken;
+  void (async () => {
+    await new Promise(resolve => setTimeout(resolve, 800));
+    for (const path of paths) {
+      if (token !== thumbnailWarmToken || signal?.aborted) return;
+      await warm(path, 1024);
+    }
+  })();
+}
+
 async function applyCanvas(canvasId: string, directory: string, signal?: AbortSignal) {
   checkCanvasDirectory(directory, signal);
   const nextCanvas = canvases.value.find(canvas => canvas.id === canvasId);
@@ -529,6 +562,7 @@ async function applyCanvas(canvasId: string, directory: string, signal?: AbortSi
   boundCanvas.value = nextCanvas;
   activeCanvasId.value = nextCanvas.id;
   signal?.throwIfAborted();
+  preheatThumbnails(directory, nextCanvas.flow.nodes, signal);
 }
 
 async function switchCanvas(canvasId: string, signal?: AbortSignal) {

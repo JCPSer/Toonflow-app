@@ -40,14 +40,14 @@
     }
   ],
   "dependencies": [
-    "server-api",
     "agent-runtime",
     "agent-tools",
     "ai-providers",
-    "workflow-nodes",
-    "shared-foundation",
     "canvas-extensions",
-    "media-toolkit"
+    "media-toolkit",
+    "server-api",
+    "shared-foundation",
+    "workflow-nodes"
   ],
   "health": {
     "score": 58,

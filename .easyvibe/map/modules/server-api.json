@@ -6,6 +6,8 @@
       "apps/server/scripts/build.ts",
       "apps/server/scripts/buildStandalone.ts",
       "apps/server/scripts/copyDocumentPackages.ts",
+      "apps/server/src/agentHost.ts",
+      "apps/server/src/agentRuntime.ts",
       "apps/server/src/app.ts",
       "apps/server/src/core.ts",
       "apps/server/src/index.ts",
@@ -251,7 +253,7 @@
       "apps/server/src/utils.ts"
     ]
   },
-  "generated_at": "2026-10-27T08:05:00+08:00",
+  "generated_at": "2026-10-27T22:28:31+08:00",
   "generator": "easyvibe-submap/v1.0",
   "sub_modules": [
     {
@@ -267,7 +269,9 @@
         "apps/server/src/index.ts",
         "apps/server/src/router.ts",
         "apps/server/src/types/module.ts",
-        "apps/server/src/utils.ts"
+        "apps/server/src/utils.ts",
+        "apps/server/src/agentHost.ts",
+        "apps/server/src/agentRuntime.ts"
       ],
       "key_entries": [
         {
@@ -296,20 +300,19 @@
         "plugin_market"
       ],
       "health": {
-        "score": 62,
+        "score": 66,
         "coupling": "high",
         "complexity": "medium",
         "churn": "high",
         "decay_flags": [
-          "god_facade",
-          "circular_dep"
+          "god_facade"
         ],
-        "review_note": "9 文件 691 行：app.ts 78 行组合根（动态装配 7 入口 + 15 步）、core.ts 40 行路由生成、router.ts 348 行生成物、utils.ts 75 行 37 键聚合出口、types/module.ts 契约、scripts 3 个构建脚本。出边覆盖全部 7 个子模块、入边来自全部 7 个子模块（多为 @/utils facade），是唯一的装配枢纽；utils.ts 聚合 @/agent，使 server↔agent 环多一个接点。建议把 utils.ts 的 agent 出口移出 facade，由 app.ts 显式装配。",
+        "review_note": "11 文件 837 行：app.ts 78 行组合根（动态装配 7 入口 + 15 步）、core.ts 40 行路由生成、router.ts 348 行生成物、utils.ts 75 行 38 键聚合出口、types/module.ts 契约、scripts 3 个构建脚本，以及 2026-10-27 新增的 agentHost.ts（装配）/ agentRuntime.ts（门面）2 文件 140 行。出边覆盖全部 7 个子模块、入边来自全部 7 个子模块（多为 @/utils facade），是唯一的装配枢纽；agent 依赖已改为单向：应用层经 agentRuntime 门面引用 agent，agent→应用 import 为 0，server↔agent 环消失（A2P=0）。建议继续收敛 utils.ts 的聚合面，agent 门面只由组合根持有。",
         "concerns": [
           {
-            "severity": "critical",
-            "finding": "utils.ts 以 37 个键聚合全部服务并被 145 个文件引用，其中包含 @/agent，任何路由都隐式依赖 Agent 实现并放大 server↔agent 环。",
-            "suggestion": "按域拆 facade 或改构造注入，至少把 agent 三个出口移到 app.ts 显式装配。"
+            "severity": "high",
+            "finding": "utils.ts 以 38 个键聚合全部服务并被 145 个文件引用（含 agentRuntime 门面出口），任何路由都隐式依赖应用装配面，聚合面仍在扩张。",
+            "suggestion": "按域拆分 facade 或改构造注入；agent 门面出口只在组合根装配，不再进 utils。"
           }
         ]
       }

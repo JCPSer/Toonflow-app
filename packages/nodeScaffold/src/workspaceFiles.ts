@@ -1,4 +1,4 @@
-import { inject, onScopeDispose, ref, toValue, watch, type MaybeRefOrGetter } from "vue";
+import { computed, inject, onScopeDispose, ref, toValue, watch, type MaybeRefOrGetter } from "vue";
 import type { NodeMediaValue } from "./values";
 import { useNodePreviewReady } from "./useNodePreviewReady";
 
@@ -8,8 +8,8 @@ export interface WorkspaceFiles {
   acquireUrl?(path: string, mimeType: string): { url: Promise<string>; release(): void };
   /** 服务端生成的缩略图地址（同源直连，同源 <img> 可直接加载），无能力时缺省。 */
   thumbUrl?(path: string, size?: number): string;
-  /** 预热缩略图缓存（落盘后调用，失败静默）。 */
-  warmThumb?(path: string, size?: number): void;
+  /** 预热缩略图缓存（落盘后调用，失败静默；返回 Promise 便于调用方串行等待）。 */
+  warmThumb?(path: string, size?: number): void | Promise<void>;
   readText(path: string): Promise<string>;
   readTextSnapshot(path: string): Promise<{ text: string; revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" }>;
   writeTextSnapshot(path: string, text: string, snapshot: { revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" }): Promise<string>;
@@ -26,13 +26,19 @@ function getNodeDirectory(nodeId: string) {
   return `assets/${nodeId}`;
 }
 
-export async function uploadNodeFile(files: WorkspaceFiles, nodeId: string, file: File) {
+/** 建好 assets 与 assets/<nodeId> 两级目录，返回节点素材目录（已存在视为成功）。 */
+export async function ensureNodeDirectory(files: WorkspaceFiles, nodeId: string) {
   const directory = getNodeDirectory(nodeId);
   for (const path of ["assets", directory]) {
     await files.mkdir(path).catch((error: { response?: { data?: { data?: { code?: string } } } }) => {
       if (error.response?.data?.data?.code !== "EEXIST") throw error;
     });
   }
+  return directory;
+}
+
+export async function uploadNodeFile(files: WorkspaceFiles, nodeId: string, file: File) {
+  const directory = await ensureNodeDirectory(files, nodeId);
   const extension = file.name.match(/\.[a-zA-Z0-9]{1,10}$/)?.[0].toLowerCase() ?? "";
   const path = `${directory}/${crypto.randomUUID()}${extension}`;
   await files.write(path, file, true);
@@ -99,6 +105,25 @@ export function useNodeFiles() {
     return getWorkspaceFiles().thumbUrl?.(path, size) ?? "";
   }
 
+  // ACT: 只有静态位图值得缩略：动图会被压成首帧（可见变化），svg/tiff 服务端也生成不出来，二者回退原图。
+  // 服务端按扩展名判定（mentionAssetType），这里必须同样只看扩展名，否则会发出必定 400 的请求。
+  const thumbPathPattern = /\.(?:png|jpe?g|webp|bmp|avif)$/i;
+  function thumbable(value: NodeMediaValue) {
+    return thumbPathPattern.test(value.url);
+  }
+  /** 画布展示用缩略图地址：能力缺失或格式不支持时返回空串，调用方回退原图。 */
+  function useThumbUrl(file: MaybeRefOrGetter<NodeMediaValue | undefined>, size = 1024) {
+    return computed(() => {
+      const value = toValue(file);
+      if (!value?.url || !thumbable(value)) return "";
+      try {
+        return thumbUrl(value.url, size);
+      } catch {
+        return "";
+      }
+    });
+  }
+
   /**
    * 惰性媒体地址：默认只给缩略图，activate() 才真正读取 Blob，deactivate() 立即释放。
    * 用于「不播放就不把整段视频读进内存」的节点；没有 acquireUrl 能力时回退为整段读取。
@@ -151,5 +176,5 @@ export function useNodeFiles() {
     return { url, posterUrl, activate, deactivate: release };
   }
 
-  return { getWorkspaceFiles, uploadFile, removeNodeFiles, useFileUrl, useLazyFileUrl, thumbUrl };
+  return { getWorkspaceFiles, uploadFile, removeNodeFiles, useFileUrl, useLazyFileUrl, thumbUrl, useThumbUrl };
 }

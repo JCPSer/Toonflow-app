@@ -1,6 +1,15 @@
 <template>
   <el-button :icon="IconHistory" :disabled="disabled" text title="历史记录" aria-label="历史记录" @click.stop="visible = true">历史记录</el-button>
-  <el-dialog v-model="visible" :title="`${mediaType === 'image' ? '图片' : '视频'}历史记录`" width="min(760px, calc(100vw - 32px))" appendToBody destroyOnClose>
+  <el-dialog
+    v-model="visible"
+    :title="`${mediaType === 'image' ? '图片' : '视频'}历史记录`"
+    width="min(760px, calc(100vw - 32px))"
+    appendToBody
+    destroyOnClose
+    :modal-class="dragOut ? 'mediaHistoryDragOverlay' : ''"
+    :close-on-click-modal="!dragOut"
+    :close-on-press-escape="!dragOut"
+    @closed="endDrag">
     <div v-loading="loading" class="mediaHistory nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
       <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
       <el-empty v-else-if="!loading && !items.length" description="暂无历史记录" />
@@ -31,8 +40,27 @@
           </div>
           <div class="historyPreview" v-loading="!!selected && !previewReady && !previewError">
             <el-alert v-if="previewError" :title="previewError" type="error" :closable="false" />
-            <img v-else-if="previewUrl && mediaType === 'image'" :src="previewUrl" alt="历史图片预览" @load="previewReady = true" @error="previewError = '无法预览该图片'" />
-            <video v-else-if="previewUrl" :src="previewUrl" controls playsinline preload="auto" aria-label="历史视频预览" @loadeddata="previewReady = true" @error="previewError = '无法预览该视频'" />
+            <img
+              v-else-if="previewUrl && mediaType === 'image'"
+              :src="previewUrl"
+              alt="历史图片预览"
+              title="按住拖到画布上可创建独立节点"
+              draggable="false"
+              @pointerdown="onPreviewPointerDown"
+              @load="previewReady = true"
+              @error="previewError = '无法预览该图片'" />
+            <video
+              v-else-if="previewUrl"
+              :src="previewUrl"
+              controls
+              playsinline
+              preload="auto"
+              title="按住拖到画布上可创建独立节点"
+              draggable="false"
+              aria-label="历史视频预览"
+              @pointerdown="onPreviewPointerDown"
+              @loadeddata="previewReady = true"
+              @error="previewError = '无法预览该视频'" />
           </div>
         </div>
         <el-pagination v-model:currentPage="page" :pageSize="pageSize" :total="items.length" layout="prev, pager, next" hideOnSinglePage />
@@ -51,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useNode } from "@vue-flow/core";
 import { ElAlert, ElButton, ElDialog, ElEmpty, ElLoading, ElPagination } from "element-plus";
 import { IconHistory, IconTrash } from "@tabler/icons-vue";
@@ -93,6 +121,8 @@ watch(visible, async (open, _previous, onCleanup) => {
   let cancelled = false;
   onCleanup(() => { cancelled = true; });
   actionToken++;
+  // ACT: 拖拽中有可能导致 dragend 丢失（拖到窗口外松手），关弹窗必须无条件复位，否则遮罩会永久透明不可点。
+  if (!open) endDrag();
   items.value = [];
   selected.value = undefined;
   loadError.value = "";
@@ -150,6 +180,128 @@ function deleteSelected() {
   if (selected.value) void removeItem(selected.value);
 }
 
+/** 与画布 `canvasDrop.ts` 的 `workspaceFileDropEvent` 约定的事件名：只带相对路径，复制在服务端完成。 */
+const HISTORY_DROP_EVENT = "toonflow:workspace-file-drop";
+const DRAG_THRESHOLD = 6;
+const dragOut = ref(false);
+
+type DragSession = {
+  item: NodeMediaValue;
+  element: HTMLElement;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  active: boolean;
+  overPane: boolean;
+  ghost?: HTMLElement;
+};
+let dragSession: DragSession | undefined;
+let dragTimer: ReturnType<typeof setTimeout> | undefined;
+
+// ACT: WKWebView（Electrobun 桌面端）里 HTML5 拖拽常常连 dragstart 都不派发，拖拽源根本不启动；
+// 历史记录改用手写指针拖拽：自绘拖影、elementFromPoint 判定落点，松手后由画布侧建节点。
+function onPreviewPointerDown(event: PointerEvent) {
+  if (event.button !== 0 || dragSession) return;
+  const item = selected.value;
+  const element = event.currentTarget;
+  if (!item || !previewUrl.value || !(element instanceof HTMLElement)) return;
+  dragSession = { item, element, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, active: false, overPane: false };
+  window.addEventListener("pointermove", onDragPointerMove);
+  window.addEventListener("pointerup", onDragPointerUp);
+  window.addEventListener("pointercancel", cancelDrag);
+  window.addEventListener("keydown", onDragKeydown, true);
+  // ACT: 指针在窗口外松开/丢失时收不到 pointerup，超时兜底，避免遮罩一直透明。
+  dragTimer = setTimeout(cancelDrag, 30000);
+}
+
+function onDragPointerMove(event: PointerEvent) {
+  const drag = dragSession;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  if (!drag.active) {
+    if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < DRAG_THRESHOLD) return;
+    drag.active = true;
+    dragOut.value = true;
+    drag.ghost = createGhost();
+    // 图片没有可交互子元素，捕获指针后拖到窗口外也能收到 up；视频要留出控制条交互，不捕获。
+    if (drag.element.tagName === "IMG") {
+      try { drag.element.setPointerCapture(drag.pointerId); } catch { /* 捕获失败不影响拖拽 */ }
+    }
+  }
+  event.preventDefault();
+  moveGhost(drag, event.clientX, event.clientY);
+}
+
+function onDragPointerUp(event: PointerEvent) {
+  const drag = dragSession;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  if (drag.active) {
+    moveGhost(drag, event.clientX, event.clientY);
+    if (drag.overPane) {
+      window.dispatchEvent(new CustomEvent(HISTORY_DROP_EVENT, {
+        detail: { path: drag.item.url, mimeType: drag.item.mimeType, clientX: event.clientX, clientY: event.clientY },
+      }));
+    }
+  }
+  endDrag();
+}
+
+function onDragKeydown(event: KeyboardEvent) {
+  if (event.key !== "Escape" || !dragSession?.active) return;
+  event.preventDefault();
+  event.stopPropagation();
+  endDrag();
+}
+
+function cancelDrag() {
+  endDrag();
+}
+
+// ACT: 拖拽一旦开始就必须收尾（松手、Esc、切画布、弹窗关闭、组件卸载），否则遮罩会一直透明。
+function endDrag() {
+  const drag = dragSession;
+  if (!drag) return;
+  dragSession = undefined;
+  window.removeEventListener("pointermove", onDragPointerMove);
+  window.removeEventListener("pointerup", onDragPointerUp);
+  window.removeEventListener("pointercancel", cancelDrag);
+  window.removeEventListener("keydown", onDragKeydown, true);
+  clearTimeout(dragTimer);
+  dragTimer = undefined;
+  if (drag.element.hasPointerCapture?.(drag.pointerId)) {
+    try { drag.element.releasePointerCapture(drag.pointerId); } catch { /* 已释放 */ }
+  }
+  drag.ghost?.remove();
+  dragOut.value = false;
+}
+
+function createGhost() {
+  const ghost = document.createElement("div");
+  ghost.style.cssText = "position:fixed;left:0;top:0;width:150px;transform:translate(-50%,-50%);pointer-events:none;z-index:3000;border-radius:8px;overflow:hidden;background:#111;box-shadow:0 10px 30px rgb(0 0 0 / 35%);opacity:.9;color:#fff;font:12px/1.4 sans-serif;text-align:center";
+  if (props.mediaType === "image" && previewUrl.value) {
+    const image = document.createElement("img");
+    image.src = previewUrl.value;
+    image.alt = "";
+    image.style.cssText = "display:block;width:100%;height:auto";
+    ghost.appendChild(image);
+  } else {
+    ghost.textContent = "视频";
+    ghost.style.padding = "10px 0";
+  }
+  document.body.appendChild(ghost);
+  return ghost;
+}
+
+function moveGhost(drag: DragSession, x: number, y: number) {
+  if (!drag.ghost) return;
+  drag.ghost.style.left = `${x}px`;
+  drag.ghost.style.top = `${y}px`;
+  const element = document.elementFromPoint(x, y);
+  drag.overPane = element instanceof Element && !!element.closest(".vue-flow__pane");
+  drag.ghost.style.outline = drag.overPane ? "2px solid var(--el-color-primary)" : "none";
+}
+
+onBeforeUnmount(endDrag);
+
 // ACT: 历史文件位于节点素材目录，删除即物理删除；删除当前结果时同步清空节点输出，避免悬空引用。
 async function removeItem(item: NodeMediaValue) {
   if (props.disabled || loading.value || deleting.value) return;
@@ -186,6 +338,13 @@ async function removeItem(item: NodeMediaValue) {
 </script>
 
 <style scoped lang="scss">
+/* ACT: 拖到画布时把本弹窗的遮罩让开（只作用于 el-dialog 的 modal-class，不碰其它弹窗）。 */
+:global(.mediaHistoryDragOverlay) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.12s ease;
+}
+
 .mediaHistory {
   min-height: 300px;
 
@@ -250,7 +409,8 @@ async function removeItem(item: NodeMediaValue) {
       background: var(--el-fill-color-light);
       border-radius: var(--el-border-radius-base);
 
-      img, video { width: 100%; max-height: 360px; object-fit: contain; }
+      img, video { width: 100%; max-height: 360px; object-fit: contain; cursor: grab; }
+      img:active, video:active { cursor: grabbing; }
     }
   }
 

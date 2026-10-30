@@ -184,5 +184,7 @@ export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: (
   onScopeDispose(() => { revision++; record.cancel(); });
 
   const getRetainedNodes = () => [...nodeReferences.values(), ...flow.getNodes.value];
-  return { canUndo, canRedo, record, commit, undo, redo, batch, getRetainedNodes };
+  // ACT: 撤销/重做恢复的是快照原样的几何，画布层据此跳过"删除后重贴合"，否则会把用户手调的组尺寸改掉。
+  const isApplying = () => applying.value;
+  return { canUndo, canRedo, record, commit, undo, redo, batch, getRetainedNodes, isApplying };
 }

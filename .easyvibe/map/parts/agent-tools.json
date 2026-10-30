@@ -31,8 +31,8 @@
     }
   ],
   "dependencies": [
-    "shared-foundation",
-    "media-toolkit"
+    "media-toolkit",
+    "shared-foundation"
   ],
   "health": {
     "score": 77,

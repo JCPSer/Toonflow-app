@@ -8,6 +8,7 @@
         <icon-tool :size="14" />
         <span class="toolName">{{ renderer ? "操作工具" : tool.name || "工具调用" }}</span>
         <span class="toolState">{{ tool.name === 'subAgent' && tool.status === 'success' ? '调用已返回' : toolStatusLabels[tool.status] }}</span>
+        <span v-if="compact && summary" class="toolSummary">{{ summary }}</span>
       </span>
     </template>
     <div v-if="!collapsed" class="toolDetails">
@@ -33,7 +34,7 @@ import chatReasoning from "@tdesign-vue-next/chat/es/chat-reasoning";
 import type { AgentToolCall } from "@toonflow/server/agent/types";
 import messageMarkdown from "@/components/messageMarkdown.vue";
 
-const { tool, directory, toolSessionId } = defineProps<{ tool: AgentToolCall; directory?: string; toolSessionId?: string }>();
+const { tool, directory, toolSessionId, compact = false } = defineProps<{ tool: AgentToolCall; directory?: string; toolSessionId?: string; compact?: boolean }>();
 const emit = defineEmits<{ copy: [content: string] }>();
 const renderer = shallowRef<Component>();
 const rendererError = ref("");
@@ -64,6 +65,19 @@ const toolStatusLabels = { running: "调用中…", success: "已完成", error:
 const toolCodeOptions = { maxHeight: 240, lineNumbers: false };
 const args = computed(() => formatToolData(tool.args));
 const result = computed(() => formatToolData(tool.result));
+// ACT: 折叠成一行时需要一句能扫读的摘要：优先显式 action，其次结果首行（跳过 JSON 括号），最后任意字符串入参。
+const summary = computed(() => {
+  const values = tool.args && typeof tool.args === "object" ? tool.args as Record<string, unknown> : {};
+  const action = typeof values.action === "string" ? values.action.trim() : "";
+  const resultText = typeof tool.result === "string" ? tool.result : "";
+  const firstLine = resultText.split("\n").map(line => line.trim())
+    .find(line => line && line !== "{" && line !== "[" && line !== "}" && line !== "]");
+  // 只认已知安全字段：入参里可能有整段提示词、文件内容或凭据，兜底到"任意字符串"会直接显示在常驻行上。
+  const fallback = ["action", "path", "query", "command", "name", "url", "file"]
+    .map(key => values[key]).find(value => typeof value === "string" && value.trim()) as string | undefined;
+  const raw = action || firstLine || fallback?.trim() || "";
+  return raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
+});
 
 function formatToolData(value: unknown) {
   if (value === undefined) return;
@@ -98,6 +112,15 @@ function formatToolData(value: unknown) {
     .toolState {
       flex-shrink: 0;
       font-size: 12px;
+    }
+
+    .toolSummary {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      opacity: 0.72;
     }
 
     &[data-status="error"] .toolState { color: var(--el-color-danger); }

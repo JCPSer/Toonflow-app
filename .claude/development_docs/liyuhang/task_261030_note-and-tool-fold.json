@@ -1,0 +1,31 @@
+{
+  "task_id": "task_261030_note-and-tool-fold",
+  "created_at": "2026-10-30",
+  "owner": "liyuhang",
+  "repo": "/Users/liyuhang/Documents/git_projects/Toonflow-app",
+  "goal": "新增便签节点（noteNode）与 Agent 对话工具调用折叠两个功能",
+  "tasks": [
+    {
+      "id": "A",
+      "subject": "便签节点 noteNode（原“备注”，现更名“便签”）",
+      "status": "requirements_review_pending",
+      "docs": [
+        ".claude/development_docs/liyuhang/1_requirements_matrix/2026-10-30-09-20-note-node.md",
+        ".claude/development_docs/liyuhang/2_requirements_solutions/2026-10-30-09-35-note-node.md"
+      ],
+      "scope": "packages/nodes/noteNode 新增；4 处登记（组件 icon、菜单排序 3.5、设置页图标 IconNote、统计白名单）",
+      "notes": "两轮子代理初审已过；用户确认实现口径 5 条；显示名由“备注”改为“便签”，技术名仍 noteNode"
+    },
+    {
+      "id": "B",
+      "subject": "Agent 对话工具调用折叠（全局设置，默认折叠，连续工具合并一行）",
+      "status": "requirements_review_pending",
+      "docs": [
+        ".claude/development_docs/liyuhang/1_requirements_matrix/2026-10-30-10-45-agent-tool-call-fold.md",
+        ".claude/development_docs/liyuhang/2_requirements_solutions/2026-10-30-10-50-agent-tool-call-fold.md"
+      ],
+      "scope": "settings 增加 expandToolCalls；messageList 聚合渲染；新增 toolGroupMessage；toolMessage compact 摘要；浏览器面板折叠",
+      "notes": "仅 Agent 对话视图生效；提问表单自动展开；不动服务端与会话存储"
+    }
+  ]
+}

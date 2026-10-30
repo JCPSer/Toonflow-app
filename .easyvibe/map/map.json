@@ -2,7 +2,7 @@
   "version": "1.0",
   "meta": {
     "repo": "Toonflow-app",
-    "generated_at": "2026-10-27T08:01:50+08:00",
+    "generated_at": "2026-10-27T22:34:05+08:00",
     "generator": "easyvibe-architect/claude-sonnet-4-6",
     "description": "Toonflow AI 短剧漫剧创作平台：Vue 工作区 + Express 服务 + Agent 运行时，插件化节点/工具/扩展与素材库，桌面与移动端原生壳与更新分发。",
     "languages": [
@@ -14,19 +14,19 @@
       "Java",
       "Objective-C"
     ],
-    "loc": 98243,
+    "loc": 99162,
     "map_freshness": "fresh",
     "stats": {
-      "files_total": 706,
-      "files_covered": 706,
+      "files_total": 718,
+      "files_covered": 718,
       "coverage_ratio": 1.0,
-      "edges_derived": 31,
+      "edges_derived": 30,
       "edges_inferred": 0,
       "retried_modules": 0
     },
     "provenance": {
-      "head_short": "1861cd0",
-      "generated_at": "2026-10-27T08:01:50+08:00"
+      "head_short": "794886b",
+      "generated_at": "2026-10-27T22:34:05+08:00"
     }
   },
   "layers": [
@@ -406,7 +406,9 @@
         "apps/server/src/modules/**",
         "apps/server/src/routes/**",
         "apps/server/src/types/**",
-        "apps/server/scripts/**"
+        "apps/server/scripts/**",
+        "apps/server/src/agentHost.ts",
+        "apps/server/src/agentRuntime.ts"
       ],
       "key_entries": [
         {
@@ -449,21 +451,20 @@
         "shared-foundation"
       ],
       "health": {
-        "score": 72,
+        "score": 76,
         "coupling": "high",
         "complexity": "high",
         "churn": "high",
         "decay_flags": [
-          "circular_dep",
           "coupling_high"
         ],
-        "review_note": "已按素材库/媒体生成/插件市场/MCP/本机运行时/Agent 接入/平台核心拆出 7 个子模块，246 文件 / 14,584 行（bootstrap 9 + 域模块 66 + lib 9 + types/desktop 1 + routes 161），app.ts 收敛为 78 行组合根，单模块 god module 形态消除。仍剩两类结构债：① 与 agent-runtime 双向引用（agent→应用 71 处、应用→agent 24 处）未端口化；② 子模块间 53 条直引对方域文件（36 个文件）绕过入口，仅 4 条经入口。建议以 AgentHost 端口切断 agent→@/utils·@/lib，再按域把深引收敛到入口或 ModuleContext。",
+        "review_note": "已按素材库/媒体生成/插件市场/MCP/本机运行时/Agent 接入/平台核心拆出 7 个子模块，250 文件 / 14,774 行（app.ts/core.ts/router.ts/index.ts/utils.ts 5 + lib 9 + 域模块 66 + routes 163 + types 2 + scripts 3 + agentHost/agentRuntime 装配 2），app.ts 收敛为 78 行组合根，单模块 god module 形态消除。agent↔应用环已由 AgentHost 端口切断：本模块引用 agent 全部经 agentRuntime.ts 门面（e9 17 处），agent→应用 import 为 0（A2P=0）。仍剩四类结构债：① 子模块间 53 条直引对方域文件（36 个文件）绕过入口，仅 4 条经入口；② 启动入口 apps/server/src/index.ts 直接读宿主壳 electrobun.config（e13），与宿主壳的 e26 共同构成既有模块回边（非 Agent 环，按 layer_violation 跟踪）；③ utils.ts 以 38 键聚合全部应用能力（含 agentRuntime 门面出口）；④ 子图 bootstrap 的装配仍分散在 15 个步骤。建议按域把深引收敛到入口或 ModuleContext，并把版本号改为平台能力端口注入。",
         "concerns": [
           {
             "id": "c-server-api-2",
-            "severity": "critical",
-            "finding": "agent-runtime 对应用层有 71 处 import（@/modules 50、@/lib 20、@/utils 1），应用层又反向 import agent 24 处，环仍在最热的会话链路上；utils.ts 以 37 个出口聚合、被 145 个文件引用。",
-            "suggestion": "定义 AgentHost 端口（配置/工作区/模型/团队）由 app.ts 注入，utils.ts 不再聚合 agent 能力。"
+            "severity": "high",
+            "finding": "utils.ts 以 38 个键聚合全部应用能力（含 agentRuntime 门面出口）并被 145 个文件引用，路由普遍隐式依赖该聚合面；依赖方向已单向（agent→应用 0 处），但聚合面仍在扩张。",
+            "suggestion": "继续按域拆分 facade 或改构造注入；agent 门面只由组合根持有，不再经 utils 转发。"
           },
           {
             "id": "c-server-api-4",
@@ -479,7 +480,7 @@
           }
         ]
       },
-      "last_analyzed_at": "2026-10-27T08:01:50+08:00"
+      "last_analyzed_at": "2026-10-27T22:28:17+08:00"
     },
     {
       "id": "ai-providers",
@@ -633,25 +634,16 @@
       ],
       "dependencies": [
         "agent-tools",
-        "server-api",
         "shared-foundation"
       ],
       "health": {
-        "score": 62,
+        "score": 68,
         "coupling": "medium",
         "complexity": "high",
         "churn": "medium",
-        "decay_flags": [
-          "circular_dep"
-        ],
-        "review_note": "33 文件 / 4,395 行；agent→server 73 处、server→agent 28 处构成环，runtime/index.ts 的 run() 同时承担附件校验、会话锁、模型装配、工具装配与事件转发；sessions.ts 785 行把活跃会话放在进程级 Map。建议先抽 AgentHost 端口切断对 server 源码的静态依赖，再拆 run() 与会话存储。",
+        "decay_flags": [],
+        "review_note": "35 文件 / 4,612 行；2026-10-27 以 AgentHost 端口落地后，本模块对应用层源码的 import 为 0（A2P=0），配置/工作区/模型/团队等应用能力全部经 agent/host.ts（14 组契约）注入，应用层只经 agentRuntime.ts 门面单向引用 agent（e9 17 处），含 agent 的 file 级 SCC 为 0，模块级无环（原 71 处反向依赖已清零）。runtime/index.ts 的 run() 仍同时承担附件校验、会话锁、模型装配、工具装配与事件转发；sessions.ts 785 行把活跃会话放在进程级 Map。建议再拆 run() 与会话存储。",
         "concerns": [
-          {
-            "id": "c-agent-runtime-1",
-            "severity": "critical",
-            "finding": "与 server-api 双向 import（agent→server 73 处、server→agent 28 处），run() 直接依赖 @/utils/workspace、@/utils/ai 与 @/lib/i18n，环落在每条 Agent 请求路径。",
-            "suggestion": "抽 AgentHost 端口，把 workspace/ai/conf 访问改为注入，切断 runtime 对 server 源码的静态依赖。"
-          },
           {
             "id": "c-agent-runtime-2",
             "severity": "high",
@@ -666,7 +658,7 @@
           }
         ]
       },
-      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
+      "last_analyzed_at": "2026-10-27T22:28:17+08:00"
     },
     {
       "id": "shared-foundation",
@@ -677,7 +669,8 @@
         "packages/file/**",
         "packages/i18n/**",
         "packages/modelIcons/**",
-        "packages/assets/**"
+        "packages/assets/**",
+        "packages/formats/**"
       ],
       "key_entries": [
         {
@@ -713,7 +706,7 @@
         "complexity": "medium",
         "churn": "low",
         "decay_flags": [],
-        "review_note": "15 文件 / 1,077 行，出边为 0、被 9 个模块引用，是干净的基础叶子；file 以原子写与路径访问队列托底全库磁盘操作。建议为 i18n/transform.ts（299 行）的源码改写加消息键存在性校验与类型声明，并把品牌图片资产与代码包解耦。",
+        "review_note": "20 文件 / 1,230 行（含 2026-10-27 新增的 packages/formats 纯契约包 5 文件 153 行：模型推理/文档格式/mention 源/A2A 设置类型），出边为 0、被 9 个模块引用，是干净的基础叶子；file 以原子写与路径访问队列托底全库磁盘操作。建议为 i18n/transform.ts（299 行）的源码改写加消息键存在性校验与类型声明，并把品牌图片资产与代码包解耦。",
         "concerns": [
           {
             "id": "c-shared-foundation-1",
@@ -723,7 +716,7 @@
           }
         ]
       },
-      "last_analyzed_at": "2026-10-26T21:12:00+08:00"
+      "last_analyzed_at": "2026-10-27T22:28:17+08:00"
     },
     {
       "id": "media-toolkit",
@@ -824,17 +817,8 @@
       "from": "agent-runtime",
       "to": "shared-foundation",
       "type": "import",
-      "label": "14 处 file/i18n",
+      "label": "28 处 file/i18n/formats import",
       "strength": "normal"
-    },
-    {
-      "id": "e7",
-      "from": "agent-runtime",
-      "to": "server-api",
-      "type": "import",
-      "label": "71 处 @/modules(50)·@/lib(20)·@/utils(1) 应用能力",
-      "strength": "strong",
-      "direction_violation": true
     },
     {
       "id": "e8",
@@ -849,7 +833,7 @@
       "from": "server-api",
       "to": "agent-runtime",
       "type": "import",
-      "label": "24 处 agent 会话与 teams 契约",
+      "label": "17 处 agent 会话与 teams 契约 import",
       "strength": "strong"
     },
     {
@@ -1031,22 +1015,15 @@
     }
   ],
   "health": {
-    "score": 68,
+    "score": 73,
     "coupling": "high",
     "complexity": "high",
     "churn": "high",
     "decay_flags": [
-      "circular_dep",
       "layer_violation"
     ],
-    "review_note": "五层（宿主 → 呈现 → 应用 → 领域 → 基础）大体成立：web 只向下取插件与共享契约，应用层统一装配，foundation 是无出边的叶子。2026-10-27 重算后 server-api 已由 246 文件单模块拆为 7 个子模块 + 组合根，god module 关注点关闭；剩余结构性问题：1）应用层与 agent-runtime 双向引用（agent→应用 71 处、应用→agent 24 处），环仍落在最热的 Agent 链路上；2）应用层内部 53 条跨子模块深引绕过入口，契约无运行时守卫；3）呈现层把 node/tool/ext 运行时包在编译期静态引入 30 处。建议按「AgentHost 端口 → 子域深引收敛 → 契约包下沉与插件注册表」顺序治理。",
+    "review_note": "五层（宿主 → 呈现 → 应用 → 领域 → 基础）大体成立：web 只向下取插件与共享契约，应用层统一装配，foundation 是无出边的叶子。2026-10-27 server-api 已由 246 文件单模块拆为 7 个子模块 + 组合根；同日以 AgentHost 端口（agent/host.ts 契约 + agentHost.ts 装配 + agentRuntime.ts 门面）切断 agent↔应用双向依赖：agent→应用 import 0 处（A2P=0），含 agent 的 file 级 SCC 0 个，模块边 e6 改指 shared-foundation、原 agent→server-api 边（71 处，e7）删除，环消失，decay_flags 中的循环依赖标记与 c-arch-1 同步关闭。复检口径：模块级仍有 1 个既有 SCC（server-api ↔ desktop-shell，由 e13 读 electrobun.config 与 e26 静态装配构成），与本次 Agent 环无关，按 layer_violation + c-arch-5 跟踪。剩余结构性问题：1）应用层内部 53 条跨子模块深引绕过入口，契约无运行时守卫（c-arch-4）；2）呈现层把 node/tool/ext 运行时包在编译期静态引入 30 处（c-arch-3）；3）server-api 启动入口直接读宿主壳 electrobun.config（e13，layer_violation 来源，c-arch-5）。建议按「子域深引收敛 → 契约包下沉与插件注册表 → 版本号端口注入」顺序治理。",
     "concerns": [
-      {
-        "id": "c-arch-1",
-        "severity": "critical",
-        "finding": "agent-runtime 与应用层双向 import（agent→应用 71 处、应用→agent 24 处）构成环，且环位于每条 Agent 请求的必经路径，任何一侧改动都会牵动另一侧。",
-        "suggestion": "先抽 AgentHost 端口切断 agent→@/utils·@/lib，再让 app.ts 单向装配 agent 与各应用子模块。"
-      },
       {
         "id": "c-arch-4",
         "severity": "high",
@@ -1058,6 +1035,12 @@
         "severity": "high",
         "finding": "web 在编译期 import 插件运行时包 30 处、引用 server 源码/接口 38 处，插件与前后端契约都被静态编入主包，安装式插件无法影响 UI。",
         "suggestion": "抽出 contracts 包并把插件 UI 改为注册表 + 动态入口，web 只依赖契约。"
+      },
+      {
+        "id": "c-arch-5",
+        "severity": "high",
+        "finding": "server-api 启动入口 apps/server/src/index.ts 直接 import electrobun.config 读取 app.version，移动端 server.ts 复制同一读法，应用层反向依赖宿主壳配置（e13 direction_violation）。",
+        "suggestion": "版本号改为启动参数或平台能力端口注入，服务端代码不直接 import 宿主壳配置。"
       }
     ]
   }

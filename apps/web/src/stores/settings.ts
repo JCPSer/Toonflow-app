@@ -76,6 +76,8 @@ export const generalSettings = computed(() => {
     taskNotification: general.taskNotification !== false,
     // ACT: Agent 节点把直接上游自动带进对话上下文；缺键按开，关掉后只剩 @ 手动引用。
     agentUpstreamContext: general.agentUpstreamContext !== false,
+    // ACT: 工具调用折叠属于对话阅读偏好，默认折叠（同一轮合并成一行）；缺键按折叠处理。
+    expandToolCalls: general.expandToolCalls === true,
     canvasShortcuts: Object.fromEntries(canvasShortcutFields.map(field => {
       if (savedBindings.has(field.id)) return [field.id, savedBindings.get(field.id)];
       const binding = defaultCanvasShortcuts[field.id];

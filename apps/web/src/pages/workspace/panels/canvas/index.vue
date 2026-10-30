@@ -259,7 +259,7 @@ import { setNodeLabelResolver } from "@/lib/taskAlerts";
 import mentionThumbnail from "@/components/agent/mentionThumbnail.vue";
 import { useMentionSources, type MentionOutput } from "@/components/agent/mentionSources";
 import { useAgentComposerStore } from "@/stores/agentComposer";
-import { finishGroupDrag, getSelectionTree } from "./selectionNodes";
+import { captureGroupChildren, finishGroupDrag, getSelectionTree, refitGroupsAfterRemoval } from "./selectionNodes";
 import { normalizeNodesToGrid, snapValue } from "./snapNodes";
 import type { NodeOutput } from "@toonflow/nodes-scaffold/values";
 import type { NodeConnectionFeedback, NodeHandle } from "@toonflow/nodes-scaffold/connection";
@@ -275,7 +275,7 @@ import { generalSettings } from "@/stores/settings";
 import { getShortcutBindings, shortcutLabel, shortcutMatches, shortcutPressed } from "@/lib/canvasShortcuts";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import anonymousData from "@/lib/anonymousData";
-import { createClipboardMediaFile, dropCanvasFiles, getClipboardMediaFiles, importCanvasFiles, isCanvasFileDrag } from "./canvasDrop";
+import { createClipboardMediaFile, dropCanvasFiles, dropWorkspaceFile, getClipboardMediaFiles, importCanvasFiles, isCanvasFileDrag, workspaceFileDropEvent, type WorkspaceFileDrop } from "./canvasDrop";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/minimap/dist/style.css";
@@ -441,6 +441,26 @@ provide("deleteNodeSelection", (nodes: GraphNode[]) => {
   if (!menu) return Promise.reject(new Error("画布尚未就绪"));
   return canvasHistory.batch(() => menu.deleteSelection(nodes));
 });
+// ACT: 删除组内节点后分组要贴合剩余内容。删除入口散在画布与节点包两侧（右键菜单、节点卡片自带的
+// 删除、MCP deleteNodes、插件内部删除），逐处补调用必然漏，所以只在这个结构变化点上做一次差分：
+// 「节点 → 父分组」谁少了直接子节点，就贴合谁，并把祖先分组一起带上（嵌套组向外传播）。
+// 守卫用节点数组引用区分两种变更：
+// - 原地增删（removeNodes）：引用不变 → 做差分贴合；
+// - 整体替换（setNodes：加载画布、建组/合组、撤销恢复）：引用变了 → 只同步基线不贴合，
+//   否则打开旧画布会把用户手工保存的组尺寸全部重排。
+let groupBaseline = { nodes: flow.getNodes.value, children: captureGroupChildren(flow.getNodes.value) };
+const groupMembershipKey = computed(() => flow.getNodes.value
+  .map(node => `${node.id}>${node.parentNode ?? ""}`)
+  .sort()
+  .join("|"));
+watch([() => flow.getNodes.value, groupMembershipKey], () => {
+  const nodes = flow.getNodes.value;
+  // 撤销/重做恢复的是快照原样的尺寸，此时贴合会把用户手调的组改掉。
+  if (nodes === groupBaseline.nodes && !canvasHistory.isApplying()) {
+    refitGroupsAfterRemoval(nodes, groupBaseline.children);
+  }
+  groupBaseline = { nodes, children: captureGroupChildren(nodes) };
+}, { flush: "post" });
 const getNodeTools = useNodeToolsContext();
 const { addNodes, addEdges, removeEdges, findEdge, findNode, toObject, viewport, screenToFlowCoordinate } = flow;
 provide("copyNodeToClipboard", async (node: Parameters<typeof copyNodeToClipboard>[0]) => {
@@ -939,6 +959,22 @@ async function dropFiles(event: DragEvent) {
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "文件导入失败");
   }
+}
+
+// ACT: WKWebView 里 HTML5 拖拽不可靠（拖拽源常常根本不启动），历史弹窗改用指针拖拽，
+// 松手时由这里做落点判定与建节点，复用与文件拖放相同的复制/回滚/撤销逻辑。
+function workspaceFileDropped(event: Event) {
+  const detail = (event as CustomEvent<WorkspaceFileDrop>).detail;
+  const directory = project.value?.directory;
+  if (!detail?.path || !directory) return;
+  if (!props.active || props.settingsVisible || !canvasId.value) return;
+  const element = document.elementFromPoint(detail.clientX, detail.clientY);
+  if (!(element instanceof Element) || !element.closest(".vue-flow__pane")) return;
+  const position = flow.screenToFlowCoordinate({ x: detail.clientX, y: detail.clientY });
+  const context = { directory, availableNodes: availableNodes.value, signal: canvasController.signal, flow };
+  void canvasHistory.batch(() => dropWorkspaceFile(detail, position, context)).catch(error => {
+    ElMessage.error(error instanceof Error ? error.message : "文件导入失败");
+  });
 }
 
 function selectFiles(position: { x: number; y: number }) {
@@ -1629,6 +1665,7 @@ onMounted(() => {
   window.addEventListener("blur", resetCanvasKeys);
   window.addEventListener("toonflow:plugin-installed", refreshInstalled);
   window.addEventListener("toonflow:node-config-updated", refreshNodeConfig);
+  window.addEventListener(workspaceFileDropEvent, workspaceFileDropped);
   document.addEventListener("paste", pasteNode);
   document.addEventListener("copy", copyNode);
   document.addEventListener("beforecopy", beforeClipboard);
@@ -1641,6 +1678,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("blur", resetCanvasKeys);
   window.removeEventListener("toonflow:plugin-installed", refreshInstalled);
   window.removeEventListener("toonflow:node-config-updated", refreshNodeConfig);
+  window.removeEventListener(workspaceFileDropEvent, workspaceFileDropped);
   document.removeEventListener("paste", pasteNode);
   document.removeEventListener("copy", copyNode);
   document.removeEventListener("beforecopy", beforeClipboard);

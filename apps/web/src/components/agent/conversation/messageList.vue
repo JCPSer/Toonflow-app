@@ -38,20 +38,27 @@
             <template #content>
               <div class="messageContent">
                 <div v-if="item.report" class="reportHeader"><icon-users-group :size="14" />{{ item.report.name }} 上报</div>
-                <template v-for="part in item.parts" :key="part.id">
-                  <chat-reasoning v-if="part.type === 'thinking' && part.content" class="messageReasoning" :collapsed="part.collapsed ?? true" expandIconPlacement="left" @update:collapsed="part.collapsed = $event">
-                    <template #expandIcon><component :is="(part.collapsed ?? true) ? IconChevronRight : IconChevronDown" :size="14" aria-hidden="true" /></template>
+                <template v-for="block in blocksOf(item)" :key="block.kind === 'toolGroup' ? block.key : block.part.id">
+                  <toolGroupMessage
+                    v-if="block.kind === 'toolGroup'"
+                    :tools="block.tools"
+                    :expanded="expandedGroups.has(block.key)"
+                    :directory="directory"
+                    @toggle="toggleGroup(block.key, $event)"
+                    @copy="emit('copy', $event)" />
+                  <chat-reasoning v-else-if="block.part.type === 'thinking' && block.part.content" class="messageReasoning" :collapsed="block.part.collapsed ?? true" expandIconPlacement="left" @update:collapsed="block.part.collapsed = $event">
+                    <template #expandIcon><component :is="(block.part.collapsed ?? true) ? IconChevronRight : IconChevronDown" :size="14" aria-hidden="true" /></template>
                     <template #header>
                       <span class="reasoningHeader">
                         <icon-atom :size="14" />
                         <span>思考</span>
-                        <span v-if="part.duration !== undefined" class="thinkingDuration">{{ part.duration.toFixed(1) }} 秒</span>
+                        <span v-if="block.part.duration !== undefined" class="thinkingDuration">{{ block.part.duration.toFixed(1) }} 秒</span>
                       </span>
                     </template>
-                    <messageMarkdown v-if="!(part.collapsed ?? true)" :content="part.content" :streaming="!!item.streaming" :directory="directory" />
+                    <messageMarkdown v-if="!(block.part.collapsed ?? true)" :content="block.part.content" :streaming="!!item.streaming" :directory="directory" />
                   </chat-reasoning>
-                  <toolMessage v-else-if="part.type === 'tool' && !isBrowserTool(part.tool)" v-model:collapsed="part.collapsed" :tool="part.tool" :directory="directory" @copy="emit('copy', $event)" />
-                  <messageMarkdown v-else-if="part.type === 'text' && part.content" :content="part.content" :streaming="!!item.streaming" :directory="directory" />
+                  <toolMessage v-else-if="block.part.type === 'tool' && !isBrowserTool(block.part.tool)" v-model:collapsed="block.part.collapsed" :tool="block.part.tool" :directory="directory" @copy="emit('copy', $event)" />
+                  <messageMarkdown v-else-if="block.part.type === 'text' && block.part.content" :content="block.part.content" :streaming="!!item.streaming" :directory="directory" />
                 </template>
                 <attachmentList v-if="item.attachments?.length" :attachments="item.attachments" :directory="directory" favoritable />
                 <div v-if="item.role === 'user'" class="messageText"><mentionContent :content="item.content" :mentions="item.mentions" :directory="directory" /></div>
@@ -74,7 +81,22 @@
               <el-button v-if="!item.report" class="messageAction" text circle :loading="deletingId === item.id" :disabled="locked || remoteRunning" aria-label="删除消息" title="删除消息" @click="emit('delete', item)"><icon-trash v-if="deletingId !== item.id" :size="14" /></el-button>
             </template>
           </div>
-          <browserPanel v-if="browserMessages.tools.has(item.id)" class="browserPreview" :tools="browserMessages.tools.get(item.id)!" :directory="directory" :active="active" :live="item.id === browserMessages.liveMessageId" />
+          <chat-reasoning v-if="browserMessages.tools.has(item.id) && !expandToolCalls" class="browserPreview messageReasoning" :collapsed="!browserExpanded(item)" expandIconPlacement="left" @update:collapsed="toggleBrowser(item, $event)">
+            <template #expandIcon><component :is="browserExpanded(item) ? IconChevronDown : IconChevronRight" :size="14" aria-hidden="true" /></template>
+            <template #header>
+              <span class="reasoningHeader">
+                <icon-world :size="14" />
+                <span>浏览器操作 {{ browserMessages.tools.get(item.id)!.length }} 次</span>
+              </span>
+            </template>
+            <browserPanel
+              v-if="browserExpanded(item)"
+              :tools="browserMessages.tools.get(item.id)!"
+              :directory="directory"
+              :active="active"
+              :live="item.id === browserMessages.liveMessageId" />
+          </chat-reasoning>
+          <browserPanel v-else-if="browserMessages.tools.has(item.id)" class="browserPreview" :tools="browserMessages.tools.get(item.id)!" :directory="directory" :active="active" :live="item.id === browserMessages.liveMessageId" />
         </div>
       </div>
     </div>
@@ -97,7 +119,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vue";
 import { defaultRangeExtractor, measureElement, observeElementRect, useVirtualizer } from "@tanstack/vue-virtual";
-import { IconArrowBackUp, IconArrowDown, IconArrowUpRight, IconAtom, IconChevronDown, IconChevronRight, IconCopy, IconGitFork, IconMovie, IconPencil, IconPhoto, IconTrash, IconUsersGroup, IconVector, IconX } from "@tabler/icons-vue";
+import { IconArrowBackUp, IconArrowDown, IconArrowUpRight, IconAtom, IconChevronDown, IconChevronRight, IconCopy, IconGitFork, IconMovie, IconPencil, IconPhoto, IconTrash, IconUsersGroup, IconVector, IconWorld, IconX } from "@tabler/icons-vue";
 import logoUrl from "@toonflow/assets/logo.svg";
 import browserPanel from "@toonflow/tool-browser/panel";
 import { isBrowserTool } from "@toonflow/tool-browser/client";
@@ -109,7 +131,9 @@ import attachmentList from "../attachmentList.vue";
 import mentionContent from "../mentionContent.vue";
 import { mentionPlainText } from "../mentionText";
 import toolMessage from "../toolMessage.vue";
-import type { AgentMessage } from "../types";
+import toolGroupMessage from "../toolGroupMessage.vue";
+import { generalSettings } from "@/stores/settings";
+import type { AgentMessage, AgentMessagePart } from "../types";
 import "tdesign-vue-next/es/style/index.css";
 import "@tdesign-vue-next/chat/es/style/index.css";
 
@@ -142,6 +166,97 @@ const browserMessages = computed(() => {
 // 同轮浏览器调用共用该轮首条浏览器消息底部的画面，原始工具记录仍完整保留。
 const displayedMessages = computed(() => props.messages.filter(message => browserMessages.value.tools.has(message.id) || message.role === "user" || message.error || message.report || message.attachments?.length ||
   !message.parts?.length || message.parts.some(part => part.type !== "tool" || !isBrowserTool(part.tool))));
+
+// ACT: 折叠工具调用只改渲染层——同一消息内连续的工具调用聚合成一行，单个工具保持原卡片。
+const expandToolCalls = computed(() => generalSettings.value.expandToolCalls === true);
+type RenderBlock =
+  | { kind: "part"; part: AgentMessagePart }
+  | { kind: "toolGroup"; key: string; tools: AgentToolCall[] };
+function buildBlocks(message: AgentMessage): RenderBlock[] {
+  const parts = message.parts ?? [];
+  if (expandToolCalls.value) return parts.map(part => ({ kind: "part", part }));
+  const blocks: RenderBlock[] = [];
+  // ACT: 保留原始 part 引用——单工具走原卡片，折叠状态存在 part 上，重建对象会让展开状态丢失。
+  let run: Extract<AgentMessagePart, { type: "tool" }>[] = [];
+  const flush = () => {
+    if (run.length === 1) blocks.push({ kind: "part", part: run[0] });
+    else if (run.length > 1) blocks.push({ kind: "toolGroup", key: `${message.id}:${run[0].id}`, tools: run.map(item => item.tool) });
+    run = [];
+  };
+  for (const part of parts) {
+    // 浏览器画面统一在该轮底部渲染，既不打断 run，也不在这里渲染。
+    if (part.type === "tool" && isBrowserTool(part.tool)) continue;
+    // 交互式提问（askUser）必须单独可见，等回答完 question 被清掉后才并回聚合行。
+    if (part.type === "tool" && !part.tool.question) { run.push(part); continue; }
+    // 空的 text/thinking 不参与渲染，也不能把连续的工具调用拆成两行。
+    // 模型常在工具之间吐一个换行，纯空白同样不可见，按空处理。
+    if ((part.type === "text" || part.type === "thinking") && !part.content.trim()) continue;
+    flush();
+    blocks.push({ kind: "part", part });
+  }
+  flush();
+  return blocks;
+}
+const blocksCache = computed(() => new Map(displayedMessages.value.map(message => [message.id, buildBlocks(message)])));
+function blocksOf(message: AgentMessage) {
+  return blocksCache.value.get(message.id) ?? [];
+}
+const expandedGroups = ref<Set<string>>(new Set());
+// ACT: 用户主动展开时不要自动贴底，否则刚点开的那一行会被滚出视口。
+let userExpanding = false;
+// ACT: 虚拟列表在「贴底」状态下会把行高变化的高度差直接加回 scrollTop，
+// 展开最新一条聚合行时标题会被顶出视口。记录被点行的屏幕位置，渲染后再按差值还原。
+// 行高会先经 @vue:updated、再经虚拟器自己的 ResizeObserver 落定，因此要连续几帧收敛，
+// 连续两帧稳定才收手；期间任何一次新的展开都会让旧收敛失效。
+let expandAnchor: { element: HTMLElement; top: number } | undefined;
+let expandToken = 0;
+function restoreExpandAnchor() {
+  const anchor = expandAnchor;
+  if (!anchor || !messageList.value) return 0;
+  const delta = anchor.element.getBoundingClientRect().top - anchor.top;
+  if (Math.abs(delta) >= 1) messageList.value.scrollTop += delta;
+  return delta;
+}
+function toggleGroup(key: string, event?: MouseEvent) {
+  const token = ++expandToken;
+  userExpanding = true;
+  const element = event?.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
+  expandAnchor = element ? { element, top: element.getBoundingClientRect().top } : undefined;
+  const next = new Set(expandedGroups.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedGroups.value = next;
+  const settle = (frame: number, stable: number) => {
+    if (token !== expandToken) return;
+    const delta = restoreExpandAnchor();
+    const nextStable = Math.abs(delta) < 1 ? stable + 1 : 0;
+    if (nextStable >= 2 || frame >= 8) {
+      expandAnchor = undefined;
+      userExpanding = false;
+      return;
+    }
+    requestAnimationFrame(() => settle(frame + 1, nextStable));
+  };
+  void nextTick(() => { requestAnimationFrame(() => settle(0, 0)); });
+}
+
+const browserOpened = ref<Set<string>>(new Set());
+const browserCollapsed = ref<Set<string>>(new Set());
+function browserExpanded(message: AgentMessage) {
+  if (browserCollapsed.value.has(message.id)) return false;
+  const tools = browserMessages.value.tools.get(message.id) ?? [];
+  return browserOpened.value.has(message.id)
+    || tools.some(tool => tool.status === "running")
+    || (!!message.streaming && message.id === browserMessages.value.liveMessageId);
+}
+function toggleBrowser(message: AgentMessage, collapsed: boolean) {
+  const opened = new Set(browserOpened.value);
+  const closed = new Set(browserCollapsed.value);
+  if (collapsed) { opened.delete(message.id); closed.add(message.id); }
+  else { closed.delete(message.id); opened.add(message.id); }
+  browserOpened.value = opened;
+  browserCollapsed.value = closed;
+}
 const messageList = ref<HTMLDivElement>();
 const atLatestMessage = ref(true);
 let messageListInitialized = false;
@@ -271,11 +386,11 @@ function measureMessage(element: Element | ComponentPublicInstance | null) {
   instance.measureElement(element);
   // 自动滚动时库会跳过同步测量；在本次 DOM 提交内校正，避免画面随换行先下移再被拉回。
   instance.resizeItem(index, height);
-  if (!changed || messageMeasurePending) return;
+  if (!changed || messageMeasurePending || userExpanding) return;
   messageMeasurePending = true;
   void nextTick(() => {
     messageMeasurePending = false;
-    if (props.active && atLatestMessage.value) instance.scrollToEnd();
+    if (props.active && atLatestMessage.value && !userExpanding) instance.scrollToEnd();
   });
 }
 
@@ -613,8 +728,10 @@ const welcomeSuggestions = [
       min-width: 0;
       overflow-wrap: anywhere;
       color: var(--el-text-color-primary);
+    }
 
-      .messageReasoning {
+    // ACT: 浏览器操作折叠挂在 .messageRow 下、不在 .messageContent 内，两处共用同一套折叠样式。
+    .messageReasoning {
         padding-top: 0;
 
         .t-collapse-panel__wrapper {
@@ -656,6 +773,7 @@ const welcomeSuggestions = [
         }
       }
 
+    .messageContent {
       .messageText {
         white-space: pre-wrap;
         font-size: 13px;

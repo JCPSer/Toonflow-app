@@ -166,6 +166,7 @@ import route161 from "./routes/workspaces/selectDirectory";
 import route164 from "./routes/agent/clone";
 import route165 from "./routes/agent/session";
 import route166 from "./routes/workspaces/files/transfer";
+import route167 from "./routes/providers/media/rename";
 
 export default (app: Express) => {
   // agentAccess · /api/agent
@@ -304,6 +305,7 @@ export default (app: Express) => {
   app.use("/api/providers/media/models", route115);
   app.use("/api/providers/media/save", route116);
   app.use("/api/providers/media/validate", route117);
+  app.use("/api/providers/media/rename", route167);
   app.use("/api/providers/models", route118);
   // agentAccess · /api/sessionState
   app.use("/api/sessionState/get", route119);

@@ -113,6 +113,18 @@
           @change="(value) => updateGeneralSettings({ agentUpstreamContext: value === true })" />
       </div>
     </section>
+    <section class="settingSection" aria-labelledby="expandToolCallsTitle">
+      <div class="settingHeader">
+        <div class="settingInfo">
+          <h3 id="expandToolCallsTitle">展开工具调用</h3>
+          <p class="description">关闭时同一轮的多个工具调用合并为一行，点击可展开逐个查看；开启后每次调用各占一行。</p>
+        </div>
+        <el-switch
+          :model-value="generalSettings.expandToolCalls"
+          aria-label="展开工具调用"
+          @change="(value) => updateGeneralSettings({ expandToolCalls: value === true })" />
+      </div>
+    </section>
     <nodeMenuSettings />
     <canvasShortcuts />
   </div>

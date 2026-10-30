@@ -1,6 +1,6 @@
 <template>
   <div class="imageEditor" :class="{ editing: mode }">
-    <img ref="sourceImage" :src="src" :alt="alt" draggable="false" @load="emit('load', $event)" @error="emit('error', $event)" />
+    <img ref="sourceImage" :src="shownSrc || undefined" :alt="alt" draggable="false" @load="emit('load', $event)" @error="onImageError" />
     <canvas
       v-if="mode"
       ref="paintCanvas"
@@ -62,7 +62,7 @@ import { showNodeError } from "@toonflow/node-shared/showNodeError";
 import { useImageVariationNode } from "../useImageVariationNode";
 import { buildInpaintPrompt, type InpaintDraftInput } from "../imageInpaint";
 
-const props = defineProps<{ src: string; alt: string; toolbarTarget?: HTMLElement; disabled?: boolean }>();
+const props = defineProps<{ src: string; previewSrc?: string; alt: string; toolbarTarget?: HTMLElement; disabled?: boolean }>();
 const emit = defineEmits<{ load: [event: Event]; error: [event: Event] }>();
 const { node } = useNode();
 const flow = useVueFlow();
@@ -74,6 +74,27 @@ const batchHistory = inject<(action: () => Promise<void>) => Promise<void>>("bat
 const sourceImage = ref<HTMLImageElement>();
 const paintCanvas = ref<HTMLCanvasElement>();
 const mode = ref<"inpaint" | "mark">();
+// ACT: 画布卡片只解码缩略图；进入标记/局部重绘时才切到原图，因为导出像素来自这张 <img>。
+// 记住"哪个缩略图地址失败过"，原图到达后不要把 src 再切回同一个坏地址。
+const failedThumb = ref<string>();
+const editingSrc = ref<string>();
+const thumbSrc = computed(() => props.previewSrc && props.previewSrc !== failedThumb.value ? props.previewSrc : "");
+const shownSrc = computed(() => editingSrc.value ?? (thumbSrc.value || props.src));
+watch([() => props.src, () => props.previewSrc], _value => {
+  // 地址变化（换图）才重置失败记录；同一地址失败后保持回退，避免反复请求。
+  if (props.previewSrc !== failedThumb.value) failedThumb.value = undefined;
+});
+function onImageError(event: Event) {
+  // 缩略图不可用（未生成/格式不支持/旧后端 400）时静默换回原图，不能把节点变成"预览失败"。
+  if (props.previewSrc && thumbSrc.value === props.previewSrc && props.previewSrc !== props.src) {
+    failedThumb.value = props.previewSrc;
+    return;
+  }
+  // 原图还没就绪时不要报错（此时 shownSrc 可能是空串），等它到了自然会重新渲染。
+  if (!props.src) return;
+  editingSrc.value = undefined;
+  emit("error", event);
+}
 const busy = ref(false);
 const tool = ref<"brush" | "eraser" | "rectangle" | "circle" | "text">("brush");
 const color = ref("#ff4545");
@@ -102,10 +123,14 @@ let strokes: Stroke[] = [];
 let draftStroke: Stroke | undefined;
 let pointerId: number | undefined;
 let operation: AbortController | undefined;
+// ACT: 进入编辑要等原图解码，等待期间可能被 cancel()/换图打断；用代次判断这次进入是否还有效。
+let editToken = 0;
 
 function cancel() {
+  editToken++;
   operation?.abort();
   mode.value = undefined;
+  editingSrc.value = undefined;
   strokes = [];
   strokeCount.value = historyLength.value = 0;
   hasDrawing.value = false;
@@ -116,10 +141,50 @@ watch(() => props.src, cancel, { flush: "sync" });
 watch(() => getCanvas?.()?.id, cancel, { flush: "sync" });
 onBeforeUnmount(cancel);
 
+function waitImageLoad(image: HTMLImageElement) {
+  // complete 为真但 naturalWidth 为 0 表示已处于失败终态，直接返回，不能挂监听等一个永远不来的事件。
+  if (image.complete) return Promise.resolve();
+  return new Promise<void>(resolve => {
+    const timer = setTimeout(done, 10_000);
+    function done() {
+      clearTimeout(timer);
+      image.removeEventListener("load", done);
+      image.removeEventListener("error", done);
+      resolve();
+    }
+    image.addEventListener("load", done);
+    image.addEventListener("error", done);
+  });
+}
+
+let starting = false;
 async function start(value: "inpaint" | "mark") {
   const image = sourceImage.value;
-  if (props.disabled || busy.value || !image?.complete || !image.naturalWidth) return;
+  // 父级同步调用、不 await；用锁避免连点两次同时走一遍切原图流程。
+  if (starting || props.disabled || busy.value || !props.src || !image?.complete || !image.naturalWidth) return;
+  starting = true;
+  try {
+    await startEditor(value, image);
+  } finally {
+    starting = false;
+  }
+}
+
+async function startEditor(value: "inpaint" | "mark", image: HTMLImageElement) {
   cancel();
+  const token = editToken;
+  // 缩略图不能当像素源：先把 <img> 切到原图并等它解码完，再按原图尺寸建画布。
+  if (props.previewSrc && props.previewSrc !== props.src) {
+    editingSrc.value = props.src;
+    await nextTick();
+    await waitImageLoad(image);
+    // 等待期间被 cancel()、换图或再次进入编辑 → 本次进入作废，避免"画布按原图、显示却是缩略图"。
+    if (token !== editToken || editingSrc.value !== props.src) return;
+    if (!image.naturalWidth) {
+      editingSrc.value = undefined;
+      return;
+    }
+  }
   tool.value = "brush";
   mode.value = value;
   await nextTick();
@@ -288,6 +353,8 @@ function handleTextKey(event: KeyboardEvent) {
 function createCanvas() {
   const source = sourceImage.value;
   if (!source?.naturalWidth || !paintCanvas.value) throw new Error("图片尚未加载完成");
+  // 导出必须来自原图：缩略图只有 1024，拿来导出会静默降级标记/重绘的画质。
+  if (props.previewSrc && props.previewSrc !== props.src && editingSrc.value !== props.src) throw new Error("原图尚未加载完成，请稍后重试");
   const canvas = document.createElement("canvas");
   canvas.width = source.naturalWidth;
   canvas.height = source.naturalHeight;

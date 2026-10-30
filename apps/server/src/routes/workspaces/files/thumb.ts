@@ -14,7 +14,7 @@ const router = Router();
 
 /** ACT: 缩略图由 <img> 直接请求，无法携带工作区标记；按素材库媒体端点的方式只校验同源。 */
 export default router.get("/", validateFields({ directory: z.string().min(1).max(4096), path: z.string().min(1).max(4096),
-  size: z.coerce.number().int().min(64).max(512).optional() }, "query"), async (req, res, next) => {
+  size: z.coerce.number().int().min(64).max(1024).optional() }, "query"), async (req, res, next) => {
   assertAssetRequest(req, { media: true });
   const { directory, path } = await u.workspaceFile.resolveWorkspaceFile(req, req.query.directory as string, req.query.path as string, { sameOriginMedia: true });
   const info = await lstat(path);

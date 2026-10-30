@@ -30,10 +30,10 @@
     }
   ],
   "dependencies": [
+    "desktop-shell",
     "server-api",
     "shared-foundation",
-    "web-console",
-    "desktop-shell"
+    "web-console"
   ],
   "health": {
     "score": 72,

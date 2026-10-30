@@ -1,20 +1,13 @@
 {
-  "score": 68,
+  "score": 73,
   "coupling": "high",
   "complexity": "high",
   "churn": "high",
   "decay_flags": [
-    "circular_dep",
     "layer_violation"
   ],
-  "review_note": "五层（宿主 → 呈现 → 应用 → 领域 → 基础）大体成立：web 只向下取插件与共享契约，应用层统一装配，foundation 是无出边的叶子。2026-10-27 重算后 server-api 已由 246 文件单模块拆为 7 个子模块 + 组合根，god module 关注点关闭；剩余结构性问题：1）应用层与 agent-runtime 双向引用（agent→应用 71 处、应用→agent 24 处），环仍落在最热的 Agent 链路上；2）应用层内部 53 条跨子模块深引绕过入口，契约无运行时守卫；3）呈现层把 node/tool/ext 运行时包在编译期静态引入 30 处。建议按「AgentHost 端口 → 子域深引收敛 → 契约包下沉与插件注册表」顺序治理。",
+  "review_note": "五层（宿主 → 呈现 → 应用 → 领域 → 基础）大体成立：web 只向下取插件与共享契约，应用层统一装配，foundation 是无出边的叶子。2026-10-27 server-api 已由 246 文件单模块拆为 7 个子模块 + 组合根；同日以 AgentHost 端口（agent/host.ts 契约 + agentHost.ts 装配 + agentRuntime.ts 门面）切断 agent↔应用双向依赖：agent→应用 import 0 处（A2P=0），含 agent 的 file 级 SCC 0 个，模块边 e6 改指 shared-foundation、原 agent→server-api 边（71 处，e7）删除，环消失，decay_flags 中的循环依赖标记与 c-arch-1 同步关闭。复检口径：模块级仍有 1 个既有 SCC（server-api ↔ desktop-shell，由 e13 读 electrobun.config 与 e26 静态装配构成），与本次 Agent 环无关，按 layer_violation + c-arch-5 跟踪。剩余结构性问题：1）应用层内部 53 条跨子模块深引绕过入口，契约无运行时守卫（c-arch-4）；2）呈现层把 node/tool/ext 运行时包在编译期静态引入 30 处（c-arch-3）；3）server-api 启动入口直接读宿主壳 electrobun.config（e13，layer_violation 来源，c-arch-5）。建议按「子域深引收敛 → 契约包下沉与插件注册表 → 版本号端口注入」顺序治理。",
   "concerns": [
-    {
-      "id": "c-arch-1",
-      "severity": "critical",
-      "finding": "agent-runtime 与应用层双向 import（agent→应用 71 处、应用→agent 24 处）构成环，且环位于每条 Agent 请求的必经路径，任何一侧改动都会牵动另一侧。",
-      "suggestion": "先抽 AgentHost 端口切断 agent→@/utils·@/lib，再让 app.ts 单向装配 agent 与各应用子模块。"
-    },
     {
       "id": "c-arch-4",
       "severity": "high",
@@ -26,6 +19,12 @@
       "severity": "high",
       "finding": "web 在编译期 import 插件运行时包 30 处、引用 server 源码/接口 38 处，插件与前后端契约都被静态编入主包，安装式插件无法影响 UI。",
       "suggestion": "抽出 contracts 包并把插件 UI 改为注册表 + 动态入口，web 只依赖契约。"
+    },
+    {
+      "id": "c-arch-5",
+      "severity": "high",
+      "finding": "server-api 启动入口 apps/server/src/index.ts 直接 import electrobun.config 读取 app.version，移动端 server.ts 复制同一读法，应用层反向依赖宿主壳配置（e13 direction_violation）。",
+      "suggestion": "版本号改为启动参数或平台能力端口注入，服务端代码不直接 import 宿主壳配置。"
     }
   ]
 }

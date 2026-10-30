@@ -64,7 +64,8 @@ export function resolveNodeMenu(saved: NodeMenuItem[], nodes: { type: string; la
     }
   }
   updateLabels(items);
-  const order: Record<string, number> = { "remote-textNode": 0, "remote-imageNode": 1, "remote-videoNode": 2, "remote-audioNode": 3 };
+  // ACT: 未登记的节点兜底值就是 4，新增节点必须显式给出小于它的序号才能插到生成类节点之前。
+  const order: Record<string, number> = { "remote-textNode": 0, "remote-imageNode": 1, "remote-videoNode": 2, "remote-audioNode": 3, "remote-noteNode": 3.5 };
   for (const node of [...nodes].sort((left, right) => (order[left.type] ?? 4) - (order[right.type] ?? 4) || left.type.localeCompare(right.type))) {
     if (existing.has(node.type)) continue;
     existing.add(node.type);

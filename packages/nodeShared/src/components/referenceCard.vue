@@ -1,11 +1,11 @@
 <template>
   <div class="referenceItem" role="group" :title="title" :aria-label="title" @keydown.enter.self.stop.prevent="imageRef?.showPreview()" @keydown.space.self.stop.prevent="imageRef?.showPreview()">
     <el-image
-      v-if="item.dataType === 'IMAGE' && previewUrl && !previewError"
+      v-if="item.dataType === 'IMAGE' && displayUrl"
       ref="imageRef"
       class="preview"
-      :src="previewUrl"
-      :previewSrcList="[previewUrl]"
+      :src="displayUrl"
+      :previewSrcList="previewUrl ? [previewUrl] : undefined"
       previewTeleported
       fit="cover"
       :alt="`预览引用 ${index}`"
@@ -67,16 +67,27 @@ watch(media, () => {
   duration.value = "";
   videoThumbnail.value = "";
 });
-const { useFileUrl } = useNodeFiles();
+const { useFileUrl, useThumbUrl } = useNodeFiles();
 const previewUrl = useFileUrl(media, error => {
   previewError.value = error instanceof Error ? error.message : "读取引用文件失败";
 });
+// ACT: 卡片只有 48px，却要解码原图（12MB / 3072×4096）；改用 256 缩略图，查看器仍用原图。
+const thumbUrl = useThumbUrl(media, 256);
+const thumbFailed = ref(false);
+const displayUrl = computed(() => (!thumbFailed.value && thumbUrl.value) || previewUrl.value);
+// 按地址重置失败记录：引用数组频繁重建时不要对同一个坏地址反复重试。
+watch(() => media.value?.url, () => { thumbFailed.value = false; });
 
 watch([previewUrl, previewError, videoThumbnail], ([url, error, thumbnail]) => {
   emit("preview", error ? "" : props.item.dataType === "VIDEO" ? thumbnail : url);
 }, { immediate: true });
 
 function mediaError() {
+  // 缩略图失败时先换原图；原图尚未读完也允许切换（读完后才会真正重新渲染）。
+  if (!thumbFailed.value && thumbUrl.value) {
+    thumbFailed.value = true;
+    return;
+  }
   previewError.value = props.item.dataType === "VIDEO" ? "无法预览该视频" : "无法预览该图片";
 }
 

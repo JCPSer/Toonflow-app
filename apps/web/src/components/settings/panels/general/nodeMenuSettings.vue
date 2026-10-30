@@ -122,7 +122,7 @@
 import axios from "axios";
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from "vue";
 import { ElMessage, type InputInstance } from "element-plus";
-import { IconBox, IconFolder, IconFolderOpen, IconFolderMinus, IconRestore, IconChevronRight, IconEdit, IconEye, IconEyeOff, IconPlus, IconDragDrop, IconFileText, IconPhoto, IconVideo, IconMusic, IconMusicBolt, IconCube3dSphere, IconPhotoAi, IconCameraAi } from "@tabler/icons-vue";
+import { IconBox, IconFolder, IconFolderOpen, IconFolderMinus, IconRestore, IconChevronRight, IconEdit, IconEye, IconEyeOff, IconPlus, IconDragDrop, IconFileText, IconNote, IconPhoto, IconVideo, IconMusic, IconMusicBolt, IconCube3dSphere, IconPhotoAi, IconCameraAi } from "@tabler/icons-vue";
 import { normalizeNodeMenu, resolveNodeMenu, serializeNodeMenu, type NodeMenuItem } from "@toonflow/server/nodeMenu";
 import { generalSettings, updateGeneralSettings } from "@/stores/settings";
 
@@ -135,6 +135,7 @@ const nodeIcons: Record<string, Component> = {
   "remote-imageNode": IconPhoto,
   "remote-videoNode": IconVideo,
   "remote-audioNode": IconMusic,
+  "remote-noteNode": IconNote,
   "remote-audioGenerationNode": IconMusicBolt,
   "remote-director3dNode": IconCube3dSphere,
   "remote-imageGenerationNode": IconPhotoAi,

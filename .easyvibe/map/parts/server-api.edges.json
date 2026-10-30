@@ -14,7 +14,7 @@
       "from": "server-api",
       "to": "agent-runtime",
       "type": "import",
-      "label": "24 处 agent 会话与 teams 契约",
+      "label": "17 处 agent 会话与 teams 契约 import",
       "strength": "strong"
     },
     {

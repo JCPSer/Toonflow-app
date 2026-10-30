@@ -14,17 +14,8 @@
       "from": "agent-runtime",
       "to": "shared-foundation",
       "type": "import",
-      "label": "14 处 file/i18n",
+      "label": "28 处 file/i18n/formats import",
       "strength": "normal"
-    },
-    {
-      "id": "e7",
-      "from": "agent-runtime",
-      "to": "server-api",
-      "type": "import",
-      "label": "71 处 @/modules(50)·@/lib(20)·@/utils(1) 应用能力",
-      "strength": "strong",
-      "direction_violation": true
     }
   ]
 }

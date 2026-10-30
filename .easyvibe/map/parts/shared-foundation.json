@@ -7,7 +7,8 @@
     "packages/file/**",
     "packages/i18n/**",
     "packages/modelIcons/**",
-    "packages/assets/**"
+    "packages/assets/**",
+    "packages/formats/**"
   ],
   "key_entries": [
     {
@@ -43,7 +44,7 @@
     "complexity": "medium",
     "churn": "low",
     "decay_flags": [],
-    "review_note": "15 文件 / 1,077 行，出边为 0、被 9 个模块引用，是干净的基础叶子；file 以原子写与路径访问队列托底全库磁盘操作。建议为 i18n/transform.ts（299 行）的源码改写加消息键存在性校验与类型声明，并把品牌图片资产与代码包解耦。",
+    "review_note": "20 文件 / 1,230 行（含 2026-10-27 新增的 packages/formats 纯契约包 5 文件 153 行：模型推理/文档格式/mention 源/A2A 设置类型），出边为 0、被 9 个模块引用，是干净的基础叶子；file 以原子写与路径访问队列托底全库磁盘操作。建议为 i18n/transform.ts（299 行）的源码改写加消息键存在性校验与类型声明，并把品牌图片资产与代码包解耦。",
     "concerns": [
       {
         "id": "c-shared-foundation-1",
@@ -53,5 +54,5 @@
       }
     ]
   },
-  "last_analyzed_at": "2026-10-26T21:12:00+08:00"
+  "last_analyzed_at": "2026-10-27T22:28:17+08:00"
 }

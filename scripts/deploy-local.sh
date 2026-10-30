@@ -56,6 +56,14 @@ echo "== 安装节点包（Resources）=="
 mkdir -p "$RES/nodes"
 cp "$ROOT"/build/nodes/*.umd.js "$RES/nodes/"
 
+# ACT: 内置工具的配置项（如媒体生成控制的开关）随包走；缺少这一步时，改工具 schema 只有
+# 重新完整打包才会生效，本地部署会一直用旧配置。
+if ls "$ROOT"/build/tools/*.tool.js >/dev/null 2>&1; then
+  echo "== 安装内置工具（Resources）=="
+  mkdir -p "$RES/tools"
+  cp "$ROOT"/build/tools/*.tool.js "$RES/tools/"
+fi
+
 if ls "$ROOT"/build/ext/*.umd.js >/dev/null 2>&1; then
   echo "== 安装扩展（Resources）=="
   mkdir -p "$RES/ext"

@@ -133,6 +133,8 @@ const draftMentionPreview = ref<InstanceType<typeof mentionContent>>();
 let historyIndex: number | null = null;
 let historyFilling = false;
 let historyQueue: Promise<void> = Promise.resolve();
+// ACT: 代次用于打断"面板收起瞬间仍在途"的历史还原：旧任务即使完成，也不能把旧消息写回新打开的输入框。
+let historyEpoch = 0;
 let editDraft: { model: AnyTagProps[][]; mentions: AgentMention[]; attachments: AgentAttachment[] } | undefined;
 let sender: xSender | undefined;
 const senderElement = ref<HTMLElement>();
@@ -166,9 +168,10 @@ const commandHints = computed(() => {
     { command: "/goal off", hint: "清除目标并关闭循环" },
   ];
 });
-const composable = computed(() => !!senderText.value.trim() || draftAttachments.value.length > 0 || draftMentions.value.length > 0);
+const composable = computed(() => !!senderText.value.trim() || draftAttachments.value.length > 0 || editorMentionIds.value.size > 0);
 function enqueueDraft() {
-  if (props.disabled || (!composable.value && !draftMentions.value.length)) return;
+  // 与发送按钮同一口径：幽灵提及不算内容，避免空草稿也能入队。
+  if (props.disabled || !composable.value) return;
   emit("enqueue");
 }
 // ACT: 开关放在「设置 → 常规」；关闭后按钮与长按手势都要失效，不能只藏按钮。
@@ -271,7 +274,15 @@ onBeforeUnmount(() => {
   actionsObserver = undefined;
 });
 watch([locked, () => props.active], ([locked, active]) => {
-  if (!active) historyIndex = null;
+  if (!active) {
+    historyIndex = null;
+    // ACT: 历史还原是串行队列，面板收起时复位并推进代次：新打开从干净的链开始，
+    // 在途的旧任务即使跑完也会被代次挡在写回之前（见 restoreHistory）。
+    historyEpoch++;
+    historyQueue = Promise.resolve();
+    mentionQuery.value = undefined;
+    skillQuery.value = undefined;
+  }
   if (!active || locked) resetAttachmentDrag();
   if (!active || locked) sender?.disable();
   else {
@@ -295,13 +306,23 @@ function getDraftContent() {
 }
 
 // ACT: 只有完全空的草稿才允许进入历史；仅有附件或仅有提及都算有内容。
+// 提及以编辑器里真实存在的标签为准：标签被删掉后数组里可能还留着一条"幽灵提及"，
+// 按数组判断会让 ↑ 永久失效（面板关掉再开也一样），所以判空、hasDraft、发送按钮一律查这份标签集合。
+// change 事件里维护，保持响应式。
+const editorMentionIds = ref<Set<string>>(new Set());
+
 function draftEmpty() {
-  return (sender?.getText().trim() ?? "") === "" && draftMentions.value.length === 0 && draftAttachments.value.length === 0;
+  // 程序化填充期间标签还没落进编辑器，不能据此判定"空"，否则 ↑ 会在填充中途把草稿重置掉。
+  if (insertingMentions || historyFilling) return false;
+  if ((sender?.getText().trim() ?? "") !== "" || draftAttachments.value.length > 0) return false;
+  const ids = editorMentionIds.value;
+  return !draftMentions.value.some(item => ids.has(item.id));
 }
 
 // ACT: 历史还原不能复用 fillRewind——它会清 editingId，和“编辑消息”互相打断。
 async function restoreHistory(item?: AgentMessage) {
   const instance = sender;
+  const epoch = historyEpoch;
   if (!instance || locked.value) return;
   const mentions = item?.mentions ?? [];
   const content = item?.content ?? "";
@@ -313,11 +334,14 @@ async function restoreHistory(item?: AgentMessage) {
     ? { type: "Mention", id: part.mention.id, name: mentionName(part.mention) } : { type: "Write", text: part.text }));
   historyFilling = true;
   try {
+    // 排队期间面板已经收起：这次还原直接作废，不能把旧消息写进（可能已重开的）输入框。
+    if (epoch !== historyEpoch) return;
     await instance.reset({ clearHistory: false, chatNode: model });
+    if (epoch !== historyEpoch) return;
     // ACT: reset 之后还可能有排队到下一 tick 的 change 回调，多等一帧再放开标记，避免被当成用户编辑。
     await new Promise<void>(resolve => instance.nextTick(() => resolve()));
   } finally { historyFilling = false; }
-  if (sender === instance) instance.focus("last");
+  if (epoch === historyEpoch && sender === instance) instance.focus("last");
 }
 
 // ACT: 索引同步推进、只在队列里做还原，连按方向键不会因为 reset 未完成而丢键。
@@ -361,7 +385,7 @@ function handleHistoryKey(event: KeyboardEvent) {
   // ACT: 输入法组合期间方向键用于候选词，不能拿来翻历史。
   if (event.isComposing || event.keyCode === 229) return false;
   if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
-  if (props.disabled || props.busy || props.deletingId !== undefined || restoringAttachment.value || voiceActive.value || editingId.value !== undefined) return false;
+  if (props.disabled || props.busy || props.deletingId !== undefined || restoringAttachment.value || voiceActive.value || editingId.value !== undefined || insertingMentions || historyFilling) return false;
   if (historyIndex === null) {
     if (event.key !== "ArrowUp" || !draftEmpty() || !props.history?.length) return false;
     event.preventDefault();
@@ -698,6 +722,15 @@ watch(senderElement, (element, _previous, onCleanup) => {
     const token = /^\/([^\s/]*)$/.exec(instance.getText())?.[1];
     skillQuery.value = token !== undefined && commandMatches(token) ? undefined : token;
     const targets: typeof draftMentionTargets.value = [];
+    // ACT: 这里不回收 draftMentions——标签被删后数组里留下的"幽灵项"由判空逻辑（draftEmpty/hasDraft
+    // 以编辑器里真实存在的 Mention 标签为准）忽略即可。直接删数组会连带丢掉元数据：
+    // 用户删掉 @ 标签后按 ⌘Z 撤销，x-sender 只重建 {id,name} 标签，数组补不回来，发送时会被
+    // "存在无法读取的提及"拦下。数组保持超集，发送时由 getTagData 的下标过滤，多出来的项不会外发。
+    const presentIds = new Set<string>();
+    for (const line of instance.chatEditor.NODES) for (const tag of line.children) {
+      if (tag.type === "Mention") presentIds.add(tag.id);
+    }
+    editorMentionIds.value = presentIds;
     for (const line of instance.chatEditor.NODES) for (const tag of line.children) {
       if (tag.type !== "Mention") continue;
       tag.$el.dataset.agentMention = tag.id;
@@ -782,7 +815,11 @@ async function clearDraft() {
 
 /** ACT: 面板关闭时会问"还有没有没发出去的内容"，有就保留实例，避免草稿被卸载带走。 */
 function hasDraft() {
-  return !!sender?.getText().trim() || draftAttachments.value.length > 0 || draftMentions.value.length > 0 || editingId.value !== undefined;
+  // 程序化插入提及/历史还原的中途标签还没落盘，此时必须当作有草稿，否则面板会把正在写入的实例卸载掉。
+  if (insertingMentions || historyFilling) return true;
+  const ids = editorMentionIds.value;
+  return !!sender?.getText().trim() || draftAttachments.value.length > 0
+    || draftMentions.value.some(item => ids.has(item.id)) || editingId.value !== undefined;
 }
 
 defineExpose({ getDraft, clearDraft, hasDraft, fillPrompt, fillRewind, editMessage, cancelEdit, restoreEditingDraft, insertMentions });

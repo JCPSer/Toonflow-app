@@ -13,7 +13,9 @@
     "apps/server/src/modules/**",
     "apps/server/src/routes/**",
     "apps/server/src/types/**",
-    "apps/server/scripts/**"
+    "apps/server/scripts/**",
+    "apps/server/src/agentHost.ts",
+    "apps/server/src/agentRuntime.ts"
   ],
   "key_entries": [
     {
@@ -48,29 +50,28 @@
     }
   ],
   "dependencies": [
-    "shared-foundation",
     "agent-runtime",
     "agent-tools",
     "ai-providers",
+    "desktop-shell",
     "media-toolkit",
-    "desktop-shell"
+    "shared-foundation"
   ],
   "health": {
-    "score": 72,
+    "score": 76,
     "coupling": "high",
     "complexity": "high",
     "churn": "high",
     "decay_flags": [
-      "circular_dep",
       "coupling_high"
     ],
-    "review_note": "已按素材库/媒体生成/插件市场/MCP/本机运行时/Agent 接入/平台核心拆出 7 个子模块，246 文件 / 14,584 行（bootstrap 9 + 域模块 66 + lib 9 + types/desktop 1 + routes 161），app.ts 收敛为 78 行组合根，单模块 god module 形态消除。仍剩两类结构债：① 与 agent-runtime 双向引用（agent→应用 71 处、应用→agent 24 处）未端口化；② 子模块间 53 条直引对方域文件（36 个文件）绕过入口，仅 4 条经入口。建议以 AgentHost 端口切断 agent→@/utils·@/lib，再按域把深引收敛到入口或 ModuleContext。",
+    "review_note": "已按素材库/媒体生成/插件市场/MCP/本机运行时/Agent 接入/平台核心拆出 7 个子模块，250 文件 / 14,774 行（app.ts/core.ts/router.ts/index.ts/utils.ts 5 + lib 9 + 域模块 66 + routes 163 + types 2 + scripts 3 + agentHost/agentRuntime 装配 2），app.ts 收敛为 78 行组合根，单模块 god module 形态消除。agent↔应用环已由 AgentHost 端口切断：本模块引用 agent 全部经 agentRuntime.ts 门面（e9 17 处），agent→应用 import 为 0（A2P=0）。仍剩四类结构债：① 子模块间 53 条直引对方域文件（36 个文件）绕过入口，仅 4 条经入口；② 启动入口 apps/server/src/index.ts 直接读宿主壳 electrobun.config（e13），与宿主壳的 e26 共同构成既有模块回边（非 Agent 环，按 layer_violation 跟踪）；③ utils.ts 以 38 键聚合全部应用能力（含 agentRuntime 门面出口）；④ 子图 bootstrap 的装配仍分散在 15 个步骤。建议按域把深引收敛到入口或 ModuleContext，并把版本号改为平台能力端口注入。",
     "concerns": [
       {
         "id": "c-server-api-2",
-        "severity": "critical",
-        "finding": "agent-runtime 对应用层有 71 处 import（@/modules 50、@/lib 20、@/utils 1），应用层又反向 import agent 24 处，环仍在最热的会话链路上；utils.ts 以 37 个出口聚合、被 145 个文件引用。",
-        "suggestion": "定义 AgentHost 端口（配置/工作区/模型/团队）由 app.ts 注入，utils.ts 不再聚合 agent 能力。"
+        "severity": "high",
+        "finding": "utils.ts 以 38 个键聚合全部应用能力（含 agentRuntime 门面出口）并被 145 个文件引用，路由普遍隐式依赖该聚合面；依赖方向已单向（agent→应用 0 处），但聚合面仍在扩张。",
+        "suggestion": "继续按域拆分 facade 或改构造注入；agent 门面只由组合根持有，不再经 utils 转发。"
       },
       {
         "id": "c-server-api-4",
@@ -86,5 +87,5 @@
       }
     ]
   },
-  "last_analyzed_at": "2026-10-27T08:01:50+08:00"
+  "last_analyzed_at": "2026-10-27T22:28:17+08:00"
 }

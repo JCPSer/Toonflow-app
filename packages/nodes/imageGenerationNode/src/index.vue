@@ -9,7 +9,7 @@
     :downloadName="outputFile?.url.split(/[\\/]/).at(-1)"
     @fullscreen="previewVisible = true"
     :bottomWidth="660"
-    :style="{ width: (previewUrl || inpaintGuideUrl) && imageWidth ? `${imageWidth + 18}px` : undefined }">
+    :style="{ width: (previewUrl || thumbUrl || inpaintGuideUrl) && imageWidth ? `${imageWidth + 18}px` : undefined }">
     <template v-if="editor?.mode" #top><div ref="paintToolbar" /></template>
     <template #topActions>
       <el-button class="panoramaButton" :icon="IconPanoramaHorizontal" :disabled="cropping || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy || !previewUrl" text title="全景图" aria-label="全景图" @click.stop="panorama?.open($event)">全景图<icon-chevron-down class="menuChevron" :size="14" /></el-button>
@@ -27,9 +27,10 @@
     </template>
     <div v-loading="generating || uploading" class="imageContent nopan" :aria-busy="generating || uploading">
       <imageEditor
-        v-if="previewUrl"
+        v-if="previewUrl || thumbUrl"
         ref="editor"
         :src="previewUrl"
+        :previewSrc="thumbUrl"
         :toolbarTarget="paintToolbar"
         :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy"
         alt="生成图片"
@@ -247,6 +248,14 @@ const previewUrl = files.useFileUrl(
   outputFile,
   (error) => showNodeError(error, "图片读取失败")
 );
+// ACT: 画布卡片只解码缩略图（原图 3072×4096 解码会阻塞主线程约 160ms）；编辑/导出仍用 previewUrl。
+const thumbUrl = files.useThumbUrl(outputFile);
+// ACT: 输出变化即预热缩略图，下次打开画布直接命中服务端缓存。
+watch(thumbUrl, url => {
+  const file = outputFile.value;
+  if (!url || !file) return;
+  try { files.getWorkspaceFiles().warmThumb?.(file.url, 1024); } catch {}
+});
 
 onMounted(() => {
   window.addEventListener("toonflow:plugin-installed", refreshProviderModels);

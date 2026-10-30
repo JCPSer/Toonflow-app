@@ -194,6 +194,7 @@ function parseProvider(source: string) {
   }
   const id = value("id");
   const label = value("label");
+  const labelProperty = entries.get("label");
   const icon = value("icon");
   const version = value("version");
   const readme = value("readme");
@@ -211,7 +212,8 @@ function parseProvider(source: string) {
   if (!models.success) invalid(models.error.issues.map(issue => translateMessage(issue.message)).join("; "));
   const rules = z.array(z.record(z.string(), z.json())).safeParse(value("rules") ?? []);
   if (!rules.success) invalid("供应商 rules 必须为表单配置对象数组");
-  return { object, modelProperty: entries.get("models"), id: id as string, label, icon, version: version?.trim(), readme, modelsUrl: modelsUrl as string | undefined, rules: rules.data, models: models.data,
+  return { object, modelProperty: entries.get("models"), labelExpression: labelProperty?.type === "ObjectProperty" ? unwrap(labelProperty.value as Expression) : undefined,
+    id: id as string, label, icon, version: version?.trim(), readme, modelsUrl: modelsUrl as string | undefined, rules: rules.data, models: models.data,
     supportsPrice: entries.has("getPrice") || id === tfRouter.id, supportsBalance: entries.has("getBalance") || id === tfRouter.id };
 }
 
@@ -312,6 +314,33 @@ export async function saveMediaProvider(fileName: string, models: z.infer<typeof
     const source = current.source.slice(0, start) + replacement + current.source.slice(end);
     const result = metadata(fileName, source);
     if (expectedApiKey !== undefined && getMediaProviderApiKey(result.id) !== expectedApiKey) invalid("供应商配置已变更，请重试", 409);
+    await writeWorkspaceFile(join(path, fileName), source);
+    return result;
+  } finally { release(); }
+}
+
+export async function renameMediaProvider(fileName: string, label: string, revision: string) {
+  if (!mediaProviderFileSchema.safeParse(fileName).success) invalid("供应商文件名无效");
+  const next = label.trim();
+  if (!next || next.length > 200) invalid("显示名称须为 1–200 个字符");
+  // ACT: 除 C0/DEL 外一并拒绝 C1、行/段分隔符与 Cf（零宽、bidi、BOM…）——它们在卡片与下拉里不可见，能让「严格同名」失效；只放行 ZWJ 以保留组合 emoji。
+  if (/[\p{Cc}\p{Zl}\p{Zp}]/u.test(next) || /\p{Cf}/u.test(next.replaceAll("\u200d", ""))) invalid("显示名称不能包含换行、控制字符或不可见字符");
+  const path = await directory();
+  if (!path) invalid("供应商文件不存在", 404);
+  const release = lockWorkspaceFiles([join(path, fileName)]);
+  try {
+    const current = await readProvider(path, fileName);
+    if (current.revision !== revision) invalid("供应商文件已被修改，请刷新页面后再重命名", 409);
+    const parsed = parseProvider(current.source);
+    if (parsed.label.trim() === next) return metadata(fileName, current.source);
+    // ACT: 只和其它能正常解析的供应商比名字；损坏文件的 label 回退成 id，不可信，不参与重名判断。
+    const others = await listMediaProviders();
+    if (others.some(item => item.fileName !== fileName && !item.loadError && item.label.trim() === next)) invalid(t`已存在同名供应商：${next}`, 409);
+    // ACT: 只替换 label 的值区间，models、函数体、注释、换行风格原样保留；缺失区间说明文件结构异常，不猜位置。
+    const range = parsed.labelExpression;
+    if (!range || range.start == null || range.end == null) invalid("供应商文件结构无法定位显示名称");
+    const source = current.source.slice(0, range.start) + JSON.stringify(next) + current.source.slice(range.end);
+    const result = metadata(fileName, source);
     await writeWorkspaceFile(join(path, fileName), source);
     return result;
   } finally { release(); }

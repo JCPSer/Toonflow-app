@@ -163,8 +163,20 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
   }
 
   // ACT: 预热只填服务端缓存，失败静默；节点真正需要时仍是同一条 URL。
+  // 返回 Promise 供画布串行等待；同一 URL 在途时复用，避免 <img>、watch、预热三路重复请求。
+  const warmPending = new Map<string, Promise<void>>();
   function warmThumb(path: string, size = 512) {
-    void fetch(thumbUrl(path, size)).catch(() => {});
+    try {
+      const url = thumbUrl(path, size);
+      const pending = warmPending.get(url);
+      if (pending) return pending;
+      const task = fetch(url).then(() => {}, () => {}).finally(() => { warmPending.delete(url); });
+      warmPending.set(url, task);
+      return task;
+    } catch {
+      // 没有工作目录时 thumbUrl 会抛错，预热属于尽力而为，不向外冒泡。
+      return Promise.resolve();
+    }
   }
 
   // ACT: 当前目录逐次读取；跨 await 或防抖的操作传入目录字符串，固定本次目标。

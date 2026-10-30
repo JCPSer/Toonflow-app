@@ -38,25 +38,16 @@
   ],
   "dependencies": [
     "agent-tools",
-    "server-api",
     "shared-foundation"
   ],
   "health": {
-    "score": 62,
+    "score": 68,
     "coupling": "medium",
     "complexity": "high",
     "churn": "medium",
-    "decay_flags": [
-      "circular_dep"
-    ],
-    "review_note": "33 文件 / 4,395 行；agent→server 73 处、server→agent 28 处构成环，runtime/index.ts 的 run() 同时承担附件校验、会话锁、模型装配、工具装配与事件转发；sessions.ts 785 行把活跃会话放在进程级 Map。建议先抽 AgentHost 端口切断对 server 源码的静态依赖，再拆 run() 与会话存储。",
+    "decay_flags": [],
+    "review_note": "35 文件 / 4,612 行；2026-10-27 以 AgentHost 端口落地后，本模块对应用层源码的 import 为 0（A2P=0），配置/工作区/模型/团队等应用能力全部经 agent/host.ts（14 组契约）注入，应用层只经 agentRuntime.ts 门面单向引用 agent（e9 17 处），含 agent 的 file 级 SCC 为 0，模块级无环（原 71 处反向依赖已清零）。runtime/index.ts 的 run() 仍同时承担附件校验、会话锁、模型装配、工具装配与事件转发；sessions.ts 785 行把活跃会话放在进程级 Map。建议再拆 run() 与会话存储。",
     "concerns": [
-      {
-        "id": "c-agent-runtime-1",
-        "severity": "critical",
-        "finding": "与 server-api 双向 import（agent→server 73 处、server→agent 28 处），run() 直接依赖 @/utils/workspace、@/utils/ai 与 @/lib/i18n，环落在每条 Agent 请求路径。",
-        "suggestion": "抽 AgentHost 端口，把 workspace/ai/conf 访问改为注入，切断 runtime 对 server 源码的静态依赖。"
-      },
       {
         "id": "c-agent-runtime-2",
         "severity": "high",
@@ -71,5 +62,5 @@
       }
     ]
   },
-  "last_analyzed_at": "2026-10-26T21:12:00+08:00"
+  "last_analyzed_at": "2026-10-27T22:28:17+08:00"
 }

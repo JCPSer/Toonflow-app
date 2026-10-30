@@ -7,6 +7,7 @@ import type { AgentEvent, AgentMention, AgentSubAgent, AgentToolCall } from "@/a
 import { agentMentionsSchema } from "@/agent/runtime/mentions";
 import { createAgentModel } from "@/agent/runtime/model";
 import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
+import { snapshotSessionEntries } from "@/agent/runtime/cloneSnapshot";
 import { getAgentHost } from "@/agent/host";
 import { getReadableFileMimeType } from "@toonflow/formats/documentFormats";
 import { thinkingLevels } from "@toonflow/formats/modelReasoning";
@@ -615,27 +616,48 @@ function cloneSessionName(sourceName: string) {
 }
 
 /**
- * 逐字节复制会话文件到同目录的新文件，再在副本末尾追加 session_info。
- * 源文件只读；副本天然保留 toonflowAgentNode 标记。
+ * 复制会话到同目录的新文件，再在副本末尾追加 session_info。
+ * 未运行：逐字节复制源文件（源只读，副本天然保留 toonflowAgentNode 标记）；
+ * 运行中：改用内存条目快照，只复制到本轮开始前，副本停在上一条完整回复。
  */
 export async function cloneAgentSession(cwd: string, path: string) {
   if (!sessionFileNamePattern.test(basename(path))) throw Object.assign(new Error("会话标识无效"), { status: 400 });
-  // ACT: 会话运行中文件还在追加，逐字节拷贝可能截断在行中间，副本会打不开；与 fork 一致要求先停。
-  if (getActiveAgentSession(path)) throw Object.assign(new Error("会话正在运行，请先停止再复制"), { status: 409 });
+  const known = getActiveAgentSession(path);
   const source = await stat(path).catch((error: NodeJS.ErrnoException) => {
+    // ACT: 运行中的会话可能还没落盘（SDK 首条助手消息才写文件），有内存条目可克隆时不必报 404。
+    if (error.code === "ENOENT" && known) return undefined;
     if (error.code === "ENOENT") throw Object.assign(new Error("会话不存在，请重新打开对话"), { status: 404 });
     throw error;
   });
-  if (!source.isFile()) throw Object.assign(new Error("会话必须是普通文件"), { status: 400 });
-  const content = await readFile(path);
-  const name = cloneSessionName(sessionDisplayName(parseSessionLines(content.toString("utf8"))) ?? "新对话");
+  if (source && !source.isFile()) throw Object.assign(new Error("会话必须是普通文件"), { status: 400 });
+  // ACT: stat 期间本轮可能刚好结束并注销；重新取一次，文件不存在时仍用刚结束的内存会话兜底。
+  const active = getActiveAgentSession(path) ?? (source ? undefined : known);
+  let bytes: Buffer;
+  let name: string;
+  if (active) {
+    // ACT: 不读盘：内存条目一定是完整条目，也不受并发追加影响。
+    const entries = active.history.getEntries();
+    const header = active.history.getHeader();
+    if (!header) throw Object.assign(new Error("会话文件无效"), { status: 400 });
+    // ACT: 回复已结束、只是 run 还没注销时（自动压缩、计时统计等收尾），本轮已经完整，整段保留；
+    // 只有真正在跑的时候才截到本轮开始前，进行中这一轮（含刚发出的用户消息）不进入副本。
+    const cut = active.session?.isIdle ? entries.length : active.entryOffset;
+    const snapshot = snapshotSessionEntries(entries, cut);
+    // ACT: 条目对象与 SDK 共享引用，切片和序列化必须在同一个同步块内完成，避免序列化到被中途改写的条目。
+    bytes = Buffer.from([header, ...snapshot].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    // ACT: 名字用全量条目算：首轮的用户消息就在截断点之后，用快照算会退化成「新对话」。
+    name = cloneSessionName(sessionDisplayName(entries) ?? "新对话");
+  } else {
+    const content = await readFile(path);
+    // ACT: 极少数旧文件可能没有结尾换行，补一个换行避免 session_info 与最后一行粘连。
+    bytes = content.length && content.at(-1) !== 0x0a ? Buffer.concat([content, Buffer.from("\n")]) : content;
+    name = cloneSessionName(sessionDisplayName(parseSessionLines(content.toString("utf8"))) ?? "新对话");
+  }
   const { path: directory } = await getAgentHost().workspace.resolveWorkspacePath(cwd, ".agent/sessions", true);
   const id = crypto.randomUUID();
   const timestamp = new Date().toISOString();
   const fileName = `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
   const target = await getAgentHost().workspace.resolveWorkspacePath(directory, fileName, true);
-  // ACT: 极少数旧文件可能没有结尾换行，补一个换行避免 session_info 与最后一行粘连。
-  const bytes = content.length && content.at(-1) !== 0x0a ? Buffer.concat([content, Buffer.from("\n")]) : content;
   await getAgentHost().workspace.writeWorkspaceFile(target.path, bytes, true);
   try {
     await renameAgentSession(cwd, target.path, name);

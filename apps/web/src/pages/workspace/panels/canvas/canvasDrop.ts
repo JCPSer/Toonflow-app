@@ -1,11 +1,13 @@
 import axios from "axios";
 import { ElMessage } from "element-plus";
 import type { useVueFlow } from "@vue-flow/core";
-import { uploadNodeFile } from "@toonflow/nodes-scaffold/workspaceFiles";
+import { ensureNodeDirectory, uploadNodeFile } from "@toonflow/nodes-scaffold/workspaceFiles";
 import type { NodeOutput } from "@toonflow/nodes-scaffold/values";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 
 const assetDragType = "application/toonflow-asset";
+/** 节点插件（历史记录弹窗）用指针拖拽把工作区文件放到画布时派发的事件名。 */
+export const workspaceFileDropEvent = "toonflow:workspace-file-drop";
 const fileMimeTypes: Record<string, string> = {
   png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif",
   avif: "image/avif", apng: "image/apng", bmp: "image/bmp", svg: "image/svg+xml", ico: "image/x-icon",
@@ -108,7 +110,7 @@ export async function dropCanvasFiles(event: DragEvent, context: CanvasFileConte
     }
   }
   let droppedFiles = Array.from(transfer.files);
-  let prepared: { id: string; path: string }[] | undefined;
+  let prepared: { id: string; path: string; ownedDirectory?: string }[] | undefined;
   const { signal, flow } = context;
   const position = flow.screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
   try {
@@ -150,14 +152,50 @@ export async function dropCanvasFiles(event: DragEvent, context: CanvasFileConte
   }
 }
 
+export type WorkspaceFileDrop = { path: string; mimeType?: string; clientX: number; clientY: number };
+
+/** 工作区内已有文件（节点历史记录）落到画布：服务端复制到新节点目录，再走统一的建节点流程。 */
+export async function dropWorkspaceFile(source: Omit<WorkspaceFileDrop, "clientX" | "clientY">, position: { x: number; y: number }, context: CanvasFileContext) {
+  const { signal } = context;
+  const name = source.path.split("/").pop() ?? "";
+  const mimeType = source.mimeType || fileMimeTypes[name.split(".").pop()?.toLowerCase() ?? ""] || "";
+  const kind = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("video/") ? "video" : undefined;
+  if (!name || !kind) throw new Error(`${name || "该文件"}：暂不支持拖到画布`);
+  // ACT: 先确认节点类型已启用再落盘，避免复制完才发现导不进来，留下孤儿文件。
+  if (!context.availableNodes.some(node => node.type === `remote-${kind}Node`)) throw new Error(`${name}：请先安装并启用对应的基础节点`);
+  const id = crypto.randomUUID();
+  const files = useWorkspaceFiles(context.directory);
+  const directory = await ensureNodeDirectory(files, id);
+  const target = `${directory}/${name}`;
+  try {
+    // ACT: 建目录是异步的，期间画布可能已被切走；此时不必再复制十几 MB 再回滚。
+    signal.throwIfAborted();
+    await files.copy(source.path, target);
+  } catch (error) {
+    await files.remove(directory, true).catch(() => {});
+    throw error;
+  }
+  if (signal.aborted) {
+    await files.remove(directory, true).catch(() => {});
+    signal.throwIfAborted();
+  }
+  // ACT: 目录是为这个新节点建的；后续建节点失败时要连目录一起回收。
+  await importCanvasFiles([new File([], name, { type: mimeType })], position, context, [{ id, path: target, ownedDirectory: directory }]);
+}
+
 export async function importCanvasFiles(droppedFiles: File[], position: { x: number; y: number }, context: CanvasFileContext,
-  prepared?: { id: string; path: string }[]) {
+  prepared?: { id: string; path: string; ownedDirectory?: string }[]) {
   const { signal, flow, availableNodes } = context;
   const files = useWorkspaceFiles(context.directory);
+  /** 回滚：先删文件再删（本次新建的）节点目录，目录里的其它文件不归这里管。 */
+  async function rollback(preparedPath: string | undefined, ownedDirectory: string | undefined) {
+    if (preparedPath) await files.remove(preparedPath).catch(error => console.warn("回滚落盘文件失败", preparedPath, error));
+    if (ownedDirectory) await files.remove(ownedDirectory, true).catch(error => console.warn("回滚节点素材目录失败", ownedDirectory, error));
+  }
   for (const [index, file] of droppedFiles.entries()) {
     // ACT: 取消发生在建节点之前时，服务端已落盘的素材也要回滚，避免留下无人引用的文件。
     if (signal.aborted) {
-      for (const item of prepared?.slice(index) ?? []) await files.remove(item.path).catch(() => {});
+      for (const item of prepared?.slice(index) ?? []) await rollback(item.path, item.ownedDirectory);
       break;
     }
     // ACT: 素材库拖入时服务端已按目标 nodeId 落盘，节点 id 必须与目录名一致。
@@ -187,7 +225,7 @@ export async function importCanvasFiles(droppedFiles: File[], position: { x: num
       flow.addNodes({ id, type, position: { x: position.x + index * 32, y: position.y + index * 32 },
         data: kind === "text" ? { label: file.name, textSnapshot } : { label: file.name, outputs: { [kind]: output } } });
     } catch (error) {
-      if (copiedPath) await files.remove(copiedPath).catch(showError);
+      await rollback(copiedPath, prepared?.[index]?.ownedDirectory);
       if (!signal.aborted) showError(error);
     }
   }

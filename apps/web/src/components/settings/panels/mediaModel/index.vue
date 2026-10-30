@@ -36,6 +36,7 @@
             </span>
             <el-button v-if="item.modelsUrl" text :icon="IconDownload" :loading="fetchingFile === item.fileName" :disabled="!!fetchingFile || !!deletingFile || !!item.loadError || !item.revision" @click="fetchModels(item)">获取模型</el-button>
             <el-button text :icon="IconEdit" :disabled="!!fetchingFile || !!deletingFile || !!item.loadError" @click="editProvider(item)">编辑模型</el-button>
+            <el-button text :icon="IconPencil" :disabled="!!fetchingFile || !!deletingFile || !!item.loadError || !item.revision" :aria-label="`重命名 ${item.label}`" @click="renameProvider(item)">重命名</el-button>
             <el-popconfirm title="确定删除此供应商及其模型？" confirmButtonText="删除" cancelButtonText="取消" @confirm="deleteProvider(item)">
               <template #reference><el-button text type="danger" :icon="IconTrash" :loading="deletingFile === item.fileName" :disabled="!!fetchingFile || !!deletingFile || !item.revision">删除</el-button></template>
             </el-popconfirm>
@@ -49,6 +50,7 @@
     </div>
     <component :is="mediaProviderDialog" v-model="providerDialogVisible" :mode="addMode" @added="saveProviderItem" />
     <component :is="editProviderDialog" v-model="editorVisible" :provider="editingProvider" @saved="saveProviderItem" />
+    <component :is="renameProviderDialog" v-model="renameVisible" :provider="renamingProvider" :existingLabels="existingLabels" @saved="onRenamed" @conflict="onRenameConflict" />
   </div>
 </template>
 
@@ -56,7 +58,7 @@
 import axios from "axios";
 import { computed, defineAsyncComponent, onMounted, onBeforeUnmount, ref, shallowRef, type Component } from "vue";
 import { ElMessage } from "element-plus";
-import { IconPlus, IconSettings, IconEdit, IconTrash, IconDownload } from "@tabler/icons-vue";
+import { IconPlus, IconSettings, IconEdit, IconTrash, IconDownload, IconPencil } from "@tabler/icons-vue";
 import logoUrl from "@toonflow/assets/logo.svg";
 import type { MediaProvider } from "./types";
 import { forgetProviderHidden, isProviderHidden, modelsHidden, setProviderHidden, settings, saveSettings } from "@/stores/settings";
@@ -67,6 +69,7 @@ import tfAccount from "../../tfAccount.vue";
 const { visible = true } = defineProps<{ visible?: boolean }>();
 const mediaProviderDialog = shallowRef<Component>();
 const editProviderDialog = shallowRef<Component>();
+const renameProviderDialog = shallowRef<Component>();
 const providers = ref<MediaProvider[]>([]);
 const sortedProviders = computed(() => [...providers.value].sort((a, b) => Number(b.id.toLowerCase() === "tfrouter") - Number(a.id.toLowerCase() === "tfrouter")));
 const loaded = ref(false);
@@ -74,6 +77,8 @@ const providerDialogVisible = ref(false);
 const editorVisible = ref(false);
 const addMode = ref<"builtin" | "custom">("builtin");
 const editingProvider = ref<MediaProvider>();
+const renamingProvider = ref<MediaProvider>();
+const renameVisible = ref(false);
 const deletingFile = ref("");
 const fetchingFile = ref("");
 const visibilityBusy = ref("");
@@ -142,6 +147,28 @@ function editProvider(provider: MediaProvider) {
   editProviderDialog.value ??= defineAsyncComponent(() => import("./editProviderDialog.vue"));
   editingProvider.value = provider;
   editorVisible.value = true;
+}
+
+// ACT: 重名以其它「能正常解析」的供应商为准，损坏文件的名字是回退的 id，不参与比较（与服务端一致）。
+const existingLabels = computed(() => providers.value.filter(item => item.fileName !== renamingProvider.value?.fileName && !item.loadError).map(item => item.label));
+
+function renameProvider(provider: MediaProvider) {
+  if (fetchingFile.value || deletingFile.value || provider.loadError || !provider.revision) return;
+  renameProviderDialog.value ??= defineAsyncComponent(() => import("./renameProviderDialog.vue"));
+  renamingProvider.value = provider;
+  renameVisible.value = true;
+}
+
+function onRenamed(provider: MediaProvider) {
+  saveProviderItem(provider);
+  invalidateNodeModels("media");
+  // ACT: 已展开的媒体节点只在配置变更事件里重新取模型，改名后要让下拉里的分组名跟着变。
+  window.dispatchEvent(new Event("toonflow:provider-config-changed"));
+}
+
+async function onRenameConflict() {
+  await loadProviders();
+  ElMessage.warning("供应商文件已被修改，列表已刷新，请重新重命名");
 }
 
 async function fetchModels(provider: MediaProvider) {
