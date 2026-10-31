@@ -87,7 +87,8 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
     const directory = input.references?.some(item => item.dataType !== "STRING")
       ? await u.workspace.resolveWorkspace(req, input.directory ?? "") : undefined;
     const references = await u.ai.readAiReferences(directory, input.references ?? [], controller.signal, configured.provider);
-    const stream = u.ai.streamAi(configured, input.context, controller.signal, references);
+    // ACT: runId 是前端一次生成任务的稳定标识，OpenCode 用它做会话亲和；未传时由 streamAi 内部随机。
+    const stream = u.ai.streamAi(configured, input.context, controller.signal, references, { sessionId: runId });
     res.set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" });
     res.flushHeaders();
     heartbeat = setInterval(() => {

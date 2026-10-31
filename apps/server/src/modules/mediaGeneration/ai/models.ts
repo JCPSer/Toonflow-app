@@ -1,5 +1,6 @@
 import { t } from "@/lib/i18n";
 import { z } from "zod";
+import { openCodeRequestHeaders } from "@/modules/mediaGeneration/ai/opencode";
 
 const modelSchema = z.object({
   id: z.string().optional(), name: z.string().optional(),
@@ -12,7 +13,7 @@ export async function fetchProviderModels({ apiUrl, protocol, apiKey }: { apiUrl
   const url = new URL(apiUrl);
   if (url.pathname === "/") url.pathname = "/v1";
   url.pathname = `${url.pathname.replace(/\/+$/, "")}/models`;
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", ...openCodeRequestHeaders(apiUrl) };
   if (protocol === "anthropic-messages") {
     headers["anthropic-version"] = "2023-06-01";
     headers["x-api-key"] = apiKey;

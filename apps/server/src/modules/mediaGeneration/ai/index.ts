@@ -9,6 +9,7 @@ import conf from "@/modules/platformCore/conf";
 import { readReference } from "@/modules/mediaGeneration/media/generation";
 import modelContextLimits from "@/modules/mediaGeneration/ai/modelContextLimits";
 import { createFileTransport, getUnsupportedFileText, type FileProvider } from "@/modules/mediaGeneration/ai/files";
+import { openCodeRequestHeaders } from "@/modules/mediaGeneration/ai/opencode";
 import { getRequestFiles } from "@/modules/mediaGeneration/ai/requestFiles";
 import { readFile, stat } from "@toonflow/file";
 import { resolveWorkspacePath } from "@/modules/localRuntime/workspace/files";
@@ -196,6 +197,8 @@ export function streamAi(
   context: Context,
   signal: AbortSignal,
   references: Awaited<ReturnType<typeof readAiReferences>> = [],
+  // ACT: 节点侧没有 SDK 的会话注入，OpenCode 需要调用方提供稳定标识；有 runId 时整轮生成复用同一个会话。
+  options?: { sessionId?: string },
 ) {
   const { provider, model: configuredModel, baseUrl } = configured;
   const model: Model<typeof provider.protocol> = {
@@ -210,6 +213,7 @@ export function streamAi(
     apiKey: provider.apiKey,
     signal,
     fetch: files.fetch,
+    headers: openCodeRequestHeaders(baseUrl, options?.sessionId),
     onPayload: async (payload) => {
       let body = payload as Record<string, unknown>;
       if (references.length) {
