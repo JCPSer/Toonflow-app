@@ -240,6 +240,7 @@ import { loadNodeComponent } from "./loadNodeComponent";
 import { pauseMediaIn } from "@/lib/mediaPlayback";
 import { useCanvasHistory } from "./useCanvasHistory";
 import { copyNodeToClipboard, copyNodesToClipboard, nodeClipboardCommand, readClipboardNodes } from "./nodeClipboard";
+import { detachAgentSession } from "./agentSessionCopy";
 import { readClipboardFiles, readClipboardText, writeClipboardImage } from "@/lib/clipboard";
 import nodeMenu from "./components/nodeMenu.vue";
 import remoteNode from "./components/remoteNode.vue";
@@ -1581,7 +1582,7 @@ async function pasteClipboardNode(position: { x: number; y: number }, command?: 
       const top = Math.min(...roots.map(node => node.position.y));
       await canvasHistory.batch(async () => {
         flow.removeSelectedElements();
-        addNodes(snapshot.nodes.map(node => ({ ...node, id: ids.get(node.id)!, parentNode: ids.get(node.parentNode ?? ""), selected: true,
+        addNodes(snapshot.nodes.map(node => ({ ...detachAgentSession(node), id: ids.get(node.id)!, parentNode: ids.get(node.parentNode ?? ""), selected: true,
           position: node.parentNode ? node.position : { x: position.x + node.position.x - left, y: position.y + node.position.y - top } })));
         await nextTick();
         if (canvasSignal.aborted) return;

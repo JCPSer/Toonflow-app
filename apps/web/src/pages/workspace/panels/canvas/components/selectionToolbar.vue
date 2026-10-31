@@ -62,6 +62,7 @@ import {
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { finishGroupDrag, getSelectionRoots, getSelectionTree } from "../selectionNodes";
+import { detachAgentSession } from "../agentSessionCopy";
 import { gridSize, snapOffset, snapPoint, subtractPoint } from "../snapNodes";
 import { arrangeSelection, type ArrangeSelectionMode } from "../arrangeSelection";
 import { expandSelectionForAssets, getAssetSource, saveSelectionToAssets } from "../saveSelectionToAssets";
@@ -133,7 +134,8 @@ async function duplicateNodes(selection: GraphNode[], signal: AbortSignal, withE
     const patch = await useNodeEvent(node.id, flow).emit("copy");
     signal.throwIfAborted();
     const saved = savedNodes.get(node.id)!;
-    const copy = JSON.parse(JSON.stringify({ ...saved, data: { ...saved.data, ...patch } })) as Node;
+    // ACT: 节点事件可能因组件未挂载返回空补丁，画布层再拆一次会话，避免副本与源节点共用一个 jsonl。
+    const copy = detachAgentSession(JSON.parse(JSON.stringify({ ...saved, data: { ...saved.data, ...patch } })) as Node);
     Reflect.deleteProperty(copy, "initialized");
     copy.id = ids.get(node.id)!;
     copy.parentNode = ids.get(saved.parentNode ?? "") ?? saved.parentNode;

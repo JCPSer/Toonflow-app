@@ -226,6 +226,18 @@ async function loadSession(nodeId: string) {
     entry.sessionFile = undefined;
     return;
   }
+  // ACT: 历史画布或旧版节点包可能让两个节点指向同一个 jsonl，表现为「一边发消息两边都变」。
+  // 打开时若发现别的节点也绑着这个文件，先给当前节点克隆一份再改绑，自愈已共享的数据。
+  const shared = getNodes.value.some(item => item.id !== nodeId
+    && (item.data as AgentNodeData | undefined)?.agentSessionFile === file);
+  if (shared) {
+    try {
+      file = (await cloneSession(nodeId, file)) ?? file;
+      ElMessage.success("已为这个节点分离出独立会话副本");
+    } catch {
+      // 克隆失败仍按原文件打开，不阻断对话；下次打开会再试一次。
+    }
+  }
   entry.sessionFile = file;
   try {
     entry.initial = await request<AgentConversation>("/api/agent/get", { params: { directory: directory.value, sessionFile: file } });

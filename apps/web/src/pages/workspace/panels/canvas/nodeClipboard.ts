@@ -2,6 +2,7 @@ import type { Edge, GraphEdge, GraphNode, Node } from "@vue-flow/core";
 import { isNodeOutput } from "@toonflow/nodes-scaffold/values";
 import { writeClipboardText } from "@/lib/clipboard";
 import { transferWorkspaceFiles } from "@/lib/workspaceFiles";
+import { detachAgentSession } from "./agentSessionCopy";
 
 export const nodeClipboardCommand = /^toonflow:paste-node:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -46,7 +47,8 @@ export async function copyNodesToClipboard(nodes: Node[], edges: Edge[], directo
   const snapshot = JSON.parse(JSON.stringify({
     nodes: nodes.map(node => {
       const { computedPosition, handleBounds, selected, dimensions, isParent, resizing, dragging, events, initialized, ...saved } = node as GraphNode & { initialized?: boolean };
-      return { ...saved, data: saved.data ?? {} };
+      // ACT: 剪贴板可能不经节点 copy 事件（节点菜单、旧版节点包），入库前统一把 Agent 会话拆成待克隆指针。
+      return detachAgentSession({ ...saved, data: saved.data ?? {} });
     }),
     edges: edges.filter(edge => ids.has(edge.source) && ids.has(edge.target)).map(edge => {
       const { selected, sourceNode, targetNode, sourceX, sourceY, targetX, targetY, events, ...saved } = edge as GraphEdge;
