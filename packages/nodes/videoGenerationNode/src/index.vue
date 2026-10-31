@@ -17,11 +17,20 @@
       <el-button :icon="IconLayersSubtract" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="openAction('separate')">分离音视频</el-button>
       <el-button :icon="IconScissors" text :disabled="!outputFile || generating || deleting || uploading || actions?.processing" @click.stop="openAction('trim')">截取片段</el-button>
       <el-button :icon="IconMovie" text :loading="actions?.creatingAnalysis" :disabled="!outputFile || generating || deleting || uploading || actions?.processing || actions?.creatingAnalysis" @click.stop="createAnalysis()">逐帧拉片</el-button>
-      <mediaHistory mediaType="video" :current="outputFile" :disabled="generating || deleting || uploading" @select="outputs.video = { dataType: 'VIDEO', value: $event }" @clear="outputs.video = undefined" />
+      <mediaHistory mediaType="video" :current="outputFile" :disabled="generating || deleting || uploading" @select="selectVideo($event)" @clear="clearVideo()" />
       <el-button :icon="IconTransfer" :loading="uploading" :disabled="generating || deleting" text title="替换视频" aria-label="替换视频" @click.stop="fileInput?.click()">替换视频</el-button>
       <input ref="fileInput" type="file" accept="video/*" hidden aria-label="选择替换视频" :disabled="generating || deleting || uploading" @change="replaceOutput" />
     </template>
     <template #topRightActions>
+      <frameOutputMenu
+        :enabled="frameEnabled"
+        :values="frameValues"
+        :busy="frameBusy"
+        :error="frameError"
+        :has-video="!!outputFile"
+        :disabled="nodeDisabled"
+        @toggle="toggleFrame"
+        @refresh="refreshFrames()" />
       <el-dropdown trigger="click" placement="bottom-end" :disabled="!outputFile || player?.capturing || generating || deleting || uploading" @command="player?.captureFrame($event)">
         <el-button :icon="IconPhotoScan" :loading="player?.capturing" :disabled="!outputFile || player?.capturing || generating || deleting || uploading" text title="截取视频帧" aria-label="截取视频帧" />
         <template #dropdown>
@@ -111,10 +120,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
+import { computed, getCurrentInstance, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
+import { useNodeId, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
 import { IconCameraAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconMovie, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
-import { nodeSkeleton, nodeTools, useNode, z, type NodeMediaModel, type NodeVideoRequest, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
+import { nodeSkeleton, nodeTools, useNode, z, type NodeMediaModel, type NodeMediaValue, type NodeVideoRequest, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
 import { markNodeOutcome } from "@toonflow/nodes-scaffold/nodeBusy";
 import { groupNodeModels } from "@toonflow/node-shared/groupNodeModels";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
@@ -123,6 +133,8 @@ import { useNodeReferences } from "@toonflow/node-shared/useNodeReferences";
 import promptInput from "@toonflow/node-shared/promptInput";
 import videoPlayer from "@toonflow/node-video/videoPlayer";
 import videoActions from "@toonflow/node-video/videoActions";
+import frameOutputMenu from "@toonflow/node-video/frameOutputMenu";
+import { buildFrameHandles, staticNodeHandles, useFrameOutputs, type FrameOutputConfig } from "@toonflow/node-video/frameOutput";
 import referenceItem from "@toonflow/node-shared/referenceItem";
 import mediaHistory from "@toonflow/node-shared/mediaHistory";
 import mediaPrice from "@toonflow/node-shared/mediaPrice";
@@ -137,9 +149,19 @@ defineOptions({
   ] satisfies NodeHandle[],
 });
 const vLoading = ElLoading.directive;
-const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals } = useNode({
+const flow = useVueFlow();
+const nodeId = useNodeId();
+const baseHandles = staticNodeHandles<NodeHandle>(getCurrentInstance()?.type);
+// ACT: 动态端口必须在 useNode 之前合并，否则 useNode 会按声明期端口过滤掉已保存的首/尾帧值。
+const savedFrameConfig = (flow.findNode(nodeId)?.data as { frameOutputs?: FrameOutputConfig } | undefined)?.frameOutputs;
+const initialHandles = buildFrameHandles(savedFrameConfig, baseHandles);
+const { id, node, nodeProps, nodeEvent, outputs, handles, ffmpeg, files, ai, updateNodeInternals } = useNode({
   label: "视频生成",
+  handles: initialHandles,
 });
+// ACT: 共享模块直接接收 vue-flow 节点本体（响应式对象），id 是字符串。
+const frames = useFrameOutputs({ id: nodeId, node, outputs, handles, baseHandles, getFiles: files.getWorkspaceFiles, createFfmpeg: ffmpeg });
+const { enabled: frameEnabled, values: frameValues, busy: frameBusy, error: frameError, refresh: refreshFrames, toggle: toggleFrame } = frames;
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
 const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean });
 data.value.prompt ??= "";
@@ -257,6 +279,15 @@ const generationInput = computed<Omit<NodeVideoRequest, "directory"> | undefined
   };
 });
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
+
+function selectVideo(value: NodeMediaValue) {
+  outputs.value.video = { dataType: "VIDEO", value };
+  if (!nodeDisabled.value) void refreshFrames();
+}
+function clearVideo() {
+  outputs.value.video = undefined;
+  frames.clear();
+}
 // ACT: 默认只显示服务端首帧图，点播放或使用剪辑类操作时才读取整段视频。
 const { url: previewUrl, posterUrl, activate, deactivate } = files.useLazyFileUrl(
   outputFile,
@@ -334,6 +365,7 @@ async function replaceOutput(event: Event) {
     }
     // ACT: 保留历史输出文件，避免破坏撤销记录和复制节点的引用。
     outputs.value.video = { dataType: "VIDEO", value: { url, mimeType: file.type } };
+    if (!nodeDisabled.value) void refreshFrames();
   } catch (error) {
     showNodeError(error, "视频替换失败");
   } finally {
@@ -384,6 +416,7 @@ async function startGeneration() {
       controller.signal.throwIfAborted();
       if (!result) throw new Error("供应商未返回视频");
       outputs.value.video = { dataType: "VIDEO", value: { url: result.path, mimeType: result.mimeType } };
+      if (!nodeDisabled.value) void refreshFrames();
       files.getWorkspaceFiles().warmThumb?.(result.path);
     }),
     // ACT: 失败/取消要在 busy 下降沿之前写进全局任务表，宿主才知道该报成功还是失败。

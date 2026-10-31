@@ -81,7 +81,12 @@
             </div>
           </section>
           <section class="projectList" data-home-section="projects" aria-labelledby="projectListTitle">
-            <h2 id="projectListTitle">项目</h2>
+            <div class="projectListHeader">
+              <h2 id="projectListTitle">项目</h2>
+              <el-button v-if="canShareProject" class="importProjectButton" :icon="IconFileImport" :disabled="creating || opening" @click="chooseImportFile">
+                导入工程…
+              </el-button>
+            </div>
             <div class="projectItems">
               <el-card class="projectCard" shadow="never" :bodyStyle="{ padding: '0', height: '100%' }">
                 <button class="projectLaunch" type="button" :disabled="creating || opening || relocationPicker?.selecting" :aria-busy="creating || relocationPicker?.selecting" title="选择空文件夹新建，或打开已有项目" @click="createProject(false)">
@@ -95,7 +100,7 @@
                   </span>
                 </button>
               </el-card>
-              <el-card v-for="project in sortedProjects" :key="project.directory" class="projectCard" shadow="never" :bodyStyle="{ padding: '0', height: '100%' }">
+              <el-card v-for="project in sortedProjects" :key="project.directory" class="projectCard" shadow="never" :bodyStyle="{ padding: '0', height: '100%' }" @contextmenu="openProjectMenu($event, project)">
                 <button class="projectEntry" type="button" :disabled="creating || opening" :title="project.directory" :aria-label="`打开项目 ${project.name}`" @click="openProject(project)">
                   <projectCover :directory="project.directory" />
                   <span class="projectInfo">
@@ -115,9 +120,29 @@
       </div>
     </el-scrollbar>
     <assetLibraryView v-if="assetsMounted" v-show="assetsMode" ref="assetViewRef" class="pageAssets" :active="assetsMode" />
-    <settings v-model="settingsVisible" />
+    <settings ref="settingsRef" v-model="settingsVisible" />
     <mobileConnect v-model="mobileConnectVisible" />
     <workspacePicker ref="relocationPicker" hideTrigger />
+    <shareDropOverlay v-if="shareDragging" />
+    <div
+      v-if="projectMenu"
+      class="projectContextMenu"
+      role="menu"
+      aria-label="工程操作"
+      :style="{ left: `${projectMenu.x}px`, top: `${projectMenu.y}px` }"
+      @contextmenu.prevent>
+      <button class="projectContextItem" type="button" role="menuitem" @click="shareProjectFromMenu">
+        <icon-share :size="16" aria-hidden="true" />
+        <span>分享工程…</span>
+      </button>
+    </div>
+    <shareExportDialog
+      v-if="exportTarget"
+      v-model="exportVisible"
+      :directory="exportTarget.directory"
+      :projectName="exportTarget.name"
+      @open-ffmpeg-settings="openFfmpegSettings" />
+    <shareImportDialog ref="importDialogRef" v-model="importVisible" @completed="handleShareImported" />
   </div>
 </template>
 
@@ -132,13 +157,19 @@ import { getReadableFileMimeType, readableFileAccept } from "@toonflow/server/do
 import {
   IconQrcode, IconDeviceDesktop, IconHome, IconCompass,
   IconArrowUp, IconPlus, IconLoader2,
-  IconFolder, IconEdit,
+  IconFolder, IconEdit, IconFileImport, IconShare,
   IconTrash, IconPaperclip,
 } from "@tabler/icons-vue";
 import modelPopover from "@/components/modelPopover.vue";
 import attachmentList from "@/components/agent/attachmentList.vue";
 import { createPastedTextFile, readTextAttachment } from "@/components/agent/textAttachments";
 import type { AgentAttachment } from "@/components/agent/types";
+import shareDropOverlay from "@/components/projectShare/shareDropOverlay.vue";
+import shareExportDialog from "@/components/projectShare/shareExportDialog.vue";
+import shareImportDialog from "@/components/projectShare/shareImportDialog.vue";
+import { useShareFileDrop } from "@/components/projectShare/useShareDrop";
+import { selectShareSourceFile, shareErrorMessage, type ShareImportResult } from "@/lib/projectShare";
+import { isDesktop, isRemoteConnection } from "@/lib/platform";
 import logoUrl from "@toonflow/assets/logo.svg";
 import { useWorkspaceStore, type Project } from "@/stores/workspace";
 import { hasDesktopUpdate } from "@/stores/desktopUpdate";
@@ -153,6 +184,7 @@ import projectCover from "./projectCover.vue";
 import workspacePicker from "./workspacePicker.vue";
 
 const settingsVisible = ref(false);
+const settingsRef = ref<InstanceType<typeof settings>>();
 const assetsMode = ref(false);
 // 惰性挂载：第一次进入才创建素材库，之后用 v-show 保留树的展开状态与上传队列。
 const assetsMounted = ref(false);
@@ -200,6 +232,10 @@ const promptPlaceholder = ref(translate(placeholderPhrases[0]!));
 
 /** 素材库页面里按 Esc 退出；已被内核（清选中/退回收站）或浮层（抽屉/批量弹窗）处理的 Esc 不抢。 */
 function onWindowKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && projectMenu.value) {
+    closeProjectMenu();
+    return;
+  }
   if (event.key !== "Escape" || !assetsMode.value || event.defaultPrevented) return;
   const overlayOpen = [...document.querySelectorAll<HTMLElement>(".el-overlay")]
     .some(element => getComputedStyle(element).display !== "none");
@@ -209,6 +245,10 @@ function onWindowKeydown(event: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener("keydown", onWindowKeydown);
+  window.addEventListener("pointerdown", dismissProjectMenu, true);
+  window.addEventListener("scroll", closeProjectMenu, true);
+  window.addEventListener("resize", closeProjectMenu);
+  window.addEventListener("blur", closeProjectMenu);
   window.addEventListener("dragend", clearAttachmentDrag, true);
   window.addEventListener("drop", clearAttachmentDrag, true);
   window.addEventListener("blur", clearAttachmentDrag);
@@ -252,6 +292,10 @@ onUnmounted(() => {
   pageLifetime.abort();
   if (router.currentRoute.value.path !== "/workspace") workspaceStore.projectLoading = false;
   window.removeEventListener("keydown", onWindowKeydown);
+  window.removeEventListener("pointerdown", dismissProjectMenu, true);
+  window.removeEventListener("scroll", closeProjectMenu, true);
+  window.removeEventListener("resize", closeProjectMenu);
+  window.removeEventListener("blur", closeProjectMenu);
   window.removeEventListener("dragend", clearAttachmentDrag, true);
   window.removeEventListener("drop", clearAttachmentDrag, true);
   window.removeEventListener("blur", clearAttachmentDrag);
@@ -269,6 +313,65 @@ watch([creating, opening], ([creating, opening]) => {
 const selectedModel = ref("");
 const reasoningEffort = ref("");
 const sortedProjects = computed(() => [...projectList.value].sort((left, right) => right.lastOpenedAt - left.lastOpenedAt));
+
+// ACT: 分享包依赖桌面宿主的保存/打开文件对话框；浏览器与远程连接只能用拖拽导入。
+const canShareProject = isDesktop && !isRemoteConnection;
+const projectMenu = ref<{ x: number; y: number; project: Project } | null>(null);
+const exportTarget = ref<Project | null>(null);
+const exportVisible = ref(false);
+const importVisible = ref(false);
+const importDialogRef = ref<InstanceType<typeof shareImportDialog>>();
+const { dragging: shareDragging } = useShareFileDrop(file => importDialogRef.value?.start({ file }));
+
+const projectMenuWidth = 176;
+const projectMenuHeight = 44;
+
+function openProjectMenu(event: MouseEvent, project: Project) {
+  // 非桌面端没有分享入口，保留浏览器原生右键菜单。
+  if (!canShareProject) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const x = Math.max(8, Math.min(event.clientX, window.innerWidth - projectMenuWidth - 8));
+  const y = Math.max(8, Math.min(event.clientY, window.innerHeight - projectMenuHeight - 8));
+  projectMenu.value = { x, y, project };
+}
+
+function closeProjectMenu() {
+  projectMenu.value = null;
+}
+
+function dismissProjectMenu(event: Event) {
+  if (!projectMenu.value) return;
+  if (event.target instanceof Element && event.target.closest(".projectContextMenu")) return;
+  closeProjectMenu();
+}
+
+function shareProjectFromMenu() {
+  const target = projectMenu.value?.project;
+  closeProjectMenu();
+  if (!target || !canShareProject) return;
+  exportTarget.value = target;
+  exportVisible.value = true;
+}
+
+async function chooseImportFile() {
+  if (!canShareProject || creating.value || opening.value) return;
+  try {
+    const filePath = await selectShareSourceFile();
+    if (filePath) importDialogRef.value?.start({ filePath });
+  } catch (error) {
+    ElMessage.error(shareErrorMessage(error, "无法打开文件选择器，请重试"));
+  }
+}
+
+async function handleShareImported(result: ShareImportResult) {
+  importVisible.value = false;
+  await openProject({ directory: result.path, name: result.name, lastOpenedAt: Date.now() });
+}
+
+function openFfmpegSettings() {
+  settingsRef.value?.openAt("pluginMarket", "ffmpeg");
+}
 
 /** 进入素材库：主内容区切换为素材库页面（惰性挂载，v-show 保留树状态与上传队列）。 */
 function openAssets() {
@@ -881,11 +984,24 @@ async function createProject(fromPrompt = true) {
           max-width: 1280px;
           margin: 0 auto;
 
-          h2 {
-            margin: 0 0 20px;
-            font-size: 22px;
-            font-weight: 600;
-            line-height: 1.5;
+          .projectListHeader {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 20px;
+
+            h2 {
+              margin: 0;
+              font-size: 22px;
+              font-weight: 600;
+              line-height: 1.5;
+            }
+
+            .importProjectButton {
+              flex-shrink: 0;
+              margin: 0;
+            }
           }
 
           .projectItems {
@@ -1047,6 +1163,38 @@ async function createProject(fromPrompt = true) {
     .homeSidebar .sidebarItem { min-height: 44px; }
   }
 }
+.projectContextMenu {
+  position: fixed;
+  z-index: 3200;
+  display: flex;
+  flex-direction: column;
+  min-width: 176px;
+  padding: 6px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: calc(var(--ui-radius) * 2);
+  background: var(--el-bg-color-overlay);
+  box-shadow: var(--el-box-shadow-light);
+
+  .projectContextItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: var(--ui-radius);
+    background: transparent;
+    color: var(--el-text-color-regular);
+    font: inherit;
+    font-size: 13px;
+    text-align: start;
+    cursor: pointer;
+
+    &:hover { background: var(--el-fill-color-light); color: var(--el-text-color-primary); }
+    &:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: -2px; }
+  }
+}
+
 @keyframes launchSpin {
   to { transform: rotate(360deg); }
 }

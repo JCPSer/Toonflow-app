@@ -56,6 +56,15 @@ export async function selectSaveFile(fileName: string): Promise<string | null> {
   }
 }
 
+// ACT: 大文件不能走 saveFile 的整包入内存（raw 100MB 上限），改为取回一次性 token 对应的路径，
+// 由调用方直接流式写盘；token 用后即焚，避免路径被重复使用。
+export function takeSaveTarget(token: string): string {
+  const entry = pendingSaves.get(token);
+  pendingSaves.delete(token);
+  if (!entry || entry.expiresAt <= Date.now()) throw new Error(t`保存位置已过期，请重新选择保存位置`);
+  return entry.path;
+}
+
 export default async function saveFile(token: string, content: Uint8Array): Promise<boolean> {
   const entry = pendingSaves.get(token);
   pendingSaves.delete(token);

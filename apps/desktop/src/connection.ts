@@ -16,8 +16,10 @@ export default async function createDesktopConnection(app: express.Express, dire
   let closed = false;
   const nativePosts = new Set([
     "/api/desktop/ready", "/api/desktop/devtools", "/api/desktop/clipboard/read", "/api/desktop/clipboard/write",
-    "/api/desktop/selectSaveFile", "/api/desktop/saveFile", "/api/desktop/providerFile/select", "/api/desktop/providerFile/read",
+    "/api/desktop/dialog", "/api/desktop/saveFile", "/api/desktop/providerFile/read",
   ]);
+  // ACT: 对话框改成两段式后，轮询走 GET；远端连接时它同样必须由本机处理（会话表在本机内存里）。
+  const nativeGets = new Set(["/api/desktop/update", "/api/desktop/dialog"]);
 
   async function start() {
     const connection = await createRemoteConnection(directory, {
@@ -82,7 +84,7 @@ export default async function createDesktopConnection(app: express.Express, dire
     gateway.use("/api/connection", connection.router);
     gateway.use((req, res, next) => {
       if (!connection.remote) return app(req, res, next);
-      if (req.method === "GET" && req.path === "/api/desktop/update" || req.method === "POST" && nativePosts.has(req.path)) {
+      if (req.method === "GET" && nativeGets.has(req.path) || req.method === "POST" && nativePosts.has(req.path)) {
         return app(req, res, next);
       }
       const path = posix.normalize(decodeURIComponent(req.path).replaceAll("\\", "/")).toLowerCase();

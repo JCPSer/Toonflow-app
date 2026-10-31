@@ -1,5 +1,6 @@
 import axios from "axios";
 import { ElMessage } from "element-plus";
+import { pickDesktop } from "./desktopDialog";
 import { isMobile, isDesktop } from "./platform";
 
 declare global {
@@ -34,13 +35,8 @@ export default async function saveFile(content: Blob | (() => Promise<Blob>), fi
     });
   }
   if (isDesktop) {
-    const { data: selectData } = await axios.post<{ code: number; data: { token: string | null }; message?: string }>(
-      "/api/desktop/selectSaveFile",
-      { fileName },
-      { headers: { "x-toonflow-desktop": "1" } },
-    );
-    if (selectData.code !== 200) throw new Error(selectData.message || "选择保存位置失败");
-    const token = selectData.data?.token;
+    // ACT: 走两段式对话框协议；原生面板开多久都不会撞上 WKWebView 的 60 秒无数据上限。
+    const token = (await pickDesktop({ kind: "saveFile", fileName })).value;
     if (!token) return false;
     const blob = typeof content === "function" ? await content() : content;
     const { data } = await axios.post<{ code: number; data: { saved: boolean }; message?: string }>("/api/desktop/saveFile", blob, {

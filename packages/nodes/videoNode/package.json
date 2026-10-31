@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     "./videoActions": "./src/components/videoActions.vue",
-    "./videoPlayer": "./src/components/videoPlayer.vue"
+    "./videoPlayer": "./src/components/videoPlayer.vue",
+    "./frameOutput": "./src/frameOutput.ts",
+    "./frameOutputMenu": "./src/components/frameOutputMenu.vue"
   },
   "scripts": {
     "build": "vite build",

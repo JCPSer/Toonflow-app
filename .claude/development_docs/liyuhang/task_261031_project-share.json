@@ -1,0 +1,84 @@
+{
+  "task_id": "task_261031_project-share",
+  "created_at": "2026-10-31",
+  "owner": "liyuhang",
+  "goal": "工程分享包：导出可编辑工程副本（裁剪历史、压缩媒体、可选口令加密、.tfproj 容器），支持首页导入与拖拽导入",
+  "requirements": "1_requirements_matrix/2026-10-31-09-40-project-share-export.md",
+  "solution": "2_requirements_solutions/2026-10-31-10-20-project-share-export.md",
+  "base_commit": "783aeda",
+  "modules": {
+    "container": "apps/server/src/modules/workspaceShare/container.ts",
+    "collect": "apps/server/src/modules/workspaceShare/collect.ts",
+    "compress": "apps/server/src/modules/workspaceShare/compress.ts",
+    "orchestrator": "apps/server/src/modules/workspaceShare/{export,import,tasks}.ts",
+    "routes": "apps/server/src/routes/workspaces/share/*、apps/server/src/routes/desktop/selectFile.ts",
+    "web": "apps/web/src/pages/home/*、shareExportDialog"
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "容器格式 + 分块 AES-GCM + 读写纯函数与单测",
+      "owner": "子agent A",
+      "file": "container.ts",
+      "depends_on": [],
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "subject": "画布三级分类清理 + 引用收集 + markdown 插图 + mimeType 改写",
+      "owner": "子agent B",
+      "file": "collect.ts",
+      "depends_on": [],
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "subject": "媒体压缩：编码器探测、奇数宽、alpha 判定、换格式改名",
+      "owner": "子agent C",
+      "file": "compress.ts",
+      "depends_on": [],
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "subject": "导出/导入编排 + 任务表 + 路由注册",
+      "owner": "Lead",
+      "file": "export.ts/import.ts/tasks.ts/routes",
+      "depends_on": [
+        "T1",
+        "T2",
+        "T3"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T5",
+      "subject": "ffmpeg 候选目录探测（不污染全局 PATH）",
+      "owner": "Lead",
+      "file": "packages/ffmpeg/src/index.ts",
+      "depends_on": [],
+      "status": "done"
+    },
+    {
+      "id": "T6",
+      "subject": "前端：首页右键导出、导入入口、拖拽、进度弹窗",
+      "owner": "子agent D",
+      "file": "apps/web/src/pages/home/*",
+      "depends_on": [
+        "T4"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T7",
+      "subject": "测试结果、代码审查、部署安装（不重启应用）",
+      "owner": "Lead",
+      "file": "3_test_results/*",
+      "depends_on": [
+        "T4",
+        "T6"
+      ],
+      "status": "done"
+    }
+  ]
+}

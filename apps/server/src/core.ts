@@ -30,7 +30,13 @@ export default async function generateRouter(): Promise<void> {
   const routeLines: string[] = [];
 
   let currentSegment = "";
-  entries.forEach((entry: string, i: number) => {
+  let routeIndex = 0;
+  for (const entry of entries) {
+    // ACT: routes 目录下还放着工具函数（如 workspaces/share/scope.ts）——没有 default 导出的
+    // 文件不是路由，挂上去会得到 «has no default export» 的编译错误。
+    const source = await readFile(path.join(sourceRoot, entry), "utf8").catch(() => "");
+    if (!/export\s+default\b/.test(source)) continue;
+    const i = routeIndex++;
     const varName = `route${i + 1}`;
     let importPath = entry.replace(/\\/g, "/");
     if (!importPath.startsWith(".")) importPath = "./" + importPath;
@@ -44,7 +50,7 @@ export default async function generateRouter(): Promise<void> {
     }
     const routePath = fileNameToRoutePath(routeKey);
     routeLines.push(`  app.use("/api${routePath}", ${varName});`);
-  });
+  }
 
   let content = `import type { Express } from "express";\n\n`;
   content += `${importLines.join("\n")}\n\n`;

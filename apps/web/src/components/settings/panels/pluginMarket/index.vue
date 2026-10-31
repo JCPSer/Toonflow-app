@@ -288,7 +288,7 @@ import a2aSettingsDialog from "./a2aSettingsDialog.vue";
 import type { Plugin, PluginType } from "./types";
 import { installPluginFile } from "../../installPluginFile";
 
-const { visible = true } = defineProps<{ visible?: boolean }>();
+const { visible = true, initialTab } = defineProps<{ visible?: boolean; initialTab?: string }>();
 const associationsVisible = ref(false);
 // ACT: Agent 插件市场仍在测试，暂时关闭入口。
 const agentMarketEnabled = false;
@@ -301,6 +301,10 @@ const pluginTypes = {
 } as const;
 const tabs = { get discover() { return translate("发现插件"); }, get installed() { return translate("已安装"); }, mcp: "MCP", ffmpeg: "FFmpeg" } as const;
 const activeTab = ref<keyof typeof tabs>("discover");
+// ACT: 从 FFmpeg 报错里的「前往安装」进来时，直接落到对应页签。
+watch(() => [visible, initialTab] as const, ([shown, tab]) => {
+  if (shown && tab && tab in tabs) activeTab.value = tab as keyof typeof tabs;
+}, { immediate: true });
 const isMarketTab = computed(() => activeTab.value === "discover");
 const marketPage = ref(1);
 const marketPageSize = 20;

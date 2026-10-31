@@ -25,6 +25,15 @@
         @click.stop="fileInput?.click()">替换视频</el-button>
     </template>
     <template #topRightActions>
+      <frameOutputMenu
+        :enabled="frameEnabled"
+        :values="frameValues"
+        :busy="frameBusy"
+        :error="frameError"
+        :has-video="!!outputFile"
+        :disabled="nodeDisabled"
+        @toggle="toggleFrame"
+        @refresh="refreshFrames()" />
       <el-dropdown trigger="click" placement="bottom-end" :disabled="!outputFile || player?.capturing || uploading || exporting" @command="player?.captureFrame($event)">
         <el-button :icon="IconPhotoScan" :loading="player?.capturing" :disabled="!outputFile || player?.capturing || uploading || exporting" text title="截取视频帧" aria-label="截取视频帧" />
         <template #dropdown>
@@ -71,21 +80,41 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, getCurrentInstance, nextTick, ref, watch } from "vue";
+import { useNodeId, useVueFlow } from "@vue-flow/core";
 import { IconVideo, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconMovie, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { ElButton, ElMessage, ElProgress, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
 import videoPlayer from "./components/videoPlayer.vue";
 import videoActions from "./components/videoActions.vue";
+import frameOutputMenu from "./components/frameOutputMenu.vue";
+import { buildFrameHandles, staticNodeHandles, useFrameOutputs, type FrameOutputConfig } from "./frameOutput";
 
 defineOptions({
   inheritAttrs: false,
   icon: IconVideo,
   handles: [{ id: "video", type: "source", dataType: "VIDEO", label: "视频输出" }] satisfies NodeHandle[],
 });
-const { node, nodeProps, outputs, nodeEvent, files, updateNodeInternals } = useNode({
+const flow = useVueFlow();
+const nodeId = useNodeId();
+// ACT: 动态端口必须在 useNode 之前进 handles，否则已保存的首/尾帧输出值会在初始化时被过滤掉。
+const baseHandles = staticNodeHandles<NodeHandle>(getCurrentInstance()?.type);
+const savedFrameConfig = (flow.findNode(nodeId)?.data as { frameOutputs?: FrameOutputConfig } | undefined)?.frameOutputs;
+const initialHandles = buildFrameHandles(savedFrameConfig, baseHandles);
+const { node, nodeProps, outputs, handles, ffmpeg, files, nodeEvent, updateNodeInternals } = useNode({
   label: "视频",
+  handles: initialHandles,
 });
+const frames = useFrameOutputs({
+  id: nodeId,
+  node,
+  outputs,
+  handles,
+  baseHandles,
+  getFiles: files.getWorkspaceFiles,
+  createFfmpeg: ffmpeg,
+});
+const { enabled: frameEnabled, values: frameValues, busy: frameBusy, error: frameError, refresh: refreshFrames, toggle: toggleFrame } = frames;
 const fileInput = ref<HTMLInputElement>();
 const uploading = ref(false);
 const player = ref<InstanceType<typeof videoPlayer>>();
@@ -156,6 +185,7 @@ nodeTools.register({
       signal?.throwIfAborted();
       if (!content.byteLength || content.byteLength > 100 * 1024 * 1024) throw new Error("视频不能为空且不能超过 100 MB");
       outputs.value.video = { dataType: "VIDEO", value: { url: path, mimeType } };
+      if (!nodeDisabled.value) void refreshFrames();
       return outputs.value.video;
     } finally {
       uploading.value = false;
@@ -183,6 +213,7 @@ async function uploadVideo(event: Event) {
     const url = await files.uploadFile(file);
     // ACT: 复制节点可能仍引用旧视频，替换输出不删除共享文件。
     outputs.value.video = { dataType: "VIDEO", value: { url, mimeType: file.type } };
+    if (!nodeDisabled.value) void refreshFrames();
     files.getWorkspaceFiles().warmThumb?.(url);
   } catch (error) {
     showError(error, "视频替换失败");

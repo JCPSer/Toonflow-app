@@ -1,0 +1,45 @@
+{
+  "task_id": "task_261031_desktop_dialog_focus",
+  "created_at": "2026-10-31",
+  "owner": "liyuhang",
+  "goal": "修掉桌面端系统对话框「不聚焦 / 61 秒请求被掐断导致报错并丢结果 / 失败回退冻结应用 / 导入工程阻塞」四个问题",
+  "analysis": ".claude/development_docs/liyuhang/4_bugs_fix/bug_analysis-2026-10-31-10-27-desktop-dialog-focus-and-timeout.md",
+  "solution": ".claude/development_docs/liyuhang/4_bugs_fix/bug_solution-2026-10-31-10-27-desktop-dialog-focus-and-timeout.md",
+  "constraints": {
+    "no_app_restart": "不得关闭/重启用户正在运行的应用；只部署文件，由用户自行重启",
+    "no_app_freeze": "任何测试手段不得让主进程冻结（禁止 kill 正在等待的 helper，探针必须自杀退出）"
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "folderPicker.m：finishLaunching + 重试 activate + 文件模式 + 层级",
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "subject": "apps/desktop：去掉阻塞回退，selectOpenFile/selectProviderFile 接 helper",
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "subject": "服务端：dialogSessions 会话表 + /api/desktop/dialog 两段式路由 + 删旧路由",
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "subject": "前端：desktopDialog.ts + 4 处调用点改为两段式",
+      "status": "done"
+    },
+    {
+      "id": "T5",
+      "subject": "构建 + 部署（不重启）+ typecheck/单测自检",
+      "status": "done"
+    },
+    {
+      "id": "T6",
+      "subject": "归档：memory STAR、MEMORY 索引、operation、INDEX",
+      "status": "done"
+    }
+  ],
+  "note": "T6 归档文档已完成（memory STAR + MEMORY/operation/INDEX），部署未重启应用，待用户重启后端到端验证"
+}

@@ -46,11 +46,32 @@ async function readVersion(path: string, name: string, signal?: AbortSignal) {
   return version;
 }
 
+// ACT: 桌面应用从访达/Dock 启动时继承 launchd 的最小 PATH（实测 `/usr/bin:/bin:/usr/sbin:/sbin`），
+// Homebrew、MacPorts、手动下载装的 ffmpeg 用 Bun.which 一律扫不到。这里补一份候选目录。
+// 不改 process.env.PATH——浏览器工具也读 PATH，全局改动会外溢。
+function searchDirectories() {
+  const home = process.env.HOME ?? "";
+  if (process.platform === "darwin") return ["/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin", home && join(home, ".local/bin")];
+  if (process.platform === "win32") return [process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Links"), process.env.ProgramFiles && join(process.env.ProgramFiles, "ffmpeg", "bin")];
+  return ["/usr/local/bin", "/usr/bin", "/snap/bin"];
+}
+
+async function whichTool(name: string) {
+  const found = Bun.which(executableName(name));
+  if (found) return found;
+  for (const directory of searchDirectories()) {
+    if (!directory) continue;
+    const candidate = join(directory, executableName(name));
+    if (await file(candidate).exists()) return candidate;
+  }
+  return null;
+}
+
 export async function getToolStatus(directory: string, mode: FfmpegMode, formatError = (error: unknown) => error instanceof Error ? error.message : String(error)) {
   const entries = await Promise.all(toolNames.map(async (name) => {
     const downloaded = join(directory, executableName(name));
     const hasDownload = mode !== "system" && await file(downloaded).exists();
-    const path = hasDownload ? downloaded : mode === "download" ? null : Bun.which(executableName(name));
+    const path = hasDownload ? downloaded : mode === "download" ? null : await whichTool(name);
     const origin = path ? hasDownload ? "download" as const : "system" as const : null;
     try {
       return [name, { path, origin, version: path ? await readVersion(path, name) : null, error: path ? null : "未找到可用程序" }] as const;

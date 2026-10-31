@@ -124,6 +124,7 @@ import { IconFolderOpen, IconRefresh, IconPlus, IconX, IconMusic, IconDownload, 
 import type { Provider } from "@toonflow/providers";
 import { invalidateNodeModels } from "@toonflow/nodes-scaffold/nodeAi";
 import { isDesktop } from "@/lib/platform";
+import { pickDesktop } from "@/lib/desktopDialog";
 
 type DebugProvider = { id: string; label: string; rules: Rule[]; models: Provider["models"] };
 type DebugLog = { id: number; method: string; url: string; state: string; status?: number; duration?: number; request?: string; response?: string; error?: string };
@@ -217,10 +218,11 @@ async function selectFile() {
   controller = new AbortController();
   try {
     if (isDesktop) {
-      const { data } = await axios.post<{ data: { token: string; name: string } | null }>("/api/desktop/providerFile/select", {}, { headers: desktopHeaders, signal: controller.signal });
-      if (!data.data) return;
-      desktopToken.value = data.data.token;
-      fileName.value = data.data.name;
+      // ACT: 两段式对话框；取消时 value 为 null。
+      const picked = await pickDesktop({ kind: "providerFile" }, controller.signal);
+      if (!picked.value) return;
+      desktopToken.value = picked.value;
+      fileName.value = picked.name ?? "";
     } else {
       const picker = (window as Window & { showOpenFilePicker?: (options: unknown) => Promise<FileHandle[]> }).showOpenFilePicker;
       if (!picker) throw new Error("当前环境不支持文件授权，请使用 HTTPS／localhost 下的 Chrome、Edge 或桌面端");

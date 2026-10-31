@@ -1,0 +1,56 @@
+{
+  "task_id": "task_261031_video-frame-outputs",
+  "created_at": "2026-10-31",
+  "owner": "liyuhang",
+  "goal": "给「视频」与「视频生成」节点增加按实例可配置的「首帧 / 尾帧」IMAGE 输出端口，帧随视频变化自动重抽",
+  "requirements": ".claude/development_docs/liyuhang/1_requirements_matrix/2026-10-31-09-35-video-frame-outputs.md",
+  "solution": ".claude/development_docs/liyuhang/2_requirements_solutions/2026-10-31-09-35-video-frame-outputs.md",
+  "shared_contract": {
+    "config": "node.data.frameOutputs = { first?: boolean, last?: boolean }",
+    "handles": "firstFrame / lastFrame，type=source，dataType=IMAGE",
+    "outputs": "node.data.outputs.firstFrame|lastFrame = { dataType: 'IMAGE', value: { url, mimeType: 'image/jpeg' } }",
+    "files": "assets/<nodeId>/frame-first.jpg、frame-last.jpg"
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "subject": "共享模块 frameOutput.ts + 单测（端口构造、抽帧命令、状态迁移）",
+      "owner": "Lead",
+      "file": "packages/nodes/videoNode/src/frameOutput.ts、frameOutput.test.ts、packages/nodes/videoNode/package.json",
+      "depends_on": [],
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "subject": "videoNode 接入：初始化 handles、输出项下拉 UI、uploadVideo/setVideo/替换 钩子",
+      "owner": "子agent A",
+      "file": "packages/nodes/videoNode/src/index.vue",
+      "depends_on": [
+        "T1"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T3",
+      "subject": "videoGenerationNode 接入：生成开始清空、生成完成抽帧、媒体历史切换、替换钩子、UI",
+      "owner": "子agent B",
+      "file": "packages/nodes/videoGenerationNode/src/index.vue",
+      "depends_on": [
+        "T1"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "T4",
+      "subject": "构建 + 真机验证 + 代码审查 + 文档归档",
+      "owner": "Lead",
+      "file": "3_test_results/*、5_memory/*",
+      "depends_on": [
+        "T1",
+        "T2",
+        "T3"
+      ],
+      "status": "done"
+    }
+  ]
+}

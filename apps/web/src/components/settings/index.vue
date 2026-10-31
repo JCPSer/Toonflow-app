@@ -24,9 +24,10 @@
             <keep-alive include="personalization">
               <component
                 :is="activePanel.component"
-                v-bind="
-                  ['pluginMarket', 'languageModel', 'mediaModel', 'personalization', 'deviceLink'].includes(activePanel.id) ? { visible } : {}
-                " />
+                v-bind="{
+                  ...(['pluginMarket', 'languageModel', 'mediaModel', 'personalization', 'deviceLink'].includes(activePanel.id) ? { visible } : {}),
+                  ...(activePanel.id === 'pluginMarket' && pendingTab ? { initialTab: pendingTab } : {}),
+                }" />
             </keep-alive>
           </transition>
         </div>
@@ -36,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, shallowRef } from "vue";
+import { defineAsyncComponent, ref, shallowRef, watch } from "vue";
 import { hasDesktopUpdate } from "@/stores/desktopUpdate";
 import { isMobile } from "@/lib/platform";
 import {
@@ -88,6 +89,17 @@ const settingsPanels = [
 ];
 const activePanel = shallowRef(settingsPanels[0]!);
 const visible = defineModel<boolean>({ default: false });
+const pendingTab = ref<string>();
+watch(visible, value => { if (!value) pendingTab.value = undefined; });
+
+/** 供错误提示里的「前往安装」直达某个设置页（如插件市场 → FFmpeg）。 */
+function openAt(panelId: string, tab?: string) {
+  const panel = settingsPanels.find(item => item.id === panelId);
+  if (panel) activePanel.value = panel;
+  pendingTab.value = tab;
+  visible.value = true;
+}
+defineExpose({ openAt });
 </script>
 
 <style lang="scss" scoped>

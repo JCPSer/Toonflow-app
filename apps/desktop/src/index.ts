@@ -1,18 +1,18 @@
 import { setLocaleFallback, t, translateMessage } from "@toonflow/server/i18n";
 import { setRuntimeHost } from "@toonflow/server/platform";
 import { detectLocale, normalizeLocale } from "@toonflow/i18n";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, writeAtomicSync } from "@toonflow/file";
 import { file } from "@toonflow/file/bun";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
-import { dlopen, ptr } from "bun:ffi";
+import { dlopen, FFIType, ptr } from "bun:ffi";
 import type { DesktopRuntime, PluginInstallRequest } from "@toonflow/server/desktop";
 import { showNativeSplash } from "@toonflow/startup";
 import Electrobun, { ApplicationMenu, BrowserWindow, PATHS, Screen, Utils, Updater } from "electrobun/main";
 import { dataDirectoryName, legacyDataDirectoryName, resolveDesktopDataDirectory } from "./dataDirectory";
 import { parseInstallUrl } from "./protocol";
-import saveFile, { selectSaveFile } from "./saveFile";
+import saveFile, { selectSaveFile, takeSaveTarget } from "./saveFile";
 import createWindowsUpdater, { confirmWindowsUpdateStartup } from "./update/windowsUpdater";
 import prepareWebviewRuntime from "./webviewRuntime";
 import { clampToDisplays, loadWindowState, saveWindowState, WINDOW_MARGIN, type WindowFrame } from "./windowState";
@@ -117,21 +117,46 @@ const execFileAsync = promisify(execFile);
 // 它自带 zh-Hans 本地化、能新建文件夹、按鼠标所在屏幕居中；缺包或异常时返回 undefined 让调用方回退。
 // ACT: 与 startup/tools 一致，打包把 mac/ 放在 Resources/app 下，而 VIEWS_FOLDER 指向 Resources/app/views。
 const macFolderPicker = resolve(PATHS.VIEWS_FOLDER, "../mac/folder-picker.app/Contents/MacOS/folder-picker");
-let lastFolderPickerDirectory: string | undefined;
-async function chooseMacFolder(): Promise<string | null | undefined> {
-  if (!existsSync(macFolderPicker)) {
-    console.error("缺少 macOS 目录选择器：", macFolderPicker);
-    return undefined;
-  }
+// ACT: macOS 14+ 把 App 激活改成「由用户意图驱动的请求」：子进程自己 activate 只有约 40% 成功率
+// （实测 5 次点击里 3 次失败，面板可见但永远不是 key window）。Apple 给的确定性路径是让当前
+// active 的宿主 App 先把激活权 yield 给目标进程。这段能力放在随包的小 dylib 里，用 dlopen 调。
+const macActivationLibrary = resolve(PATHS.VIEWS_FOLDER, "../mac/libToonflowActivation.dylib");
+let yieldActivationTo: ((pid: number) => void) | undefined;
+if (process.platform === "darwin" && existsSync(macActivationLibrary)) {
   try {
-    const { stdout } = await execFileAsync(macFolderPicker, ["--start", lastFolderPickerDirectory ?? process.env.HOME ?? "/"], { encoding: "utf8" });
-    const selected = stdout.trim();
-    if (selected) lastFolderPickerDirectory = selected;
-    return selected || null;
+    const { symbols } = dlopen(macActivationLibrary, {
+      tnf_yield_activation_to_pid: { args: [FFIType.i32], returns: FFIType.void },
+    });
+    yieldActivationTo = (pid) => symbols.tnf_yield_activation_to_pid(pid);
   } catch (error) {
-    console.error("打开 macOS 目录选择器失败：", error);
-    return undefined;
+    console.error("加载 macOS 激活辅助库失败：", error);
   }
+}
+let lastFolderPickerDirectory: string | undefined;
+
+/**
+ * 拉起随包的原生选择器并等它返回。
+ * 返回值：选中路径；null 表示用户取消。启动失败/异常退出直接抛错——**不回退到
+ * Utils.openFileDialog**，那是同步 FFI，会把整个 Bun 事件循环（连同 HTTP 服务）冻住。
+ */
+function runMacPicker(args: string[]): Promise<string | null> {
+  if (!existsSync(macFolderPicker)) return Promise.reject(new Error(t`缺少 macOS 选择器，请重新安装应用`));
+  return new Promise<string | null>((resolvePicked, rejectPicked) => {
+    const child = spawn(macFolderPicker, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+    child.on("error", error => rejectPicked(error));
+    child.on("close", (code, signal) => {
+      // ACT: 选择器是自己退出的（用户取消 / 选中）；被信号杀掉时后续还有重试，不该吞。
+      if (signal) return rejectPicked(new Error(t`选择器被中断`));
+      if (code !== 0) return rejectPicked(new Error(stderr.trim() || t`选择器异常退出`));
+      resolvePicked(stdout.trim() || null);
+    });
+    // ACT: 让权要赶在孩子自己 activate 之前发起；dylib 内部会重试约 1 秒直到查到该进程。
+    if (child.pid && yieldActivationTo) yieldActivationTo(child.pid);
+  });
 }
 const pendingInstalls: PluginInstallRequest[] = [];
 let deliverInstall: ((request: PluginInstallRequest) => void) | undefined;
@@ -523,18 +548,28 @@ async function start() {
       writeClipboardText: Utils.clipboardWriteText,
       selectSaveFile,
       saveFile,
+      takeSaveTarget,
+      async selectOpenFile(extension: string) {
+        // ACT: 文件选择也走随包 helper（子进程）。Electrobun 的 openFileDialog 是同步 FFI，
+        // 面板打开期间会冻结整个主进程（HTTP 服务与正在跑的 Agent 一起停）。
+        if (process.platform === "darwin") return await runMacPicker(["--mode", "file", "--ext", extension]);
+        const [path] = await Utils.openFileDialog({ allowedFileTypes: extension, canChooseFiles: true, canChooseDirectory: false, allowsMultipleSelection: false });
+        return path ?? null;
+      },
       async selectProviderFile() {
+        if (process.platform === "darwin") return await runMacPicker(["--mode", "file", "--ext", "ts"]);
         const [path] = await Utils.openFileDialog({ allowedFileTypes: "ts", canChooseFiles: true, canChooseDirectory: false, allowsMultipleSelection: false });
         return path ?? null;
       },
       async selectDirectory() {
         if (process.platform === "darwin") {
           // ACT: macOS 用自带 zh-Hans 本地化的小 .app 弹面板：Electrobun 的 openFileDialog 没有
-          // canCreateDirectories（面板里没有「新建文件夹」），osascript 又只有英文包。子进程不可用时
-          // 回退到 Electrobun 自带面板，功能不至于中断。
+          // canCreateDirectories（面板里没有「新建文件夹」），osascript 又只有英文包。
+          // 失败时直接抛错，不回退到 Electrobun 面板——那是同步 FFI，会把整个应用冻住。
           try {
-            const selected = await chooseMacFolder();
-            if (selected !== undefined) return selected;
+            const selected = await runMacPicker(["--start", lastFolderPickerDirectory ?? process.env.HOME ?? "/"]);
+            if (selected) lastFolderPickerDirectory = selected;
+            return selected;
           } finally {
             mainWindow.show();
             mainWindow.activate();

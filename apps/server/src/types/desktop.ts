@@ -44,6 +44,10 @@ export interface DesktopRuntime {
   selectDirectory(): Promise<string | null>;
   selectSaveFile(fileName: string): Promise<string | null>;
   saveFile(token: string, content: Uint8Array): Promise<boolean>;
+  /** 用一次性 token 取回保存路径（取回即失效），供流式写大文件使用。 */
+  takeSaveTarget(token: string): string;
+  /** 打开文件对话框，返回绝对路径；取消返回 null。 */
+  selectOpenFile(extension: string): Promise<string | null>;
   ready(failed?: boolean): Promise<void>;
   openDevTools(): void;
   updater: {

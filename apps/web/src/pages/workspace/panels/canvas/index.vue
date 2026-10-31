@@ -1464,7 +1464,11 @@ function copyNode(event: ClipboardEvent) {
 }
 
 function imageOutput(data: { outputs?: Record<string, NodeOutput | undefined> } | undefined) {
-  for (const output of Object.values(data?.outputs ?? {})) {
+  const outputs = Object.values(data?.outputs ?? {});
+  // ACT: 视频/音频/文件节点也可能带 IMAGE 输出（例如视频节点的首帧/尾帧端口）。
+  // 这类节点的 Cmd+C 必须复制节点本身，不能被「复制图片」的快捷路径劫持。
+  if (outputs.some((output) => output && (output.dataType === "VIDEO" || output.dataType === "AUDIO" || output.dataType === "FILE"))) return;
+  for (const output of outputs) {
     if (output?.dataType !== "IMAGE" || !output.value || typeof output.value !== "object") continue;
     if (typeof output.value.url === "string" && output.value.url) return output.value;
   }

@@ -39,6 +39,7 @@ import { onBeforeUnmount, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { IconFolder, IconFolderPlus, IconFile, IconChevronDown, IconChevronUp, IconArrowLeft } from "@tabler/icons-vue";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
+import { pickDesktop } from "@/lib/desktopDialog";
 import { isMobile, isDesktop, isRemoteMobile, isRemoteConnection } from "@/lib/platform";
 
 type WorkspaceEntry = { name: string; path: string; type: "file" | "directory" };
@@ -66,9 +67,9 @@ async function chooseDirectory(): Promise<string | null> {
   selecting.value = true;
   try {
     if (isDesktop && !isRemoteConnection) {
-      const { data } = await axios.post<{ data: { directory: string | null } }>("/api/desktop/selectDirectory", null, { headers: { "x-toonflow-desktop": "1" } });
-      if (data.data.directory) selectedDirectory.value = data.data.directory;
-      return data.data.directory;
+      const { value } = await pickDesktop({ kind: "directory" });
+      if (value) selectedDirectory.value = value;
+      return value;
     }
     const { data } = await axios.post<{ code: number; data: { native: boolean; directory: string | null } }>("/api/workspaces/selectDirectory", null, { headers: { "x-toonflow-workspace": "1" } });
     if (data.data.native) {
@@ -80,7 +81,11 @@ async function chooseDirectory(): Promise<string | null> {
       return await new Promise<string | null>(resolve => { finishSelection = resolve; });
     }
   } catch (error) {
-    ElMessage.error(axios.isAxiosError<{ message?: string }>(error) ? error.response?.data?.message || "无法打开文件夹选择器，请重试" : "无法打开文件夹选择器，请重试");
+    // ACT: 409「已有选择窗口」之类的具体原因要透出，别一律盖成「无法打开」。
+    const fallback = "无法打开文件夹选择器，请重试";
+    ElMessage.error(axios.isAxiosError<{ message?: string }>(error)
+      ? error.response?.data?.message || fallback
+      : error instanceof Error && error.message ? error.message : fallback);
     return null;
   }
   finally { selecting.value = false; finishSelection = undefined; }

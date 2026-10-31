@@ -42,9 +42,30 @@ writeFileSync(resolve(contents, "Info.plist"), `<?xml version="1.0" encoding="UT
 execFileSync("clang", [
   "-fobjc-arc",
   "-framework", "Cocoa",
+  // ACT: 文件模式用 UTType 做扩展名过滤（allowedFileTypes 已废弃），需要单独链接该框架。
+  "-framework", "UniformTypeIdentifiers",
   "-O2",
   "-o", resolve(contents, "MacOS/folder-picker"),
   resolve(here, "../native/folderPicker.m"),
 ], { stdio: "inherit" });
+
+// ACT: 链接器签好的只是单个可执行文件；bundle 里还有 zh-Hans.lproj 等资源，必须整体重签，
+// 否则 `codesign -v` 会报「code has no resources but signature indicates they must be present」，
+// 被替换后的 helper 可能被 Gatekeeper 拒绝执行。
+execFileSync("codesign", ["--force", "--sign", "-", out], { stdio: "inherit" });
+
+// ACT: 协作式激活的让权库。主进程（Bun）用 dlopen 加载，在 spawn 选择器之后把激活权交给它，
+// 否则 helper 自己 activate 只有约 40% 成功率（实测 5 次里 3 次失败）。
+const activationDylib = resolve(root, "build/desktop/mac/libToonflowActivation.dylib");
+execFileSync("clang", [
+  "-fobjc-arc",
+  "-framework", "Cocoa",
+  "-dynamiclib",
+  "-O2",
+  "-o", activationDylib,
+  resolve(here, "../native/activation.m"),
+], { stdio: "inherit" });
+execFileSync("codesign", ["--force", "--sign", "-", activationDylib], { stdio: "inherit" });
+console.log("已生成 macOS 激活辅助库：", activationDylib);
 
 console.log("已生成 macOS 目录选择器：", resolve(contents, "MacOS/folder-picker"));

@@ -113,6 +113,8 @@
     <floatingAgent :inert="workspaceStore.projectLoadingVisible" @resize="agentWidth = $event" />
     <floatingAssetLibrary :inert="workspaceStore.projectLoadingVisible" @resize="assetWidth = $event" />
     <settings v-model="settingsVisible" />
+    <shareDropOverlay v-if="shareDragging" />
+    <shareImportDialog ref="importDialogRef" v-model="importVisible" @completed="handleShareImported" />
     <exitProjectDialog />
     <el-dialog v-model="contactVisible" :title="contactInfo.title" width="min(360px, calc(100vw - 32px))" alignCenter appendToBody>
       <div class="contactContent">
@@ -152,6 +154,10 @@ import workspaceMenu from "./components/workspaceMenu.vue";
 import exitProjectDialog from "./components/exitProjectDialog.vue";
 import floatingAgent from "./components/floatingAgent.vue";
 import floatingAssetLibrary from "./panels/assetLibrary/floatingAssetLibrary.vue";
+import shareDropOverlay from "@/components/projectShare/shareDropOverlay.vue";
+import shareImportDialog from "@/components/projectShare/shareImportDialog.vue";
+import { useShareFileDrop } from "@/components/projectShare/useShareDrop";
+import type { ShareImportResult } from "@/lib/projectShare";
 
 const documentPanel = defineAsyncComponent(() => import("./panels/document/index.vue"));
 
@@ -195,6 +201,9 @@ function showAgentPanel() {
 }
 const assetWidth = ref(assetPanel.value.visible && assetPanel.value.docked ? assetPanel.value.width : 0);
 const settingsVisible = ref(false);
+const importVisible = ref(false);
+const importDialogRef = ref<InstanceType<typeof shareImportDialog>>();
+const { dragging: shareDragging } = useShareFileDrop(file => importDialogRef.value?.start({ file }));
 const helpVisible = ref(false);
 const contactVisible = ref(false);
 const contactType = ref<"community" | "business">("community");
@@ -307,6 +316,21 @@ registerWorkspaceControl({
 async function flushSave() {
   await documentPanelRef.value?.flushSave();
   await canvasPanelRef.value?.flushSave();
+}
+
+/** 拖入分享包导入完成后，先落盘当前工程，再按 project.directory 换到导入的工程。 */
+async function handleShareImported(result: ShareImportResult) {
+  importVisible.value = false;
+  try {
+    await flushSave();
+    await workspaceStore.openProject(result.path);
+    ElMessage.success(`已导入并打开工程“${result.name}”`);
+  } catch (error) {
+    const message = axios.isAxiosError<{ message?: string }>(error)
+      ? error.response?.data?.message || error.message
+      : error instanceof Error ? error.message : "";
+    ElMessage.error(`已导入工程，但当前工程未能安全切换${message ? `：${message}` : ""}。可回到首页打开导入的工程。`);
+  }
 }
 
 // ACT: 关闭闸门调用时同时等待文档/画布保存、会话状态落盘与“上次画布”指针；

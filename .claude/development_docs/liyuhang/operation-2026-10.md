@@ -99,3 +99,7 @@
 - 2026-10-31 08:25 按代码审查意见修正截帧：`BrowserFfmpegOptions.silentRequired` 贯通到 `createWorkspaceFfmpeg({silent})`（缺 FFmpeg 不再弹安装引导）；宿主产物读不出宽高即回退 canvas（防 seek 越过末帧 exit 0 无产物）；rVFC 订阅可取消、PTS 过期守卫；frameAnalysisNode 补 `source-path`。结果：五包 typecheck 通过、单测 6/6、三条路径仍逐像素一致；重新构建安装（未重启）。
 - 2026-10-31 08:40 采纳滞后到达的另两份审查意见：新增 `workspaceMediaPath()` 公共校验（videoProcessing/analysisPath 改为复用）、补 `-map 0:v:0`、复用工作区实例、`imageSize` 3s 超时、`kill` 后等 `end/error`（2s 宽限）再清理。结果：typecheck 通过、单测 6/6、三条路径仍逐像素一致；重新构建安装（未重启）。
 - 2026-10-31 09:10 用户重启后真机验收截帧修复**通过**：尾帧放入剪映与同时间线原视频对比无可见亮度/细节差，尾帧跑首尾帧接续工作流接缝正常。分析/方案/测试三份文档回填验收结论并推送 GitHub。
+- 2026-10-31 11:45 实现工程分享包导出/导入：`workspaceShare` 模块（容器/收集/压缩/编排）+ 5 条路由 + 首页右键导出与拖拽导入；ffmpeg 补候选目录探测。结果：单测 67 例、端到端往返逐字节一致、`deploy-local.sh --build` 安装完成（未重启）。
+- 2026-10-31 10:15 实现视频节点首/尾帧输出端口：`frameOutput` 共享模块 + 菜单组件 + 两节点接线；两轮评审修复 busy 卡死、旧帧误判、画布复制劫持等 10 项。单测 18 例、构建通过，节点包与 web 已部署（未重启）。
+- 2026-10-31 10:45 修复首/尾帧输出开启报 409：工作区 rename 不覆盖已有目标（COPYFILE_EXCL→EEXIST），改为 rename 前先 remove 目标；错误提示改为透出服务端 message。已重建并部署节点包（未重启）。
+| 2026-10-31 10:55 | 排查并修复桌面端原生对话框不聚焦/60 秒报错丢结果/冻结应用；新增 dialog 两段式接口与激活让权库，已部署未重启 | 待用户重启验证 |
