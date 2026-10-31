@@ -8,6 +8,7 @@
     v-model:height="height"
     class="floatingAssetLibrary"
     dock-side="left"
+    slide-from="left"
     :default-width="360"
     :default-height="0"
     :min-width="320"

@@ -88,8 +88,8 @@ export const useAssetLibraryStore = defineStore("assetLibrary", () => {
   }
 
   function requestSave(label: string, outputs: AssetSaveOutput[]) {
+    // ACT: 保存弹窗挂在 body 上，不依赖面板可见；这里不再顺带把素材库拉开，面板只由用户手动开关。
     pendingSave.value = { id: crypto.randomUUID(), label, outputs };
-    visible.value = true;
   }
 
   function consumeSave(id: string) {

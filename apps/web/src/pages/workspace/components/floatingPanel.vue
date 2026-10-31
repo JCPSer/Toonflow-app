@@ -1,5 +1,6 @@
 <template>
   <teleport to="body">
+    <Transition :name="slideTransitionName" :css="Boolean(props.slideFrom)">
     <aside
       v-bind="$attrs"
       v-show="visible"
@@ -30,6 +31,7 @@
         @keydown="resizeWithKeyboard($event, handle.edge)" />
       <slot />
     </aside>
+    </Transition>
   </teleport>
 </template>
 
@@ -59,6 +61,8 @@ const props = withDefaults(defineProps<{
   /** 浮层位置由上层会话状态驱动；null 表示未手动拖动过。 */
   left?: number | null;
   top?: number | null;
+  /** 显隐时的滑动方向；不传则保持瞬显瞬隐（如 Agent 面板）。 */
+  slideFrom?: "left" | "right";
 }>(), {
   dockSide: "right",
   defaultWidth: 420,
@@ -78,6 +82,7 @@ type FloatingPanelLayout = { left: number; top: number; width: number; height: n
 const emit = defineEmits<{ resize: [width: number]; layout: [layout: FloatingPanelLayout] }>();
 
 const panelElement = ref<HTMLElement>();
+const slideTransitionName = computed(() => props.slideFrom ? `floatingPanelSlide-${props.slideFrom}` : undefined);
 const viewport = reactive({ width: window.innerWidth, height: window.innerHeight });
 const gap = computed(() => Math.min(15, viewport.width / 2, viewport.height / 2));
 const maxFloatingWidth = computed(() => Math.max(0, viewport.width - gap.value * 2));
@@ -416,6 +421,34 @@ onBeforeUnmount(() => {
     &:focus-visible {
       background: var(--el-color-primary-light-5);
     }
+  }
+}
+
+// ACT: 显隐过渡只对显式传 slideFrom 的面板生效；停靠与浮层共用位移，不动宽高避免拖拽时抖动。
+.floatingPanelSlide-left-enter-active,
+.floatingPanelSlide-left-leave-active,
+.floatingPanelSlide-right-enter-active,
+.floatingPanelSlide-right-leave-active {
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.floatingPanelSlide-left-enter-from,
+.floatingPanelSlide-left-leave-to {
+  transform: translateX(-100%);
+}
+
+.floatingPanelSlide-right-enter-from,
+.floatingPanelSlide-right-leave-to {
+  transform: translateX(100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floatingPanelSlide-left-enter-active,
+  .floatingPanelSlide-left-leave-active,
+  .floatingPanelSlide-right-enter-active,
+  .floatingPanelSlide-right-leave-active {
+    transition: none;
   }
 }
 </style>
