@@ -164,12 +164,18 @@ export function useFrameOutputs(options: FrameOutputOptions) {
     return target;
   }
 
-  /** 抽一张并写回端口值；代次已过期或端口已关闭时丢弃结果。 */
-  async function extractInto(key: FrameKey, sourcePath: string, signal: AbortSignal, token: number) {
+  /**
+   * 抽一张，返回可写回的路径；代次已过期时返回 undefined（结果作废）。
+   * ACT: 这里**不能**判断「端口是否已开启」——开启端口时配置要等抽帧成功才写入，
+   * 提前用 enabled 过滤会把这一次的结果丢掉，表现为「端口勾上了但永远没图」。
+   */
+  async function extractFrame(key: FrameKey, sourcePath: string, signal: AbortSignal, token: number) {
     const path = await extract(key, sourcePath, signal, token);
     signal.throwIfAborted();
-    // ACT: 期间可能已经换了视频、或用户关掉了这一路端口，都不能把结果写回去。
-    if (token !== epoch || !enabled.value[key]) return;
+    return token === epoch ? path : undefined;
+  }
+
+  function writeValue(key: FrameKey, path: string) {
     outputs.value[frameOutputMeta(key).handleId] = { dataType: "IMAGE", value: { url: path, mimeType: "image/jpeg" } };
   }
 
@@ -188,7 +194,9 @@ export function useFrameOutputs(options: FrameOutputOptions) {
         if (signal.aborted || token !== epoch) return;
         if (!enabled.value[item.key]) continue;
         try {
-          await extractInto(item.key, source, signal, token);
+          const path = await extractFrame(item.key, source, signal, token);
+          // ACT: 抽帧途中端口被关掉时不能把值写回去。
+          if (path && enabled.value[item.key]) writeValue(item.key, path);
         } catch (cause) {
           // ACT: 一路失败不阻断另一路；成功的那张照常回填。
           if (signal.aborted || token !== epoch) return;
@@ -248,10 +256,12 @@ export function useFrameOutputs(options: FrameOutputOptions) {
     beginOp();
     const token = ++epoch;
     try {
-      await extractInto(key, source, current.signal, token);
-      if (current.signal.aborted || token !== epoch) return;
+      const path = await extractFrame(key, source, current.signal, token);
+      if (!path || current.signal.aborted || token !== epoch) return;
       writeConfig(next);
       handles.value = buildFrameHandles(next, baseHandles);
+      // ACT: 配置要先落，端口才出得来；值紧随其后写入，两者一起生效。
+      writeValue(key, path);
       error.value = undefined;
     } catch (cause) {
       if (current.signal.aborted || token !== epoch) {

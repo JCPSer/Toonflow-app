@@ -85,3 +85,13 @@
 修复后：`@toonflow/node-video` typecheck 通过、18 例单测全过、`build:nodes` 通过，节点包已重新部署（未重启）。
 
 **待人工复验**：重启后连续两次「关闭再开启尾帧输出」都应成功，且文件被覆盖。
+
+## 8. 二次真机回归：端口有、图没有（2026-10-31 11:15）
+
+现象：409 修好后勾选尾帧能出端口，磁盘上生成了 `frame-last.jpg`，但下拉缩略图为空、下游引用为空。
+
+根因：`extractInto` 在写值前判断 `!enabled[key]` 就丢弃结果，而「手动开启」这条路径的 `frameOutputs` 要等抽帧成功才写入，所以此时 `enabled` 仍是 false，结果被丢弃。
+
+修复：拆成 `extractFrame`（只判代次）+ `writeValue`（写值），`toggle` 先写配置出端口再写值，`runJob` 写值前确认端口仍开启。
+
+验收：`@toonflow/node-video` typecheck 通过、18 例单测全过、`build:nodes` 通过，节点包已重新部署。**待重启后复验**。

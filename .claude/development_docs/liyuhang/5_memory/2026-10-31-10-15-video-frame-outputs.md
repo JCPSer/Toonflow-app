@@ -43,3 +43,9 @@
 真机首次验证即报「开启尾帧输出失败：Request failed with status code 409」。根因：工作区 `rename` 走 `copyFileClone`（`COPYFILE_EXCL`），**目标已存在就 409 EEXIST**，所以首次抽帧成功、之后任何重抽都失败。修法：rename 前先 `remove(target)`（best-effort）；同时让错误提示优先取响应体的 message，不再只显示 axios 的通用文案。
 
 教训：把「临时名 + rename」当作原子覆盖前，必须先确认目标平台 rename 的覆盖语义——这里的 rename 被刻意实现成不覆盖，语义与 POSIX `rename(2)` 不同。
+
+## 补充（v3 修订，2026-10-31 11:15）
+
+「勾上端口却没有图」的根因在**状态判断与状态写入的先后**：`extractInto` 写值前用 `enabled[key]` 判断端口是否还开着，而「手动开启」路径正是先抽帧、成功后才写 `frameOutputs` —— 此刻 `enabled` 必然还是 false，刚抽好的图被自己丢掉。拆成 `extractFrame`（只判代次）+ `writeValue`（写值）后正常。
+
+教训：「用某个状态做守卫」之前，先确认这个状态在这条路径上的**写入时机**；把「首次开启」和「后续重抽」当同一条路径处理，就会在首次开启上自相矛盾。
