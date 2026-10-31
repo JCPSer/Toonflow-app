@@ -95,3 +95,6 @@
 - 2026-10-31 01:15 会话旧工具结果按轮次淘汰：新增共享纯函数 `toolResultPrune.ts`，`microCompactMessages()` 改为复用；`pruneAgentSessionFile()` 在 run 结束 dispose 后、释放锁前整文件重写。结果：typecheck 通过，单测 18/18，真实会话副本 −17%（6.06→5.04MB）；构建安装完成（未重启）。
 - 2026-10-31 01:40 按审查意见修正工具结果淘汰（P0 启用条件 + P1 分支边界 + P1 锁顺序）：新增 `wasMicrocompacted` 门控、按当前分支算边界、淘汰挪到 release 后自抢锁；补 `toolResultPrune.test.ts` 入库。结果：bun test 9/9、typecheck 通过、真实会话副本仍 −17%；重新构建安装（未重启）。
 - 2026-10-31 01:55 补齐审查提到的删除竞态：`removeAgentSession()` 加 `lockWorkspaceFiles`，避免 run 结束后的淘汰（读→临时文件→rename）与删除交错导致会话被写回。结果：typecheck 通过、bun test 9/9；重新构建安装（未重启）。
+- 2026-10-31 08:05 视频截帧改走宿主 ffmpeg：`videoPlayer` 新增 `sourcePath` 与 `captureOnHost`（首帧 `-frames:v 1`、尾帧 `-sseof -1 -update 1`、当前帧用 rVFC 的 PTS），新增 `frameTarget.ts` 纯函数供 canvas 兜底；修掉 0.05s 帧偏移、150ms 呈现容差、空帧重试不回位。结果：单测 6/6、两包 typecheck 通过、宿主链路三条路径与 ffmpeg 真值逐像素一致；`deploy-local.sh --build` 安装完成（未重启）。
+- 2026-10-31 08:25 按代码审查意见修正截帧：`BrowserFfmpegOptions.silentRequired` 贯通到 `createWorkspaceFfmpeg({silent})`（缺 FFmpeg 不再弹安装引导）；宿主产物读不出宽高即回退 canvas（防 seek 越过末帧 exit 0 无产物）；rVFC 订阅可取消、PTS 过期守卫；frameAnalysisNode 补 `source-path`。结果：五包 typecheck 通过、单测 6/6、三条路径仍逐像素一致；重新构建安装（未重启）。
+- 2026-10-31 08:40 采纳滞后到达的另两份审查意见：新增 `workspaceMediaPath()` 公共校验（videoProcessing/analysisPath 改为复用）、补 `-map 0:v:0`、复用工作区实例、`imageSize` 3s 超时、`kill` 后等 `end/error`（2s 宽限）再清理。结果：typecheck 通过、单测 6/6、三条路径仍逐像素一致；重新构建安装（未重启）。
