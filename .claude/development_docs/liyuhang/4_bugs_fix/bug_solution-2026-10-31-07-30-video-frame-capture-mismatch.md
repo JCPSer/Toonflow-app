@@ -118,8 +118,8 @@ frameTarget("current", duration, currentTime) -> clamp(currentTime)
 
 ## 6. 方案评审（用户填写）
 
-- 结论：待评审
-- 意见：
+- 结论：**验收通过**（2026-10-31，用户重启后真机验证：尾帧与剪映同时间线对比无可见亮度差，尾帧跑首尾帧接续无跳变）
+- 意见：—
 
 ## 7. 子 agent 代码审查
 

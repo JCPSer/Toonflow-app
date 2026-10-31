@@ -98,3 +98,4 @@
 - 2026-10-31 08:05 视频截帧改走宿主 ffmpeg：`videoPlayer` 新增 `sourcePath` 与 `captureOnHost`（首帧 `-frames:v 1`、尾帧 `-sseof -1 -update 1`、当前帧用 rVFC 的 PTS），新增 `frameTarget.ts` 纯函数供 canvas 兜底；修掉 0.05s 帧偏移、150ms 呈现容差、空帧重试不回位。结果：单测 6/6、两包 typecheck 通过、宿主链路三条路径与 ffmpeg 真值逐像素一致；`deploy-local.sh --build` 安装完成（未重启）。
 - 2026-10-31 08:25 按代码审查意见修正截帧：`BrowserFfmpegOptions.silentRequired` 贯通到 `createWorkspaceFfmpeg({silent})`（缺 FFmpeg 不再弹安装引导）；宿主产物读不出宽高即回退 canvas（防 seek 越过末帧 exit 0 无产物）；rVFC 订阅可取消、PTS 过期守卫；frameAnalysisNode 补 `source-path`。结果：五包 typecheck 通过、单测 6/6、三条路径仍逐像素一致；重新构建安装（未重启）。
 - 2026-10-31 08:40 采纳滞后到达的另两份审查意见：新增 `workspaceMediaPath()` 公共校验（videoProcessing/analysisPath 改为复用）、补 `-map 0:v:0`、复用工作区实例、`imageSize` 3s 超时、`kill` 后等 `end/error`（2s 宽限）再清理。结果：typecheck 通过、单测 6/6、三条路径仍逐像素一致；重新构建安装（未重启）。
+- 2026-10-31 09:10 用户重启后真机验收截帧修复**通过**：尾帧放入剪映与同时间线原视频对比无可见亮度/细节差，尾帧跑首尾帧接续工作流接缝正常。分析/方案/测试三份文档回填验收结论并推送 GitHub。
