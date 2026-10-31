@@ -39,6 +39,7 @@
         ref="player"
         :src="previewUrl"
         :poster-url="posterUrl"
+        :source-path="outputFile?.url"
         :resolve-source="activate"
         label="生成视频"
         @activate="activate"

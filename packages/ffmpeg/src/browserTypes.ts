@@ -27,7 +27,11 @@ export const queryMethods = [
   "availableEncoders", "getAvailableEncoders", "availableFormats", "getAvailableFormats",
 ] as const satisfies readonly (keyof FfmpegCommand)[];
 
-export type BrowserFfmpegOptions = Pick<FfmpegCommandOptions, "cwd" | "niceness" | "priority" | "stdoutLines" | "timeout"> & { source?: string };
+export type BrowserFfmpegOptions = Pick<FfmpegCommandOptions, "cwd" | "niceness" | "priority" | "stdoutLines" | "timeout"> & {
+  source?: string;
+  // ACT: 调用方自带兜底时用静默探测：宿主缺少 FFmpeg 只报错，不弹安装引导。
+  silentRequired?: boolean;
+};
 export type FfmpegCall = { method: string; args: unknown[]; undefinedArgs?: number[] };
 export type BrowserFfmpegRequest = { directory: string; requestId: string; options: BrowserFfmpegOptions; calls: FfmpegCall[]; operation: FfmpegCall };
 export type FfmpegRemoteEvent = { event: string; args: unknown[] };

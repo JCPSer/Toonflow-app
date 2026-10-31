@@ -16,7 +16,7 @@
     </template>
     <div class="analysisContent">
       <div class="videoArea nodrag nopan nowheel" @pointerdown.stop @dblclick.stop>
-        <videoPlayer v-if="previewUrl" ref="player" :src="previewUrl" label="拉片视频" @loadedmetadata="readMetadata" />
+        <videoPlayer v-if="previewUrl" ref="player" :src="previewUrl" :source-path="source?.url" label="拉片视频" @loadedmetadata="readMetadata" />
         <el-button v-else class="uploadButton" text :loading="uploading" :disabled="busy || connected" @click="fileInput?.click()">
           <icon-upload :size="40" stroke="1.5" aria-hidden="true" />
           <span>{{ connected ? '等待上游视频' : '选择视频' }}</span>

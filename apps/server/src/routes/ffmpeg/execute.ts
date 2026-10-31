@@ -20,6 +20,7 @@ const inputSchema = z.object({
     priority: z.number().int().min(-20).max(20).optional(),
     stdoutLines: z.number().int().nonnegative().optional(),
     timeout: z.number().nonnegative().optional(),
+    silentRequired: z.boolean().optional(),
   }).strict(),
   calls: z.array(callSchema).max(2048),
   operation: callSchema,
@@ -51,7 +52,7 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
   req.socket.once("close", close);
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   try {
-    const factory = await u.ffmpeg.createWorkspaceFfmpeg(cwd, controller.signal);
+    const factory = await u.ffmpeg.createWorkspaceFfmpeg(cwd, controller.signal, { silent: input.options.silentRequired === true });
     if (input.operation.method === "prepare") {
       res.json(success());
       return;

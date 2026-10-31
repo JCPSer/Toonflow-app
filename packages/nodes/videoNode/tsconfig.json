@@ -4,5 +4,7 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"],
+  // ACT: 单测由 bun test 直接运行（bun:test 类型不属于本包的 vite/client 类型集）。
+  "exclude": ["src/**/*.test.ts"]
 }

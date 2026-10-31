@@ -46,6 +46,7 @@
         ref="player"
         :src="previewUrl"
         :poster-url="posterUrl"
+        :source-path="outputFile?.url"
         :resolve-source="activate"
         @activate="activate"
         @deactivate="deactivate"

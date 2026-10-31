@@ -8,8 +8,8 @@ export function useNodeFfmpeg() {
   const lifetime = new AbortController();
   onScopeDispose(() => lifetime.abort());
 
-  return (signal?: AbortSignal) => {
+  return (signal?: AbortSignal, options: { silentRequired?: boolean } = {}) => {
     if (!getDirectory) throw new Error("当前画布未提供工作区目录");
-    return createBrowserFfmpeg(getDirectory(), signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal);
+    return createBrowserFfmpeg(getDirectory(), signal ? AbortSignal.any([lifetime.signal, signal]) : lifetime.signal, options);
   };
 }

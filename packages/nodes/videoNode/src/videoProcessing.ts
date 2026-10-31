@@ -1,4 +1,5 @@
 import type { BrowserFfmpegCommand, BrowserFfmpegFactory, FfprobeData } from "@toonflow/ffmpeg/browser";
+import { workspaceMediaPath } from "@toonflow/nodes-scaffold/runtime";
 
 export type VideoProcessingOptions = {
   action: "extractAudio" | "separate" | "trim";
@@ -9,10 +10,7 @@ export type VideoProcessingOptions = {
 };
 
 function normalizePath(path: string) {
-  if (!path || /[\x00-\x1f]/.test(path) || /^(?:[\\/]|[a-z][a-z\d+.-]*:)/i.test(path) || path.split(/[\\/]+/).includes("..")) {
-    throw new Error("视频处理必须使用工作区相对路径");
-  }
-  return path.split(/[\\/]+/).filter(part => part && part !== ".").join("/").toLowerCase();
+  return workspaceMediaPath(path).toLowerCase();
 }
 
 function probeMedia(ffmpeg: BrowserFfmpegFactory, path: string, signal?: AbortSignal) {

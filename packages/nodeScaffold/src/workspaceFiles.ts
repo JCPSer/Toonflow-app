@@ -21,6 +21,17 @@ export interface WorkspaceFiles {
   mkdir(path: string): Promise<void>;
 }
 
+/**
+ * ACT: 工作区相对路径规范化。节点数据里的媒体路径可能来自导入/分享的项目 JSON，
+ * 交给宿主 ffmpeg 前必须拒绝绝对路径、盘符/scheme、控制字符与 `..` 穿越，并统一分隔符。
+ */
+export function workspaceMediaPath(path: string) {
+  if (!path || /[\x00-\x1f]/.test(path) || /^(?:[\\/]|[a-z][a-z\d+.-]*:)/i.test(path) || path.split(/[\\/]+/).includes("..")) {
+    throw new Error("只能使用工作区内的相对路径");
+  }
+  return path.split(/[\\/]+/).filter(part => part && part !== ".").join("/");
+}
+
 function getNodeDirectory(nodeId: string) {
   if (!nodeId || /[\\/]/.test(nodeId) || nodeId === "." || nodeId === "..") throw new Error("节点 ID 不能作为文件夹名称");
   return `assets/${nodeId}`;

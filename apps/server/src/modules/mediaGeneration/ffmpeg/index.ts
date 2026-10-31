@@ -19,12 +19,13 @@ export function onRequired(listener: () => void) {
   return () => { requiredListeners.delete(listener); };
 }
 
-export async function createWorkspaceFfmpeg(cwd: string, signal?: AbortSignal) {
+export async function createWorkspaceFfmpeg(cwd: string, signal?: AbortSignal, options: { silent?: boolean } = {}) {
   signal?.throwIfAborted();
   const { tools } = await getStatus();
   signal?.throwIfAborted();
   if (!tools.ffmpeg.path || tools.ffmpeg.error || !tools.ffprobe.path || tools.ffprobe.error) {
-    for (const listener of requiredListeners) listener();
+    // ACT: 调用方自带兜底（如截帧回退 canvas）时静默失败，不再弹「需要安装 FFmpeg」。
+    if (!options.silent) for (const listener of requiredListeners) listener();
     throw Object.assign(new Error("当前操作需要 FFmpeg，请在插件市场下载安装或配置可用版本后重试。"), {
       name: "FfmpegRequiredError", code: "FFMPEG_REQUIRED", status: 424,
     });

@@ -39,9 +39,10 @@ async function request(input: BrowserFfmpegRequest, signal?: AbortSignal) {
 }
 
 /** 只传输 fluent 调用，执行库和媒体文件始终留在宿主。目录在创建工厂时固定。 */
-export async function createBrowserFfmpeg(directory: string, signal?: AbortSignal): Promise<BrowserFfmpegFactory> {
+export async function createBrowserFfmpeg(directory: string, signal?: AbortSignal, options: { silentRequired?: boolean } = {}): Promise<BrowserFfmpegFactory> {
   signal?.throwIfAborted();
-  const prepared = await request({ directory, requestId: crypto.randomUUID(), options: {}, calls: [], operation: { method: "prepare", args: [] } }, signal);
+  const base: BrowserFfmpegOptions = options.silentRequired ? { silentRequired: true } : {};
+  const prepared = await request({ directory, requestId: crypto.randomUUID(), options: base, calls: [], operation: { method: "prepare", args: [] } }, signal);
   const result = await prepared.json() as { code: number; message?: string };
   if (result.code !== 200) throw remoteError(result);
 
@@ -61,7 +62,7 @@ export async function createBrowserFfmpeg(directory: string, signal?: AbortSigna
 
     function start(operation: FfmpegCall, callback?: Listener) {
       if (active) throw new Error("当前 FFmpeg 命令正在执行；并行处理请使用 clone()");
-      const input = snapshot({ directory, requestId: crypto.randomUUID(), options, calls, operation });
+      const input = snapshot({ directory, requestId: crypto.randomUUID(), options: { ...base, ...options }, calls, operation });
       const controller = active = new AbortController();
       const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
       const transport = new AbortController();

@@ -1,4 +1,4 @@
-import type { BrowserFfmpegCommand, BrowserFfmpegFactory, FfprobeData, WorkspaceFiles } from "@toonflow/nodes-scaffold/runtime";
+import { workspaceMediaPath, type BrowserFfmpegCommand, type BrowserFfmpegFactory, type FfprobeData, type WorkspaceFiles } from "@toonflow/nodes-scaffold/runtime";
 import { createSceneDetector } from "./sceneDetector";
 
 export type AnalysisScene = {
@@ -52,10 +52,7 @@ export type AnalysisOptions = {
 };
 
 export function analysisPath(path: string) {
-  if (!path || /[\x00-\x1f]/.test(path) || /^(?:[\\/]|[a-z][a-z\d+.-]*:)/i.test(path) || path.split(/[\\/]+/).includes("..")) {
-    throw new Error("拉片素材必须使用工作区内的相对路径");
-  }
-  return path.split(/[\\/]+/).filter(part => part && part !== ".").join("/");
+  return workspaceMediaPath(path);
 }
 
 function probe(ffmpeg: BrowserFfmpegFactory, path: string, signal: AbortSignal) {
