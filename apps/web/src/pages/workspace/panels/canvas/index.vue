@@ -85,16 +85,18 @@
           <icon-message-circle-question :size="14" aria-hidden="true" />
           <span>{{ activeAgentQuestions.length }} 个 Agent 正在等你回答</span>
         </div>
-        <button
-          v-for="item in activeAgentQuestions"
-          :key="item.nodeId"
-          type="button"
-          class="agentQuestionItem"
-          @click.stop="openAgentQuestion(item.nodeId)">
-          <span class="agentQuestionNode">{{ item.label }}</span>
-          <span class="agentQuestionText" :title="item.question">{{ item.title || item.question }}</span>
-          <icon-chevron-right :size="14" aria-hidden="true" />
-        </button>
+        <div class="agentQuestionList">
+          <button
+            v-for="item in activeAgentQuestions"
+            :key="`${item.canvasKey}:${item.nodeId}`"
+            type="button"
+            class="agentQuestionItem"
+            @click.stop="openAgentQuestion(item)">
+            <span class="agentQuestionNode" :title="questionSourceLabel(item)">{{ questionSourceLabel(item) }}</span>
+            <span class="agentQuestionText" :title="item.question">{{ item.title || item.question }}</span>
+            <icon-chevron-right :size="14" aria-hidden="true" />
+          </button>
+        </div>
       </div>
       <!-- ACT: 节点完成/失败的未读提醒；系统通知没有点击回调，回到应用后靠这条横幅定位。
            提问横幅在上面时整体下移，避免两条叠在一起。 -->
@@ -141,7 +143,7 @@
         :active="active === true"
         :canvas-id="canvasId"
         :statuses="agentNodeStatuses"
-        @questions="agentQuestions = $event" />
+        @questions="syncAgentQuestions" />
     </vue-flow>
     <teleport to="body">
       <div
@@ -202,7 +204,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, reactive, ref, shallowReactive, shallowRef, watch } from "vue";
+import { computed, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, reactive, ref, shallowReactive, shallowRef, watch, watchEffect } from "vue";
 import axios from "axios";
 import { debounce } from "lodash-es";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -256,6 +258,7 @@ import nodeSearch from "./components/nodeSearch.vue";
 import agentNodePanel from "./components/agentNodePanel.vue";
 import taskAlertBanner from "./components/taskAlertBanner.vue";
 import { useTaskAlertsStore } from "@/stores/taskAlerts";
+import { useAgentQuestionsStore, type CanvasAgentQuestion } from "@/stores/agentQuestions";
 import { setNodeLabelResolver } from "@/lib/taskAlerts";
 import mentionThumbnail from "@/components/agent/mentionThumbnail.vue";
 import { useMentionSources, type MentionOutput } from "@/components/agent/mentionSources";
@@ -826,20 +829,79 @@ function toggleDisabledSelection() {
   if (disabled.length) void setNodeDisabled(disabled.map(node => node.id), false);
 }
 
-// ACT: 面板上报的未读提问；节点被删掉后按当前节点表过滤掉，避免点进一个不存在的节点。
-const agentQuestions = ref<AgentQuestionNotice[]>([]);
-// ACT: 禁用节点不展示未读提问横幅，也不允许从横幅跳转打开面板。
-const activeAgentQuestions = computed(() => agentQuestions.value.filter(item => {
+// ACT: 提问提醒住在全局 store 里——后台画布不卸载，但横幅只渲染在活动画布；
+// 只存本画布的列表会让用户切换画布前完全看不到别的画布在等回答。
+const agentQuestionsStore = useAgentQuestionsStore();
+const questionCanvasKey = computed(() => props.runtimeKey ?? "");
+function syncAgentQuestions(list: AgentQuestionNotice[]) {
+  agentQuestionsStore.sync(questionCanvasKey.value, canvasId.value, list);
+}
+// ACT: 本画布的条目按节点表过滤（节点被删/禁用就不显示）；其他画布的条目原样保留，
+// 否则「跨画布提醒」又会被本画布的节点表过滤掉。
+const activeAgentQuestions = computed(() => agentQuestionsStore.notices.filter(item => {
+  if (item.canvasKey !== questionCanvasKey.value) return true;
   const node = flow.findNode(item.nodeId);
   return !!node && !isNodeDisabled(node);
 }));
-function openAgentQuestion(nodeId: string) {
+// ACT: 跨画布条目带上画布名，避免同名节点在两块画布上分不清。
+function questionSourceLabel(item: CanvasAgentQuestion) {
+  if (item.canvasKey === questionCanvasKey.value) return item.label;
+  const name = item.canvasId?.replace(/\.json$/i, "").split("/").pop();
+  return name ? `${name} · ${item.label}` : `其他画布 · ${item.label}`;
+}
+function focusQuestionNode(nodeId: string) {
   const node = flow.findNode(nodeId);
-  if (!node || isNodeDisabled(node)) return;
+  if (!node || isNodeDisabled(node)) return false;
   // 面板按节点坐标定位，节点在视野外会开在一个看不见的地方，先把视图带过去。
   void flow.fitView({ nodes: [node.id], duration: 260, maxZoom: 1, padding: 0.4 });
   void agentNodePanelRef.value?.open(nodeId);
+  return true;
 }
+async function openAgentQuestion(item: CanvasAgentQuestion) {
+  if (item.canvasKey === questionCanvasKey.value) {
+    focusQuestionNode(item.nodeId);
+    return;
+  }
+  // 不在本画布：请求切过去并让目标实例自己打开面板（实例之间拿不到对方的 Vue Flow）。
+  if (!item.canvasId || !props.activateCanvas) return;
+  agentQuestionsStore.requestFocus(item.nodeId, item.canvasKey);
+  try {
+    await props.activateCanvas(item.canvasId);
+  } catch (error) {
+    agentQuestionsStore.clearPendingFocus();
+    ElMessage.error(error instanceof Error ? error.message : "切换画布失败");
+  }
+}
+// ACT: 目标实例被激活后可能还没量过节点尺寸，等 canvasReady 再打开；消费一次就清掉。
+// 用户在加载途中切去别的画布时，那条实例会先成为 active，顺手作废旧请求，避免以后正常打开时莫名跳面板。
+watch([() => props.active, canvasReady], () => {
+  if (!props.active || !canvasReady.value) return;
+  const pending = agentQuestionsStore.pendingFocus;
+  if (!pending) return;
+  if (pending.canvasKey !== questionCanvasKey.value) {
+    agentQuestionsStore.clearPendingFocus();
+    return;
+  }
+  agentQuestionsStore.clearPendingFocus();
+  void nextTick(() => {
+    if (focusQuestionNode(pending.nodeId)) return;
+    // ACT: 提问到点击之间节点被删/禁用时，条目必须删掉，否则所有画布都会挂着一条点不开的提醒。
+    agentQuestionsStore.removeQuestion(pending.canvasKey, pending.nodeId);
+    ElMessage.warning("该 Agent 节点已被删除或禁用");
+  });
+});
+// ACT: 本画布节点的删除/禁用不会触发面板重新上报提问；主动把它名下的失效条目从全局列表里清掉。
+watchEffect(() => {
+  for (const item of agentQuestionsStore.notices) {
+    if (item.canvasKey !== questionCanvasKey.value) continue;
+    const node = flow.findNode(item.nodeId);
+    if (!node || isNodeDisabled(node)) agentQuestionsStore.removeQuestion(item.canvasKey, item.nodeId);
+  }
+});
+// ACT: 画布改名/另存后 canvasId 会变，旧条目里的路径要跟着更新，否则跨画布点击会指错文件。
+watch(canvasId, id => {
+  if (id) agentQuestionsStore.setCanvasId(questionCanvasKey.value, id);
+});
 // ACT: 节点完成/失败的未读提醒住在 store 里，画布只负责展示与跳转。
 // 同时挂载多个画布（后台画布不卸载），所以节点名解析器按画布各自注册、随卸载撤销。
 const taskAlertsStore = useTaskAlertsStore();
@@ -1881,6 +1943,8 @@ onBeforeUnmount(() => {
   document.removeEventListener("beforecopy", beforeClipboard);
   document.removeEventListener("beforecut", beforeClipboard);
   document.removeEventListener("beforepaste", beforeClipboard);
+  // ACT: 画布实例销毁（关闭画布/切项目）时清掉它名下的提问，避免横幅留下点不开的幽灵条目。
+  agentQuestionsStore.removeCanvas(questionCanvasKey.value);
   workspaceController.abort(new Error("工作区已关闭"));
   canvasController.abort(new Error("画布已关闭"));
   saveCanvas.flush();
@@ -2090,6 +2154,16 @@ const defaultEdgeOptions = markRaw({
       white-space: nowrap;
     }
 
+    // ACT: 多块画布同时提问时条目会无限增长，横幅不能把画布顶部整块盖住；
+    // 超出高度在横幅内部滚动（画布已 stop wheel，不会顺带缩放画布）。
+    .agentQuestionList {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      max-height: 168px;
+      overflow-y: auto;
+    }
+
     .agentQuestionItem {
       display: flex;
       align-items: center;
@@ -2110,7 +2184,7 @@ const defaultEdgeOptions = markRaw({
 
       .agentQuestionNode {
         flex: none;
-        max-width: 120px;
+        max-width: 200px;
         overflow: hidden;
         color: var(--el-text-color-primary);
         text-overflow: ellipsis;
