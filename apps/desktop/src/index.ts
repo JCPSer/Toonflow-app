@@ -225,8 +225,9 @@ async function start() {
   let closeGate: Promise<void> | null = null;
   let pageReady = false;
   let forceQuit = false;
-  // 前端 flush-done 回执的等待者；闸门单飞，同一时间最多一个。
-  let resolveFlushDone: (() => void) | undefined;
+  // 前端回执的等待者：done=可以关、cancel=用户选择留在原地；闸门单飞，同一时间最多一个。
+  type FlushHandle = { confirming: () => void; done: () => void; cancel: () => void };
+  let flushHandle: FlushHandle | undefined;
 
   try {
     // Windows 的数据目录与 app 同级；macOS 的与 .app 同级，避免随程序更新被替换。
@@ -369,58 +370,87 @@ async function start() {
     // ACT: 主进程不知道当前挂载了几个画布实例，前端预算按「2s 基础 + 每实例 0.5s」计算；
     // 这里取 4s 作为该公式的保守上界（2s + 4 个实例），既覆盖多画布保存，也不会让首页/失败页关窗长时间无响应。
     const FLUSH_TIMEOUT_MS = 4000;
+    // ACT: 用户可能盯着「有节点在跑，是否仍要退出」的确认框想很久。确认期间把超时放长到 10 分钟，
+    // 只在渲染进程失联、永远不会回执时兜底放行，避免窗口彻底关不掉。
+    const CONFIRM_TIMEOUT_MS = 10 * 60 * 1000;
 
-    /** 等待页面回执；无论成功、失败还是超时都只结算一次。 */
-    function waitForFlushDone() {
-      return new Promise<void>((resolve) => {
+    /** 等待页面回执；done / cancelled / 超时三种结果都只结算一次。 */
+    function waitForFlushOutcome() {
+      return new Promise<"done" | "cancelled">((resolve) => {
         let settled = false;
-        const finish = () => {
+        let timer: ReturnType<typeof setTimeout>;
+        const finish = (outcome: "done" | "cancelled") => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          if (resolveFlushDone === finish) resolveFlushDone = undefined;
-          resolve();
+          if (flushHandle === handle) flushHandle = undefined;
+          resolve(outcome);
         };
-        resolveFlushDone = finish;
-        const timer = setTimeout(finish, FLUSH_TIMEOUT_MS);
+        const handle = {
+          /** 前端弹出确认框：暂停原有超时，换成用户犹豫的宽松上限。已结算后是 no-op。 */
+          confirming: () => {
+            if (settled) return;
+            clearTimeout(timer);
+            timer = setTimeout(() => finish("done"), CONFIRM_TIMEOUT_MS);
+          },
+          done: () => finish("done"),
+          cancel: () => finish("cancelled"),
+        };
+        flushHandle = handle;
+        timer = setTimeout(() => finish("done"), FLUSH_TIMEOUT_MS);
       });
     }
 
-    async function flushFrontendState() {
-      if (!pageReady) return;
+    async function flushFrontendState(kind: "close" | "quit" | "update") {
+      // ACT: 页面还没接上或正在导航时没有可运行的工作区，不弹确认，直接放行。
+      if (!pageReady) return "done" as const;
       // ACT: 先登记回执等待者再执行脚本，避免页面在 executeJavascript 返回前就回执导致丢消息。
-      const done = waitForFlushDone();
+      const outcome = waitForFlushOutcome();
       try {
-        mainWindow.webview?.executeJavascript("window.__toonflowFlush?.()");
+        // ACT: kind 必须带给前端：更新重启不能弹「有节点在跑」的确认，否则取消会让更新走二次审批。
+        mainWindow.webview?.executeJavascript(`window.__toonflowFlush?.(${JSON.stringify(kind)})`);
       } catch (error) {
         // 页面不可用时不必等满超时，直接放行。
         console.error("通知页面保存状态失败：", error);
-        resolveFlushDone?.();
+        flushHandle?.done();
       }
-      await done;
+      return outcome;
     }
 
     /**
-     * 关闭闸门：等待前端落盘 → 写窗口几何 → 放行本轮退出。
+     * 关闭闸门：等待前端确认与落盘 → 写窗口几何 → 放行本轮退出。
      * 绝不在 will-close / before-quit 的回调栈内直接 close()/requestClose()，统一用 setTimeout 跳出。
      */
     function runGate(kind: "close" | "quit" | "update") {
       // ACT: 单飞。标题栏关闭、Dock 退出、更新重启可能连续触发，复用同一轮保存与放行。
       if (closeGate) return closeGate;
+      // ACT: 取消必须内外两层都拦。内层 finally 若无条件置 allowClose，外层 finally 仍会关窗；
+      // 而外层若不判断，会在用户选择「留在此页」后照样 quit。
+      let cancelled = false;
       const task = (async () => {
         try {
-          await flushFrontendState();
+          if ((await flushFrontendState(kind)) === "cancelled") {
+            cancelled = true;
+            return;
+          }
           // ACT: 闸门末端合并 pendingFrame 后落盘；最大化/全屏等判定仍复用 flushWindowState。
           flushWindowState();
         } finally {
           // 即使前端保存异常也必须放行，否则窗口将无法关闭。
           // ACT: update 只申请一次性退出批准；真实关窗/退出才置 allowClose。
-          if (kind === "update") updateQuitApproved = true;
-          else allowClose = true;
+          if (!cancelled) {
+            if (kind === "update") updateQuitApproved = true;
+            else allowClose = true;
+          }
         }
       })();
       closeGate = task;
       void task.catch(error => console.error("关闭前保存失败：", error)).finally(() => {
+        // ACT: 用户选择留在原地：本轮作废，清掉单飞锁，下次关窗重新走完整闸门。
+        if (cancelled) {
+          if (closeGate === task) closeGate = null;
+          return;
+        }
         // ACT: kind=update 由更新器自己重启，这里只负责保存与放行，绝不能关窗。
         if (kind !== "close" && kind !== "quit") return;
         setTimeout(() => kind === "quit" ? Utils.quit() : mainWindow.close(), 0);
@@ -512,8 +542,23 @@ async function start() {
       }
       if (!detail || typeof detail !== "object" || !("type" in detail)) return;
       if (detail.type === "openExternal") openLink(detail);
-      // flush-done 用于结算关闭闸门的等待；重复或过期的回执在这里自然无效。
-      else if (detail.type === "flush-done") resolveFlushDone?.();
+      // 三种回执都交给当前闸门的句柄结算；重复或过期的回执在这里自然无效。
+      else if (detail.type === "flush-confirming") {
+        // ACT: 确认框渲染在 WebView 里。窗口最小化或在后台时用户看不见，必须先拉回前台，
+        // 否则「点退出没反应」。过期的回执没有在途闸门时不能白抢一次焦点。
+        if (flushHandle) {
+          try {
+            if (mainWindow.isMinimized()) mainWindow.unminimize();
+            mainWindow.show();
+            mainWindow.activate();
+          } catch (error) {
+            console.error("唤起窗口失败：", error);
+          }
+          flushHandle.confirming();
+        }
+      }
+      else if (detail.type === "flush-cancelled") flushHandle?.cancel();
+      else if (detail.type === "flush-done") flushHandle?.done();
       else if (detail.type === "desktop-notify") {
         const { title, body, silent } = detail as { title?: unknown; body?: unknown; silent?: unknown };
         // ACT: 通知是尽力而为：未授权或平台不支持时原生层会拒绝，这里静默失败，绝不能影响主进程。
@@ -536,6 +581,8 @@ async function start() {
       }
       // ACT: 页面开始真实导航后旧页面脚本即将销毁，闸门不得再向它派发 flush；等新页面 ready() 再置回。
       pageReady = false;
+      // 在途闸门等不到旧页面的回执了，按已结算放行，避免白等确认期的 10 分钟。
+      flushHandle?.done();
       deliverInstall = undefined;
     });
     let isShowing = false;

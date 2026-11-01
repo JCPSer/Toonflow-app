@@ -143,7 +143,8 @@
         :active="active === true"
         :canvas-id="canvasId"
         :statuses="agentNodeStatuses"
-        @questions="syncAgentQuestions" />
+        @questions="syncAgentQuestions"
+        @pendingQuestions="pendingQuestionIds = $event" />
     </vue-flow>
     <teleport to="body">
       <div
@@ -260,6 +261,7 @@ import taskAlertBanner from "./components/taskAlertBanner.vue";
 import { useTaskAlertsStore } from "@/stores/taskAlerts";
 import { useAgentQuestionsStore, type CanvasAgentQuestion } from "@/stores/agentQuestions";
 import { setNodeLabelResolver } from "@/lib/taskAlerts";
+import { countRunningNodes, removeCanvasRunningNodes, syncCanvasRunningNodes } from "@/lib/runningNodes";
 import mentionThumbnail from "@/components/agent/mentionThumbnail.vue";
 import { useMentionSources, type MentionOutput } from "@/components/agent/mentionSources";
 import { useAgentComposerStore } from "@/stores/agentComposer";
@@ -272,7 +274,7 @@ import { AGENT_NODE_STATUS_KEY, type AgentNodeStatus } from "@toonflow/nodes-sca
 import type { AgentQuestionNotice } from "@/components/agent/types";
 import type { NodeDocumentContext, NodeDocumentState } from "@toonflow/nodes-scaffold/nodeDocument";
 import { useNodeToolsContext } from "@toonflow/nodes-scaffold/nodeTools";
-import { hasRunningNodes, isNodeBusy, NODE_BUSY_CHANGE_EVENT } from "@toonflow/nodes-scaffold/nodeBusy";
+import { isNodeBusy, NODE_BUSY_CHANGE_EVENT } from "@toonflow/nodes-scaffold/nodeBusy";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { requestExitProject } from "../../exitProject";
 import { generalSettings } from "@/stores/settings";
@@ -832,10 +834,28 @@ function toggleDisabledSelection() {
 // ACT: 提问提醒住在全局 store 里——后台画布不卸载，但横幅只渲染在活动画布；
 // 只存本画布的列表会让用户切换画布前完全看不到别的画布在等回答。
 const agentQuestionsStore = useAgentQuestionsStore();
-const questionCanvasKey = computed(() => props.runtimeKey ?? "");
+// ACT: runtimeKey 正常由 canvasHost 传入；缺省时必须每实例唯一，否则两个实例会共用 key 互相覆盖上报。
+const fallbackCanvasKey = `__canvas-${crypto.randomUUID()}`;
+const questionCanvasKey = computed(() => props.runtimeKey ?? fallbackCanvasKey);
+/** Agent 面板上报的「提问中且未回答」节点，退出前统计运行中时并入本画布。 */
+const pendingQuestionIds = ref<string[]>([]);
 function syncAgentQuestions(list: AgentQuestionNotice[]) {
   agentQuestionsStore.sync(questionCanvasKey.value, canvasId.value, list);
 }
+// ACT: 退出项目/关窗前要统计「整个项目还有多少节点在跑」。运行态分散在 nodeBusy 的全局表
+// （非响应式 Map，只能靠 busyTick 感知变化）、本实例的 Agent 状态表、以及面板的提问标记，
+// 所以由每个画布实例分别上报「全局 busy 命中的节点」和「只属于本实例的节点」，退出时一次读总数。
+watchEffect(() => {
+  void busyTick.value;
+  const busy = flow.getNodes.value.filter(node => isNodeBusy(node.id)).map(node => node.id);
+  const local: string[] = [];
+  for (const [nodeId, status] of Object.entries(agentNodeStatuses)) {
+    if (status === "thinking" || status === "running" || status === "compacting") local.push(nodeId);
+  }
+  // ACT: 提问未回答时流通常还没结束、节点本就 busy；这里兜底「回合已收尾但用户还没答」的窗口。
+  local.push(...pendingQuestionIds.value);
+  syncCanvasRunningNodes(questionCanvasKey.value, busy, local);
+});
 // ACT: 本画布的条目按节点表过滤（节点被删/禁用就不显示）；其他画布的条目原样保留，
 // 否则「跨画布提醒」又会被本画布的节点表过滤掉。
 const activeAgentQuestions = computed(() => agentQuestionsStore.notices.filter(item => {
@@ -1405,18 +1425,15 @@ const flushWorkspaceSave = inject<(() => Promise<void>) | undefined>("flushWorks
 const relocationPicker = ref<InstanceType<typeof workspacePicker>>();
 const switchingProject = ref(false);
 
-/** 是否有节点在跑耗时任务：busy 登记表为主，Agent 节点状态兜底（思考中可能还没进 busy）。 */
-function hasBusyNodes() {
-  // ACT: 只能看不能改——这里在判断前剪枝会误删后台画布上正在跑的任务，导致切项目不提示。
-  return hasRunningNodes() || Object.values(agentNodeStatuses).some(status => status === "thinking" || status === "running" || status === "compacting");
-}
-
-// ACT: 项目切换统一走这里——先落盘当前画布，再判断运行中任务，最后交给 store 换目录，
-// 由 workspace 页按 project.directory 重挂载画布、文档与 Agent 面板。
+// ACT: 项目切换统一走这里——先判断运行中任务（用户取消就什么都不做），再落盘当前画布，
+// 最后交给 store 换目录，由 workspace 页按 project.directory 重挂载画布、文档与 Agent 面板。
 async function switchProject(target: { directory: string; name: string }) {
   if (switchingProject.value || !target.directory || target.directory === project.value?.directory) return;
-  if (hasBusyNodes()) {
-    const go = await ElMessageBox.confirm("有节点正在运行，切换项目会中断正在进行的任务。是否继续切换？", "切换项目", {
+  // ACT: 用全局汇总表而不是本实例的 Agent 状态：后台画布、其它画布的「提问中」也要算进来，
+  // 口径必须和退出项目一致。只能看不能改——判断前剪枝会误删后台画布上正在跑的任务。
+  const busyCount = countRunningNodes();
+  if (busyCount > 0) {
+    const go = await ElMessageBox.confirm(`当前有 ${busyCount} 个节点正在运行，切换项目会中断它们的任务。是否继续切换？`, "切换项目", {
       confirmButtonText: "继续切换", cancelButtonText: "取消", type: "warning",
     }).then(() => true, () => false);
     if (!go) return;
@@ -1945,6 +1962,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("beforepaste", beforeClipboard);
   // ACT: 画布实例销毁（关闭画布/切项目）时清掉它名下的提问，避免横幅留下点不开的幽灵条目。
   agentQuestionsStore.removeCanvas(questionCanvasKey.value);
+  removeCanvasRunningNodes(questionCanvasKey.value);
   workspaceController.abort(new Error("工作区已关闭"));
   canvasController.abort(new Error("画布已关闭"));
   saveCanvas.flush();

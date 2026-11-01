@@ -145,7 +145,7 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import { useSessionStateStore } from "@/stores/sessionState";
 import { registerWorkspaceControl, waitForControlValue } from "@/lib/mcpControl";
 import { flushAllLastCanvas } from "@/lib/projectUi";
-import { setQuitFlush } from "@/lib/quitGuard";
+import { setQuitConfirm, setQuitFlush } from "@/lib/quitGuard";
 import anonymousData from "@/lib/anonymousData";
 import { useProviderBalances } from "@/lib/providerBilling";
 import canvasPanel from "./panels/canvas/canvasHost.vue";
@@ -342,10 +342,17 @@ onMounted(() => {
       if (result.status === "rejected") console.warn("退出保存失败：", result.reason);
     }
   });
+  // ACT: 关窗/⌘Q 前若有节点在跑，先问一句；「留在此页」由前端回执 flush-cancelled，主进程作废本轮关闭。
+  setQuitConfirm(count => ElMessageBox.confirm(
+    `当前有 ${count} 个节点正在运行，退出会中断它们的任务。`,
+    "退出 Toonflow",
+    { confirmButtonText: "仍然退出", cancelButtonText: "留在此页", type: "warning", closeOnClickModal: false },
+  ).then(() => true, () => false));
 });
 // 离开工作区后回落到 quitGuard 的空实现，首页/设置页关窗立即回执。
 onBeforeUnmount(() => {
   setQuitFlush(undefined);
+  setQuitConfirm(undefined);
 });
 
 onBeforeRouteLeave(async () => {

@@ -93,6 +93,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** 未读提问列表变化，canvas 层据此渲染顶部横幅。 */
   questions: [list: AgentQuestionNotice[]];
+  /** 提问中且尚未回答的节点：与是否已读无关，退出前统计运行中节点用。 */
+  pendingQuestions: [nodeIds: string[]];
 }>();
 
 type AgentNodeData = { label?: string; agentSessionFile?: string; agentSessionCloneFrom?: string; agentLastPrompt?: string };
@@ -111,6 +113,8 @@ type PanelEntry = {
   phase: AgentNodeStatus;
   /** 未读提问；面板打开（=已读）后清空。 */
   question?: { callId: string; title: string; question: string };
+  /** 正在提问、尚未回答的调用 id。与「已读」无关——用户在面板里看着时也不会清空。 */
+  pending?: string;
 };
 
 // ACT: 输入框一行要放模型名 + 6 个动作按钮，380px 下必然叠字；面板放宽到 440 后常规宽度不再折叠。
@@ -132,6 +136,12 @@ const questionNotices = computed<AgentQuestionNotice[]>(() => Object.values(entr
   .filter(entry => entry.question)
   .map(entry => ({ nodeId: entry.nodeId, label: entry.label, title: entry.question!.title, question: entry.question!.question })));
 watch(questionNotices, list => emit("questions", list), { deep: true, flush: "post", immediate: true });
+// ACT: 提问与「已读」解耦——面板开着时用户可能还没回答就退出项目，这条提问会一起丢，
+// 所以单独上报「提问中」的节点，供退出前的运行中统计使用。
+const pendingQuestionIds = computed(() => Object.values(entries)
+  .filter(entry => entry.pending)
+  .map(entry => entry.nodeId));
+watch(() => pendingQuestionIds.value.join("|"), () => emit("pendingQuestions", pendingQuestionIds.value), { flush: "post", immediate: true });
 
 function nodeData(nodeId: string) {
   return (findNode(nodeId)?.data ?? {}) as AgentNodeData;
@@ -385,10 +395,13 @@ function onQuestion(nodeId: string, payload: { callId: string; title: string; qu
   if (!entry) return;
   // ACT: 面板已经开着并且画布在前台时，提问卡片就在用户眼前，直接算已读。
   entry.question = entry.visible && panelActive.value ? undefined : payload;
+  // ACT: 已读 ≠ 已回答；这里必须无条件记下，退出前的运行中统计只看「还没回答」。
+  entry.pending = payload.callId;
 }
 
 function onQuestionEnd(nodeId: string, callId: string) {
   const entry = entries[nodeId];
+  if (entry?.pending === callId) entry.pending = undefined;
   if (entry?.question?.callId === callId) entry.question = undefined;
 }
 
