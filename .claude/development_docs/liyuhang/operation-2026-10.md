@@ -108,3 +108,4 @@
 - 2026-10-31 16:30 新增 OpenCode Go 适配：opencode.ai 域名自动补 `x-opencode-session`/`x-opencode-client`，覆盖节点生成与拉模型列表，Agent 链路复用 SDK 注入；单测/注入脚本/typecheck 通过，已重建部署（未重启）。
 - 2026-10-31 21:20 修复 Agent 复制孪生：新增 `detachAgentSession` 兜底副本/剪贴板/粘贴三条路径，打开面板时自动拆分共享会话；web 构建通过并已部署（未重启）。
 - 2026-10-31 22:00 素材库改为纯手动开关：保存到素材库不再自动展开面板（弹窗照常）；`floatingPanel` 新增可选滑入动画，素材库左→右滑入、关闭反向滑出；web 构建通过并已部署（未重启）。
+- 2026-10-31 23:01 新增视频节点 `setFrameOutputs` Agent 工具：toggle 拆 apply（同步抽帧/部分失败/关闭断线计数），按路隔离 controller/epoch，整轮 round 防排队旧任务回填；既有 18 例回归、两包 typecheck、构建通过，节点包已部署（未重启）。

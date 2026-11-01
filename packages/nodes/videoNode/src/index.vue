@@ -88,7 +88,7 @@ import { nodeSkeleton, nodeTools, useNode, z, type NodeHandle } from "@toonflow/
 import videoPlayer from "./components/videoPlayer.vue";
 import videoActions from "./components/videoActions.vue";
 import frameOutputMenu from "./components/frameOutputMenu.vue";
-import { buildFrameHandles, staticNodeHandles, useFrameOutputs, type FrameOutputConfig } from "./frameOutput";
+import { buildFrameHandles, createFrameOutputTool, staticNodeHandles, useFrameOutputs, type FrameOutputConfig } from "./frameOutput";
 
 defineOptions({
   inheritAttrs: false,
@@ -115,6 +115,8 @@ const frames = useFrameOutputs({
   createFfmpeg: ffmpeg,
 });
 const { enabled: frameEnabled, values: frameValues, busy: frameBusy, error: frameError, refresh: refreshFrames, toggle: toggleFrame } = frames;
+// ACT: Agent 通过画布 nodeTools 调用；与手动菜单共用 apply，避免两套状态机。
+nodeTools.register(createFrameOutputTool(frames));
 const fileInput = ref<HTMLInputElement>();
 const uploading = ref(false);
 const player = ref<InstanceType<typeof videoPlayer>>();

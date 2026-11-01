@@ -134,7 +134,7 @@ import promptInput from "@toonflow/node-shared/promptInput";
 import videoPlayer from "@toonflow/node-video/videoPlayer";
 import videoActions from "@toonflow/node-video/videoActions";
 import frameOutputMenu from "@toonflow/node-video/frameOutputMenu";
-import { buildFrameHandles, staticNodeHandles, useFrameOutputs, type FrameOutputConfig } from "@toonflow/node-video/frameOutput";
+import { buildFrameHandles, createFrameOutputTool, staticNodeHandles, useFrameOutputs, type FrameOutputConfig } from "@toonflow/node-video/frameOutput";
 import referenceItem from "@toonflow/node-shared/referenceItem";
 import mediaHistory from "@toonflow/node-shared/mediaHistory";
 import mediaPrice from "@toonflow/node-shared/mediaPrice";
@@ -162,6 +162,8 @@ const { id, node, nodeProps, nodeEvent, outputs, handles, ffmpeg, files, ai, upd
 // ACT: 共享模块直接接收 vue-flow 节点本体（响应式对象），id 是字符串。
 const frames = useFrameOutputs({ id: nodeId, node, outputs, handles, baseHandles, getFiles: files.getWorkspaceFiles, createFfmpeg: ffmpeg });
 const { enabled: frameEnabled, values: frameValues, busy: frameBusy, error: frameError, refresh: refreshFrames, toggle: toggleFrame } = frames;
+// ACT: Agent 通过画布 nodeTools 调用；与手动菜单共用 apply，避免两套状态机。
+nodeTools.register(createFrameOutputTool(frames));
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
 const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean });
 data.value.prompt ??= "";
