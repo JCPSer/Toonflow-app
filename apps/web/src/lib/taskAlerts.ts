@@ -14,8 +14,8 @@ import { useWorkspaceStore } from "@/stores/workspace";
 
 /** 单次运行太短的任务（点一下就好的节点）不值得提醒。 */
 const MIN_DURATION_MS = 30_000;
-/** 合并窗口：同一批任务的完成事件通常前后脚到达，1 秒内只打扰用户一次。 */
-const MERGE_WINDOW_MS = 1000;
+/** 合并窗口：同一批任务的完成事件通常前后脚到达，1 秒内只打扰用户一次；Agent 提问音共用此窗口。 */
+export const MERGE_WINDOW_MS = 1000;
 const INSTALL_KEY = "__toonflowTaskAlerts";
 const FALLBACK_LABEL = "节点";
 
@@ -61,11 +61,12 @@ function nodeSource(nodeId: string): NodeSource {
   return {};
 }
 
-function shouldPlayChime() {
-  const mode = generalSettings.value.completionSound;
-  if (mode === "off") return false;
-  if (mode === "always") return true;
-  return !document.hasFocus();
+/**
+ * ACT: 提示音只分开关，不区分前后台——用户明确要求「全都播报」，
+ * 无论窗口是否聚焦、节点面板是否打开都要出声。Agent 提问音复用这条判定，两边不能各写一套。
+ */
+export function shouldPlayChime() {
+  return generalSettings.value.completionSound !== "off";
 }
 
 /** 系统通知只在桌面应用里发；前台时横幅就在眼前，不重复打扰。 */
@@ -86,7 +87,7 @@ function flush() {
   mergeTimer = undefined;
   if (!batch || (!batch.done.length && !batch.failed.length)) return;
   const store = taskAlertsStore();
-  // ACT: 无论是否发声都要写进未读队列——用户可能正因「仅后台」档位而没听到声音，横幅是保底通道。
+  // ACT: 无论是否发声都要写进未读队列——用户可能关了提示音或戴耳机，横幅是保底通道。
   for (const [kind, list] of [["done", batch.done], ["failed", batch.failed]] as const) {
     for (const item of list) {
       store.push({ nodeId: item.nodeId, nodeLabel: item.nodeLabel, kind, durationMs: item.durationMs, at: Date.now(), canvasId: item.canvasId, canvasKey: item.canvasKey });

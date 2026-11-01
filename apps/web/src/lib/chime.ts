@@ -1,11 +1,18 @@
 /**
- * 节点任务提示音：用 WebAudio 现场合成，不引入音频文件，也不依赖系统音量之外的任何配置。
+ * 任务提示音：用 WebAudio 现场合成，不引入音频文件，也不依赖系统音量之外的任何配置。
  *
  * ACT: AudioContext 必须在用户手势里创建/恢复，否则浏览器（含桌面 WebView）会把它挂在
  * suspended 上，之后所有提示音都静默。启动时挂一次 pointerdown 做解锁，播放前再 resume 一次兜底。
  */
 
-export type ChimeKind = "success" | "failure";
+export type ChimeKind = "success" | "failure" | "question";
+
+/** 每种提醒的双音音高：完成上行、失败下行，提问用同音双击拉开区分。 */
+const chimePitches: Record<ChimeKind, readonly [number, number]> = {
+  success: [660, 880],
+  failure: [880, 660],
+  question: [880, 880],
+};
 
 /** 单音总音量。节点提醒是背景信息，不能盖过用户正在试听的素材。 */
 const VOLUME = 0.18;
@@ -38,14 +45,14 @@ export function unlockChime() {
   void audio?.resume().catch(() => {});
 }
 
-/** 播放一组双音：成功上行 660→880，失败下行 880→660。同一时刻只播一组。 */
+/** 播放一组双音（音高见 chimePitches）。同一时刻只播一组。 */
 export function playChime(kind: ChimeKind) {
   const audio = getContext();
   if (!audio) return;
   void audio.resume().catch(() => {});
   // ACT: 连续完成多个节点时，新提示音先停掉旧的，避免两段双音叠成刺耳的噪音。
   stopCurrent?.();
-  const [first, second] = kind === "success" ? [660, 880] : [880, 660];
+  const [first, second] = chimePitches[kind];
   const oscillators: OscillatorNode[] = [];
   const gains: GainNode[] = [];
   let cursor = audio.currentTime;

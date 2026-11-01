@@ -156,11 +156,10 @@ const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
 function nodeColor(node: GraphNode) {
   return node.data?.disabled === true ? "var(--el-text-color-disabled)" : "var(--el-fill-color-dark)";
 }
-// ACT: 工具条上的铃铛只切提示音档位；系统通知是另一件事，放在设置页，避免一个按钮有两种含义。
-const completionSoundModes = ["always", "background", "off"] as const;
+// ACT: 工具条上的铃铛只切提示音开关；系统通知是另一件事，放在设置页，避免一个按钮有两种含义。
+const completionSoundModes = ["always", "off"] as const;
 const completionSoundLabel = computed(() => ({
-  always: "提示音：总是",
-  background: "提示音：仅后台",
+  always: "提示音：开启",
   off: "提示音：关闭",
 })[generalSettings.value.completionSound]);
 function cycleCompletionSound() {

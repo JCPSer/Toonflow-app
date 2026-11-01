@@ -78,6 +78,7 @@ import type { AgentMention } from "@toonflow/server/agent/types";
 import type { AgentConversation, AgentQuestionNotice } from "@/components/agent/types";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { generalSettings } from "@/stores/settings";
+import { playQuestionChime } from "@/lib/questionChime";
 import { gridSize, snapOffset, snapPoint } from "../snapNodes";
 import conversation from "@/components/agent/conversation.vue";
 
@@ -377,6 +378,9 @@ function onCompacting(nodeId: string, value: boolean) {
 }
 
 function onQuestion(nodeId: string, payload: { callId: string; title: string; question: string }) {
+  // ACT: 声音与「是否已读」解耦——用户可能在面板里聊着，也可能在别的画布；新提问一律提醒，
+  // 是否需要出声由「节点提示音」开关决定，1 秒内的密集提问由 playQuestionChime 合并。
+  playQuestionChime();
   const entry = entries[nodeId];
   if (!entry) return;
   // ACT: 面板已经开着并且画布在前台时，提问卡片就在用户眼前，直接算已读。

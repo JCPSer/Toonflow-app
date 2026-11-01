@@ -48,9 +48,12 @@ export function updateUiSettings(patch: Partial<typeof defaultUiSettings>) {
   settings.value = { ...settings.value, ui: { ...(current && typeof current === "object" && !Array.isArray(current) ? current : {}), ...patch } };
 }
 
-/** 节点提醒档位：只认三值，旧配置缺键或写坏都回落「总是」。 */
-export function normalizeCompletionSound(value: unknown): "always" | "background" | "off" {
-  return value === "background" || value === "off" ? value : "always";
+/**
+ * 节点提醒只分开关：旧配置里的 background（仅后台）已废案，统一按开处理，
+ * 缺键或写坏同样回落到开，不能让升级后的提示音静默失效。
+ */
+export function normalizeCompletionSound(value: unknown): "always" | "off" {
+  return value === "off" ? "off" : "always";
 }
 
 export const generalSettings = computed(() => {
@@ -71,7 +74,7 @@ export const generalSettings = computed(() => {
     canvasEdgeAnimationEnabled: general.canvasEdgeAnimationEnabled !== false,
     canvasEdgeColorMode: general.canvasEdgeColorMode === "none" || general.canvasEdgeColorMode === "custom" ? general.canvasEdgeColorMode : "theme",
     canvasEdgeColor: typeof general.canvasEdgeColor === "string" && /^#[\da-f]{6}$/i.test(general.canvasEdgeColor) ? general.canvasEdgeColor : defaultUiSettings.primaryColor,
-    // ACT: 节点提醒的两个开关是新增项，老配置里没有键；缺省值必须合法，否则提示音在升级后静默失效。
+    // ACT: 节点提醒的开关是新增项，老配置里没有键；缺省值必须合法，否则提示音在升级后静默失效。
     completionSound: normalizeCompletionSound(general.completionSound),
     taskNotification: general.taskNotification !== false,
     // ACT: Agent 节点把直接上游自动带进对话上下文；缺键按开，关掉后只剩 @ 手动引用。

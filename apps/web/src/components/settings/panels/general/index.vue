@@ -76,15 +76,14 @@
       <div class="settingHeader">
         <div class="settingInfo">
           <h3 id="completionSoundTitle">节点提示音</h3>
-          <p class="description">节点任务运行超过 30 秒后完成或失败时播放提示音。手动停止不响。</p>
+          <p class="description">节点任务运行超过 30 秒后完成或失败，或画布 Agent 提问时播放提示音；窗口在前台或后台、节点面板是否打开都会响。手动停止不响。</p>
         </div>
         <el-radio-group
           class="soundOptions"
           :model-value="generalSettings.completionSound"
           aria-label="节点提示音"
           @change="(value) => updateGeneralSettings({ completionSound: normalizeCompletionSound(value) })">
-          <el-radio-button value="always">总是</el-radio-button>
-          <el-radio-button value="background">仅后台</el-radio-button>
+          <el-radio-button value="always">开启</el-radio-button>
           <el-radio-button value="off">关闭</el-radio-button>
         </el-radio-group>
       </div>
