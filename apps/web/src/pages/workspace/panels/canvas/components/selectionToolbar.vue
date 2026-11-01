@@ -61,6 +61,7 @@ import {
 } from "@tabler/icons-vue";
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useAssetLibraryStore } from "@/stores/assetLibrary";
 import { finishGroupDrag, getSelectionRoots, getSelectionTree } from "../selectionNodes";
 import { detachAgentSession } from "../agentSessionCopy";
 import { gridSize, snapOffset, snapPoint, subtractPoint } from "../snapNodes";
@@ -344,7 +345,7 @@ async function saveToAssets() {
   const selection = [...assetSelection.value];
   saving.value = true;
   try {
-    const result = await saveSelectionToAssets(flow, selection, directory);
+    const result = await saveSelectionToAssets(flow, selection, directory, useAssetLibraryStore().getSaveDefaults(directory));
     if (result.saved) {
       ElMessage.success(`已加入 ${result.saved} 个素材${result.renamed ? `，其中 ${result.renamed} 个重名已自动改名` : ""}`);
     }

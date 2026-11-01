@@ -2,6 +2,7 @@ import type { GraphNode, VueFlowStore } from "@vue-flow/core";
 import type { NodeData } from "@toonflow/nodes-scaffold/connection";
 import { isNodeOutput, type NodeMediaValue } from "@toonflow/nodes-scaffold/values";
 import { importAsset, toAssetError } from "../assetLibrary/api";
+import type { AssetLibraryKind } from "../assetLibrary/types";
 import { getSelectionRoots } from "./selectionNodes";
 
 /** 可入库的产物：内置节点的图片/视频输出都只有 url + mimeType。 */
@@ -140,10 +141,17 @@ function wait(ms: number) {
 }
 
 /**
- * 把选中的图片/视频节点批量复制进项目素材库。
+ * 把选中的图片/视频节点批量复制进素材库。
  * 只做复制，不移动也不删除工作区文件，所以源节点文件被清理后素材库里的副本仍然有效。
+ * ACT: 批量入口没有弹窗可选位置，直接沿用保存弹窗记住的「目标库 + 保存位置」，
+ * 与单节点保存保持同一个落点；没有记忆时仍落本项目素材库根目录。
  */
-export async function saveSelectionToAssets(flow: VueFlowStore, nodes: GraphNode[], directory: string): Promise<SaveSelectionToAssetsResult> {
+export async function saveSelectionToAssets(
+  flow: VueFlowStore,
+  nodes: GraphNode[],
+  directory: string,
+  target?: { library: AssetLibraryKind; path: string },
+): Promise<SaveSelectionToAssetsResult> {
   // ACT: 禁用节点不产物入库；分组在上面已经展开成叶子，这里只按节点自身状态过滤。
   const items = expandSelectionForAssets(nodes, flow.getNodes.value).filter(node => nodeData(node).disabled !== true);
   const result: SaveSelectionToAssetsResult = { saved: 0, failed: [], renamed: 0 };
@@ -161,7 +169,11 @@ export async function saveSelectionToAssets(flow: VueFlowStore, nodes: GraphNode
       try {
         // ACT: 走 import 而不是 uploadAsset——源是工作区相对路径，服务端直接复制文件，
         // 不必把整段视频读进浏览器内存再通过 HTTP 传一遍。
-        const imported = await importAsset({ library: "project", directory }, { kind: "workspace", path: source.value.url }, { name });
+        const imported = await importAsset(
+          { library: target?.library ?? "project", directory },
+          { kind: "workspace", path: source.value.url },
+          { ...(target?.path ? { targetDir: target.path } : {}), name },
+        );
         // ACT: 重名以服务端自动改名为准（xxx (2).ext），前端只比对返回文件名来统计改名数，
         // 不自己拼序号，避免与服务端的并发写入抢同一个名字。
         if (importedName(imported.path) !== name) result.renamed++;

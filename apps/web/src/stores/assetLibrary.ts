@@ -23,6 +23,8 @@ export type AssetLibraryState = {
 
 export type AssetSaveOutput = { label: string; output: NodeOutput };
 export type AssetSaveRequest = { id: string; label: string; outputs: AssetSaveOutput[] };
+/** 上次保存到素材库时用的目标库与文件夹；按项目目录分桶，下次打开弹窗直接回填。 */
+export type AssetSaveDefaults = { library: AssetLibraryKind; path: string };
 
 // ACT: 未打开项目（如首页素材库）时没有项目库可请求，默认落在全局库，避免先发一次必 400 的项目库请求。
 export const defaultAssetLibraryState = (directory?: string): AssetLibraryState => ({
@@ -53,6 +55,9 @@ export const useAssetLibraryStore = defineStore("assetLibrary", () => {
   }, { once: true });
   watch(visible, value => sessionState.set("panels.asset.visible", value));
   const pendingSave = ref<AssetSaveRequest>();
+  // ACT: 保存弹窗的「目标库 + 保存位置」单独记，不跟素材库浏览状态混在一起——
+  // 用户可能浏览 A 文件夹，但每次都保存到 B；浏览目录变了不该让保存位置跟着变。
+  const saveDefaults = ref<Record<string, AssetSaveDefaults>>({});
   // 按项目目录分桶，切换项目时各自保留库、路径、排序与面板尺寸。
   const stateByDirectory = ref<Record<string, AssetLibraryState>>({});
   const fallback = reactive<AssetLibraryState>(defaultAssetLibraryState());
@@ -96,20 +101,32 @@ export const useAssetLibraryStore = defineStore("assetLibrary", () => {
     if (pendingSave.value?.id === id) pendingSave.value = undefined;
   }
 
+  /** 保存弹窗按项目读取上次设置；没有项目时退到全局桶（key 为空串）。 */
+  function getSaveDefaults(directoryPath?: string) {
+    return saveDefaults.value[directoryKey(directoryPath ?? directory.value)];
+  }
+
+  function setSaveDefaults(defaults: AssetSaveDefaults, directoryPath?: string) {
+    saveDefaults.value = { ...saveDefaults.value, [directoryKey(directoryPath ?? directory.value)]: { ...defaults } };
+  }
+
   return {
     visible,
     state,
     stateByDirectory,
     pendingSave,
+    saveDefaults,
     stateFor,
     update,
     setExpanded,
     requestSave,
     consumeSave,
+    getSaveDefaults,
+    setSaveDefaults,
   };
 }, {
   persist: {
     key: "toonflow.assetLibrary",
-    pick: ["stateByDirectory"],
+    pick: ["stateByDirectory", "saveDefaults"],
   },
 });
