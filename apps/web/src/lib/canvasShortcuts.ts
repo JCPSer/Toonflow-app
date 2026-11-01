@@ -19,6 +19,7 @@ export const defaultCanvasShortcuts = {
   search: `${primaryModifier}+KeyF`,
   delete: "Backspace",
   copy: `${primaryModifier}+KeyC`,
+  cut: `${primaryModifier}+KeyX`,
   paste: `${primaryModifier}+KeyV`,
   undo: `${primaryModifier}+KeyZ`,
   redo: isMac ? "Shift+Meta+KeyZ" : "Ctrl+Shift+KeyZ",
@@ -59,6 +60,7 @@ export const canvasShortcutFields: {
   { id: "search", label: "画布节点搜索" },
   { id: "delete", label: "删除" },
   { id: "copy", label: "复制到剪贴板" },
+  { id: "cut", label: "剪切到剪贴板" },
   { id: "paste", label: "粘贴" },
 ];
 

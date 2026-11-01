@@ -337,6 +337,7 @@ const autoPanSpeed = computed(() => (pointerInCanvas.value ? 20 : 0));
 const pressedCodes = new Set<string>();
 let gestureScale: number | undefined;
 let copyingNodes = false;
+let cuttingNodes = false;
 const showEdges = canvasViewModel("showEdges");
 const assetLibraryStore = useAssetLibraryStore();
 const assetsVisible = computed({
@@ -1453,8 +1454,8 @@ function canUseCanvasClipboard(event: Event) {
 
 function beforeClipboard(event: Event) {
   if (!canUseCanvasClipboard(event)) return;
-  if (event.type === "beforecopy" && (!flow.getSelectedNodes.value.length || window.getSelection()?.toString())) return;
-  // ACT: WKWebView 通过 beforecopy/beforepaste 判定非输入区能否使用原生编辑菜单。
+  if ((event.type === "beforecopy" || event.type === "beforecut") && (!flow.getSelectedNodes.value.length || window.getSelection()?.toString())) return;
+  // ACT: WKWebView 通过 beforecopy/beforecut/beforepaste 判定非输入区能否使用原生编辑菜单。
   event.preventDefault();
 }
 
@@ -1462,6 +1463,12 @@ function copyNode(event: ClipboardEvent) {
   if (!canUseCanvasClipboard(event) || !flow.getSelectedNodes.value.length || window.getSelection()?.toString()) return;
   event.preventDefault();
   void copySelectedNodes();
+}
+
+function cutNode(event: ClipboardEvent) {
+  if (!canUseCanvasClipboard(event) || !flow.getSelectedNodes.value.length || window.getSelection()?.toString()) return;
+  event.preventDefault();
+  void cutSelectedNodes();
 }
 
 function imageOutput(data: { outputs?: Record<string, NodeOutput | undefined> } | undefined) {
@@ -1483,17 +1490,17 @@ async function copyImageNodeToClipboard(directory: string, node: Parameters<type
   return true;
 }
 
-async function copySelectedNodes() {
-  if (copyingNodes || !project.value?.directory) return;
+async function copySelectedNodes(silent = false): Promise<boolean> {
+  if (copyingNodes || !project.value?.directory) return false;
   const nodes = getSelectionTree(flow.getSelectedNodes.value, flow.getNodes.value);
-  if (!nodes.length) return;
+  if (!nodes.length) return false;
   const directory = project.value.directory;
   const signal = canvasController.signal;
   copyingNodes = true;
   try {
     if (nodes.length === 1 && await copyImageNodeToClipboard(directory, { data: nodes[0]!.data ?? {} })) {
-      ElMessage.success("已复制图片");
-      return;
+      if (!silent) ElMessage.success("已复制图片");
+      return true;
     }
     const ids = new Set(nodes.map(node => node.id));
     const snapshot = toObject();
@@ -1510,10 +1517,31 @@ async function copySelectedNodes() {
     if (nodes.some(node => findNode(node.id) !== node)) throw new Error("节点已变化，请重新复制");
     const edges = snapshot.edges.filter(edge => ids.has(edge.source) && ids.has(edge.target));
     await copyNodesToClipboard(copies, edges, directory);
+    return true;
   } catch (error) {
     if (!signal.aborted) ElMessage.error(error instanceof Error ? error.message : "节点复制失败");
+    return false;
   } finally {
     copyingNodes = false;
+  }
+}
+
+// ACT: 剪切 = 复制成功后再删；复制失败保留节点，避免「剪走了但剪贴板里没有」。
+async function cutSelectedNodes() {
+  if (cuttingNodes || copyingNodes || !project.value?.directory) return;
+  const selection = [...flow.getSelectedNodes.value];
+  const menu = nodeMenuRef.value;
+  if (!selection.length || !menu || !selection.some(node => node.deletable !== false)) return;
+  cuttingNodes = true;
+  try {
+    if (!await copySelectedNodes(true)) return;
+    // ACT: 删除入口快照里的选区，而不是复制结束时的当前选区——复制期间用户点了别的节点时，
+    // 剪贴板里是 A、被删的也必须是 A；deleteSelection 会跳过已经消失的节点。
+    await canvasHistory.batch(() => menu.deleteSelection(selection));
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "节点剪切失败");
+  } finally {
+    cuttingNodes = false;
   }
 }
 
@@ -1715,7 +1743,7 @@ function updateCanvasKeys(event: KeyboardEvent) {
   if (event.type === "keyup" || event.defaultPrevented || event.isComposing || editing) return;
   const action = ([
     "group", "mergeGroup", "ungroup", "addNode", "moveTool", "handTool", "arrange", "search",
-    "delete", "copy", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView", "toggleDisabled",
+    "delete", "copy", "cut", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView", "toggleDisabled",
   ] as const).find((action) =>
     shortcutMatches(event, shortcuts[action])
   );
@@ -1723,7 +1751,7 @@ function updateCanvasKeys(event: KeyboardEvent) {
   // ACT: 面板语境只放行与选区相关的复制/粘贴/删除；成组、整理、撤销等仍留在画布语境，
   // 否则在面板里读消息时按到组合键会意外改组画布。
   if (inAgentNodePanel && action) {
-    if (!["copy", "paste", "delete"].includes(action)) return;
+    if (!["copy", "cut", "paste", "delete"].includes(action)) return;
     // ACT: 面板里选中文本时 Delete/Backspace 是删字，不能顺手把选中节点删掉。
     if (action === "delete" && hasCanvasAreaSelection()) return;
   }
@@ -1734,7 +1762,7 @@ function updateCanvasKeys(event: KeyboardEvent) {
     return;
   }
   if (!canvasId.value || !project.value?.directory) return;
-  if (action === "copy" && (!flow.getSelectedNodes.value.length || window.getSelection()?.toString())) return;
+  if ((action === "copy" || action === "cut") && (!flow.getSelectedNodes.value.length || window.getSelection()?.toString())) return;
   // 桌面快捷键直接复用原生剪贴板桥接；浏览器 Ctrl/Cmd+V 保留原生事件，避免额外读取权限。
   if (!isDesktop && action === "paste" && event.code === "KeyV" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) return;
   event.preventDefault();
@@ -1751,6 +1779,7 @@ function updateCanvasKeys(event: KeyboardEvent) {
     return;
   }
   if (action === "copy") void copySelectedNodes();
+  else if (action === "cut") void cutSelectedNodes();
   else if (action === "paste") void pasteNodeAtCenter();
   else if (action === "toggleDisabled") toggleDisabledSelection();
   else if (action === "undo" || action === "redo") void changeHistory(action);
@@ -1830,7 +1859,9 @@ onMounted(() => {
   window.addEventListener(workspaceFileDropEvent, workspaceFileDropped);
   document.addEventListener("paste", pasteNode);
   document.addEventListener("copy", copyNode);
+  document.addEventListener("cut", cutNode);
   document.addEventListener("beforecopy", beforeClipboard);
+  document.addEventListener("beforecut", beforeClipboard);
   document.addEventListener("beforepaste", beforeClipboard);
   void loadRemoteNodes();
 });
@@ -1843,7 +1874,9 @@ onBeforeUnmount(() => {
   window.removeEventListener(workspaceFileDropEvent, workspaceFileDropped);
   document.removeEventListener("paste", pasteNode);
   document.removeEventListener("copy", copyNode);
+  document.removeEventListener("cut", cutNode);
   document.removeEventListener("beforecopy", beforeClipboard);
+  document.removeEventListener("beforecut", beforeClipboard);
   document.removeEventListener("beforepaste", beforeClipboard);
   workspaceController.abort(new Error("工作区已关闭"));
   canvasController.abort(new Error("画布已关闭"));

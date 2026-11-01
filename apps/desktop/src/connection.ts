@@ -15,7 +15,7 @@ export default async function createDesktopConnection(app: express.Express, dire
   let switching = false;
   let closed = false;
   const nativePosts = new Set([
-    "/api/desktop/ready", "/api/desktop/devtools", "/api/desktop/clipboard/read", "/api/desktop/clipboard/write",
+    "/api/desktop/ready", "/api/desktop/devtools", "/api/desktop/clipboard/read", "/api/desktop/clipboard/write", "/api/desktop/clipboard/diagnose",
     "/api/desktop/dialog", "/api/desktop/saveFile", "/api/desktop/providerFile/read",
   ]);
   // ACT: 对话框改成两段式后，轮询走 GET；远端连接时它同样必须由本机处理（会话表在本机内存里）。

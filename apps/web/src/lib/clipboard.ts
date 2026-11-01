@@ -89,8 +89,32 @@ export async function writeClipboardImage(image: Blob): Promise<void> {
   if (!navigator.clipboard?.write) throw new Error("当前环境不支持写入剪贴板图片");
   await navigator.clipboard.write([new ClipboardItem({ "image/png": await imagePngBlob(image) })]);
 }
+// ACT: 桌面 WebView 出现过「客户端报错、剪贴板其实已写入」。失败时把状态码与原因按请求 id
+// 报到桌面日志，和 write 的 request/done 对齐；只上报长度，不带正文。
+function reportClipboardFailure(error: unknown, id: string, text: string) {
+  const failure = error as { message?: string; status?: number; response?: { status?: number } };
+  void axios.post("/api/desktop/clipboard/diagnose", {
+    id,
+    message: failure?.message,
+    status: failure?.response?.status ?? failure?.status,
+    origin: window.location.origin,
+    href: window.location.href,
+    ua: navigator.userAgent,
+    length: text.length,
+    hasClipboard: typeof navigator.clipboard?.writeText === "function",
+  }, { headers }).catch(() => {});
+}
+
 export async function writeClipboardText(text: string): Promise<void> {
   if (!isDesktop) return navigator.clipboard.writeText(text);
-  const { data } = await axios.post<{ code: number; message: string }>("/api/desktop/clipboard/write", { text }, { headers });
-  if (data.code !== 200) throw new Error(data.message || "写入剪贴板失败");
+  const id = crypto.randomUUID();
+  try {
+    const { data } = await axios.post<{ code: number; message: string }>("/api/desktop/clipboard/write", { text }, {
+      headers: { ...headers, "x-toonflow-clipboard-id": id },
+    });
+    if (data.code !== 200) throw new Error(data.message || "写入剪贴板失败");
+  } catch (error) {
+    reportClipboardFailure(error, id, text);
+    throw error;
+  }
 }
