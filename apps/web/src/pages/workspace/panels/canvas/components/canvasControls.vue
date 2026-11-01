@@ -59,6 +59,17 @@
             <icon-magnet :size="18" />
           </el-button>
         </el-tooltip>
+        <el-tooltip :showArrow="false" :content="generalSettings.hideDisabledNodeTitles ? '显示禁用节点的标题' : '隐藏禁用节点的标题'" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button
+            class="toolButton"
+            text
+            :type="generalSettings.hideDisabledNodeTitles ? 'primary' : 'default'"
+            :aria-pressed="generalSettings.hideDisabledNodeTitles"
+            aria-label="显示或隐藏禁用节点标题"
+            @click="toggleDisabledNodeTitles">
+            <icon-typography-off :size="18" />
+          </el-button>
+        </el-tooltip>
         <el-tooltip :showArrow="false" :content="showEdges ? '隐藏连线' : '显示连线'" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button
             class="toolButton"
@@ -132,7 +143,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Panel, useVueFlow, type GraphNode, type XYPosition } from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
-import { IconArrowGuide, IconBell, IconBellOff, IconFocusCentered, IconFolders, IconMagnet, IconMap, IconSitemap } from "@tabler/icons-vue";
+import { IconArrowGuide, IconBell, IconBellOff, IconFocusCentered, IconFolders, IconMagnet, IconMap, IconSitemap, IconTypographyOff } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
 import { generalSettings, updateGeneralSettings } from "@/stores/settings";
 import { arrangeCanvas } from "../arrangeCanvas";
@@ -165,6 +176,9 @@ const completionSoundLabel = computed(() => ({
 function cycleCompletionSound() {
   const current = generalSettings.value.completionSound;
   updateGeneralSettings({ completionSound: completionSoundModes[(completionSoundModes.indexOf(current) + 1) % completionSoundModes.length] });
+}
+function toggleDisabledNodeTitles() {
+  updateGeneralSettings({ hideDisabledNodeTitles: !generalSettings.value.hideDisabledNodeTitles });
 }
 const layoutSnapshot = ref<{ id: string; position: XYPosition }[]>();
 const undoPopoverVisible = ref(false);

@@ -77,6 +77,8 @@ export const generalSettings = computed(() => {
     // ACT: 节点提醒的开关是新增项，老配置里没有键；缺省值必须合法，否则提示音在升级后静默失效。
     completionSound: normalizeCompletionSound(general.completionSound),
     taskNotification: general.taskNotification !== false,
+    // ACT: 画布工具条上的显示偏好；缺键按关，升级后仍显示禁用节点的名称与徽标。
+    hideDisabledNodeTitles: general.hideDisabledNodeTitles === true,
     // ACT: Agent 节点把直接上游自动带进对话上下文；缺键按开，关掉后只剩 @ 手动引用。
     agentUpstreamContext: general.agentUpstreamContext !== false,
     // ACT: 工具调用折叠属于对话阅读偏好，默认折叠（同一轮合并成一行）；缺键按折叠处理。

@@ -2,7 +2,7 @@
   <div
     ref="canvasElement"
     class="canvas"
-    :class="{ edgesHidden: !showEdges, handMode, multiSelectionMode: flow.multiSelectionActive.value, compositingEnabled: generalSettings.canvasCompositingEnabled }"
+    :class="{ edgesHidden: !showEdges, handMode, multiSelectionMode: flow.multiSelectionActive.value, compositingEnabled: generalSettings.canvasCompositingEnabled, hideDisabledNodeTitles: generalSettings.hideDisabledNodeTitles }"
     :style="{ '--canvasEdgeColor': generalSettings.canvasEdgeColorMode === 'custom' ? generalSettings.canvasEdgeColor : 'var(--el-color-primary)' }"
     @dblclick="openNodeMenu"
     @wheel.capture="zoomCanvas"
@@ -1828,6 +1828,9 @@ function handleCanvasEscape(event: KeyboardEvent) {
     return;
   }
   event.preventDefault();
+  // ACT: 本次 Esc 只负责打开确认框。ElDialog 的全局 Escape 监听挂在 document 上，
+  // 不截断传播时同一个事件会让刚打开的确认框立刻进入关闭流程，表现为闪一下就消失。
+  event.stopPropagation();
   requestExitProject();
 }
 
@@ -2030,6 +2033,21 @@ const defaultEdgeOptions = markRaw({
 
   &.compositingEnabled :deep(.vue-flow__transformationpane) {
     will-change: transform;
+  }
+
+  // ACT: 只移除禁用节点的名称与“已禁用”徽标，保留标题栏图标和删除按钮；
+  // 用 clip 隐藏而不是 display:none，名称/状态仍在无障碍树里，名称也可通过标题栏 title 悬停查看。
+  &.hideDisabledNodeTitles :deep(.nodeDisabled .titleBar .labelText),
+  &.hideDisabledNodeTitles :deep(.nodeDisabled .titleBar .disabledBadge) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    pointer-events: none;
   }
 
   &.handMode :deep(.vue-flow__transformationpane),

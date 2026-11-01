@@ -109,7 +109,7 @@
       <slot name="bottom" />
       <div v-if="nodeDisabled" class="disabledOverlay" aria-hidden="true" title="节点已禁用" />
     </div>
-    <div v-show="!documentTarget" class="titleBar">
+    <div v-show="!documentTarget" class="titleBar" :title="nodeDisabled ? `${label}（节点已禁用）` : undefined">
       <component :is="icon ?? IconBox" class="titleIcon" :size="16" aria-hidden="true" />
       <input
         v-if="editingLabel && !readOnly"
@@ -921,6 +921,8 @@ watch(
     }
 
     .nodeActions {
+      /* ACT: 名称可能被画布设置隐藏并移出 flex 流，操作按钮必须始终贴右，不能跟着图标左移。 */
+      margin-left: auto;
       visibility: hidden;
       display: flex;
       flex-shrink: 0;
