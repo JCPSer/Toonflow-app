@@ -22,6 +22,21 @@ export type TaskAlertFocus = { nodeId: string; canvasId?: string; canvasKey?: st
 /** 未读队列上限：只是画布顶部的临时提醒，保留最近 50 条足够翻到刚切回来的项目。 */
 const MAX_ALERTS = 50;
 
+/** 通知时间文案：今天只显示 HH:mm，昨天加「昨天」，更早补 MM-DD；按本地日历天判断。 */
+export function formatTaskAlertTime(at: number, now = Date.now()) {
+  if (!Number.isFinite(at)) return "";
+  const date = new Date(at);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfYesterday = new Date(startOfToday);
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+  if (at >= startOfToday.getTime()) return clock;
+  if (at >= startOfYesterday.getTime()) return `昨天 ${clock}`;
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${clock}`;
+}
+
 /** 耗时文案：30s 起才会出现，再长按分/小时收敛，避免横幅里出现一串毫秒。 */
 export function formatTaskDuration(durationMs: number) {
   const totalSeconds = Math.max(0, Math.round(durationMs / 1000));

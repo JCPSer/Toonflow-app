@@ -1,13 +1,15 @@
 import { nextTick, watch, type Ref } from "vue";
 import { useVueFlow, type XYPosition } from "@vue-flow/core";
 import { revealNodeInViewport, useNodeEvent, useNodeToolsContext, validateConnection } from "@toonflow/nodes-scaffold/runtime";
-import { canvasSchemas, type CanvasContext, type CanvasToolCall } from "@toonflow/tool-canvas/runtime";
+import { canvasSchemas, type CanvasCallOrigin, type CanvasContext, type CanvasToolCall } from "@toonflow/tool-canvas/runtime";
 import { asrRequestSchema } from "@toonflow/tools-scaffold/runtime";
 import { isBrowserAudioAsrSupported, transcribeBrowserAudio } from "@toonflow/asr";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { arrangeCanvas } from "./arrangeCanvas";
 import { canvasEdgeSummary, canvasNodeSummary, createCanvasQueries, isCanvasRead } from "./canvasQueries";
+import { gridSize } from "./snapNodes";
+import { findFreeY, findSpawnPosition, type SpawnRect } from "./spawnBesideNode";
 
 export function useCanvasTools(options: {
   availableNodes: Ref<{ type: string; label: string }[]>;
@@ -68,6 +70,42 @@ export function useCanvasTools(options: {
     return { x: Math.round(position.x / x) * x, y: Math.round(position.y / y) * y };
   }
 
+  // 新建节点挂载前拿不到真实尺寸，用保守值参与避让；挂载后会按实测尺寸再校正一次。
+  const spawnedNodeWidth = 360;
+  const spawnedNodeHeight = 320;
+  function measuredRect(node: { computedPosition: { x: number; y: number }; dimensions: { width: number; height: number } }): SpawnRect {
+    return { x: node.computedPosition.x, y: node.computedPosition.y,
+      width: node.dimensions.width || 320, height: node.dimensions.height || 300 };
+  }
+
+  // ACT: AI 建节点过去完全按模型给的坐标落位，经常飘到画布另一头。
+  // 由画布 Agent 节点发起时，固定在发起节点右侧一列并向下避让，结果可预测。
+  function spawnBesideAgent(origin: CanvasCallOrigin | undefined, canvasId: string): XYPosition | undefined {
+    if (!origin || origin.canvasId !== canvasId) return undefined;
+    const anchor = flow.findNode(origin.nodeId);
+    if (!anchor) return undefined;
+    const grid = flow.snapToGrid.value ? gridSize(flow) : undefined;
+    return findSpawnPosition(
+      { x: anchor.computedPosition.x, y: anchor.computedPosition.y,
+        width: anchor.dimensions.width || 300, height: anchor.dimensions.height || 180 },
+      flow.getNodes.value.filter(node => node.id !== anchor.id).map(measuredRect),
+      { width: spawnedNodeWidth, height: spawnedNodeHeight, grid },
+    );
+  }
+
+  /** 挂载后按实测尺寸复检一次，兜住估算偏小导致的压边。 */
+  function correctSpawnOverlap(nodeId: string) {
+    const node = flow.findNode(nodeId);
+    if (!node || node.parentNode) return;
+    const width = node.dimensions.width || spawnedNodeWidth;
+    const height = node.dimensions.height || spawnedNodeHeight;
+    const others = flow.getNodes.value.filter(item => item.id !== nodeId).map(measuredRect);
+    const grid = flow.snapToGrid.value ? gridSize(flow) : undefined;
+    const y = findFreeY(node.computedPosition.x, node.computedPosition.y, width, height, others, { grid });
+    if (y === node.computedPosition.y) return;
+    flow.updateNode(nodeId, { position: { x: node.position.x, y } });
+  }
+
   // ACT: 新节点按画布坐标落位，而用户常常停在画布另一头，结果节点生成在屏幕外要到处找。
   // 一次 AI 调用往往连续建多个节点，逐次平移会互相打断、还会读到动画中途的 viewport，
   // 所以这里攒成一批，等安静下来只按最后一个节点判断并平移一次。
@@ -96,8 +134,8 @@ export function useCanvasTools(options: {
         const label = node?.data.label ?? node?.label;
         return typeof label === "string" && label.trim() ? label : undefined;
       },
-      async call(request, signal) {
-        if (redirected) return redirected.call(request, signal);
+      async call(request, signal, origin) {
+        if (redirected) return redirected.call(request, signal, origin);
         canvasSignal.throwIfAborted();
         id = options.getCanvasBinding().id;
         const changesCanvas = request.name === "addCanvas" || request.name === "switchCanvas" || request.name === "renameCanvas";
@@ -109,7 +147,7 @@ export function useCanvasTools(options: {
           return await Promise.race([
             Promise.resolve().then(async () => {
               canvasSignal.throwIfAborted();
-              let result = await execute(request, callSignal, id);
+              let result = await execute(request, callSignal, id, origin);
               callSignal.throwIfAborted();
               if (changesCanvas) {
                 const nextContext = options.resolveCanvasContext?.(String(result));
@@ -141,7 +179,7 @@ export function useCanvasTools(options: {
       };
   };
 
-  async function execute(request: CanvasToolCall, signal: AbortSignal, canvasId: string): Promise<unknown> {
+  async function execute(request: CanvasToolCall, signal: AbortSignal, canvasId: string, origin?: CanvasCallOrigin): Promise<unknown> {
     signal.throwIfAborted();
     if (!canvasId && !["getCanvas", "addCanvas", "switchCanvas"].includes(request.name)) throw new Error("请先选择画布");
     if (isCanvasRead(request.name)) {
@@ -187,12 +225,23 @@ export function useCanvasTools(options: {
         const type = options.availableNodes.value.find(node => node.type === args.type);
         if (!type) throw new Error("节点类型未启用或尚未加载，请先查询 getCanvas");
         const id = crypto.randomUUID();
-        flow.addNodes({ id, type: type.type, position: nodePosition(args.position), data: { label: args.label ?? type.label } });
+        // 由画布 Agent 节点发起时忽略模型坐标，固定在发起节点右侧一列；无绑定或计算失败时保持原行为。
+        let spawn: XYPosition | undefined;
+        try { spawn = spawnBesideAgent(origin, canvasId); } catch { spawn = undefined; }
+        flow.addNodes({ id, type: type.type, position: nodePosition(spawn ?? args.position), data: { label: args.label ?? type.label } });
         await nextTick();
         signal.throwIfAborted();
         flow.updateNodeInternals([id]);
         await nextTick();
         signal.throwIfAborted();
+        if (spawn) {
+          // 节点已经落盘，校正失败不能再让整个 addNode 报错。
+          try {
+            correctSpawnOverlap(id);
+            await nextTick();
+          } catch { /* 保持落位，不阻断工具返回 */ }
+          signal.throwIfAborted();
+        }
         scheduleReveal(id);
         return nodeInfo(id);
       }

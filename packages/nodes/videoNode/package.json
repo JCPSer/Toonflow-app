@@ -7,7 +7,10 @@
     "./videoActions": "./src/components/videoActions.vue",
     "./videoPlayer": "./src/components/videoPlayer.vue",
     "./frameOutput": "./src/frameOutput.ts",
-    "./frameOutputMenu": "./src/components/frameOutputMenu.vue"
+    "./frameOutputMenu": "./src/components/frameOutputMenu.vue",
+    "./inspectPlan": "./src/inspectPlan.ts",
+    "./inspectVideo": "./src/inspectVideo.ts",
+    "./inspectVideoTool": "./src/inspectVideoTool.ts"
   },
   "scripts": {
     "build": "vite build",

@@ -72,9 +72,15 @@ export interface CanvasInfo {
   tools: NodeToolInfo[];
 }
 
+/** 画布工具调用的来源；由发起调用的画布 Agent 节点提供，供新建节点就近摆放。 */
+export interface CanvasCallOrigin {
+  canvasId: string;
+  nodeId: string;
+}
+
 export interface CanvasContext extends CanvasInfo {
   getNodeLabel?(nodeId: string): string | undefined;
-  call(request: CanvasToolCall, signal?: AbortSignal): Promise<unknown>;
+  call(request: CanvasToolCall, signal?: AbortSignal, origin?: CanvasCallOrigin): Promise<unknown>;
 }
 
 export interface MediaModel {

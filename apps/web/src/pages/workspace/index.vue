@@ -111,7 +111,9 @@
       </div>
     </div>
     <floatingAgent :inert="workspaceStore.projectLoadingVisible" @resize="agentWidth = $event" />
-    <floatingAssetLibrary :inert="workspaceStore.projectLoadingVisible" @resize="assetWidth = $event" />
+    <floatingAssetLibrary ref="assetPanelRef" :inert="workspaceStore.projectLoadingVisible" @resize="assetWidth = $event" />
+    <!-- ACT: 左边缘常驻入口只在素材库关闭时显示；打开后整块卸载，不留隐藏的可聚焦按钮。 -->
+    <assetLibraryTrigger v-if="!assetLibraryStore.visible" @open="openAssetLibrary" />
     <settings v-model="settingsVisible" />
     <shareDropOverlay v-if="shareDragging" />
     <shareImportDialog ref="importDialogRef" v-model="importVisible" @completed="handleShareImported" />
@@ -135,7 +137,7 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, shallowRef, watch, type ComponentPublicInstance } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
+import { onBeforeRouteLeave, useRouter } from "vue-router";
 import axios from "axios";
 import { IconVector, IconFileText, IconPointer, IconHandStop, IconPlus, IconSearch, IconHelp, IconBook, IconBug, IconBrandWechat, IconBriefcase } from "@tabler/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -143,8 +145,14 @@ import { QRCode } from "tdesign-vue-next";
 import settings from "@/components/settings/index.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useSessionStateStore } from "@/stores/sessionState";
+import { useAssetLibraryStore } from "@/stores/assetLibrary";
+import { generalSettings } from "@/stores/settings";
+import { useSettingsShortcut } from "@/components/settings/useSettingsShortcut";
+import { shortcutMatches } from "@/lib/canvasShortcuts";
 import { registerWorkspaceControl, waitForControlValue } from "@/lib/mcpControl";
 import { flushAllLastCanvas } from "@/lib/projectUi";
+import { useProjectPrivacy } from "@/lib/projectPrivacy";
+import { cleanupVideoInspectFiles } from "@/lib/videoInspectFiles";
 import { setQuitConfirm, setQuitFlush } from "@/lib/quitGuard";
 import anonymousData from "@/lib/anonymousData";
 import { useProviderBalances } from "@/lib/providerBilling";
@@ -154,6 +162,7 @@ import workspaceMenu from "./components/workspaceMenu.vue";
 import exitProjectDialog from "./components/exitProjectDialog.vue";
 import floatingAgent from "./components/floatingAgent.vue";
 import floatingAssetLibrary from "./panels/assetLibrary/floatingAssetLibrary.vue";
+import assetLibraryTrigger from "./components/assetLibraryTrigger.vue";
 import shareDropOverlay from "@/components/projectShare/shareDropOverlay.vue";
 import shareImportDialog from "@/components/projectShare/shareImportDialog.vue";
 import { useShareFileDrop } from "@/components/projectShare/useShareDrop";
@@ -176,6 +185,19 @@ onScopeDispose(() => {
   for (const eventName of sideButtonEvents) window.removeEventListener(eventName, preventSideButtonNavigation, true);
 });
 const workspaceStore = useWorkspaceStore();
+// ACT: 锁定态通过重启恢复/历史记录直达隐藏项目时拦回首页；否则「重启自动锁定」形同虚设。
+const { unlocked: hiddenUnlocked } = useProjectPrivacy();
+const router = useRouter();
+function leaveHiddenProject() {
+  if (!workspaceStore.project?.hidden || hiddenUnlocked.value) return;
+  ElMessage.warning("这个项目已隐藏，请先在首页验证身份");
+  void router.replace("/home");
+}
+leaveHiddenProject();
+watch(hiddenUnlocked, leaveHiddenProject);
+// ACT: 工作区已挂载后仍可能切换项目（画布下拉、MCP 远程指令），目录变化必须重新判断。
+watch(() => [workspaceStore.project?.directory, workspaceStore.project?.hidden] as const, leaveHiddenProject);
+const assetLibraryStore = useAssetLibraryStore();
 useProviderBalances();
 const panelOptions = [
   { label: "画布", value: "canvas", icon: IconVector },
@@ -200,7 +222,37 @@ function showAgentPanel() {
   });
 }
 const assetWidth = ref(assetPanel.value.visible && assetPanel.value.docked ? assetPanel.value.width : 0);
+const assetPanelRef = ref<InstanceType<typeof floatingAssetLibrary>>();
+async function openAssetLibrary() {
+  assetLibraryStore.visible = true;
+  // ACT: 入口按钮会随面板打开被 v-if 卸载，焦点会掉回 body；把焦点交给面板内容，
+  // 键盘操作与 Esc 才有落点，否则下一次 Tab 会从页面开头重新走。
+  await nextTick();
+  assetPanelRef.value?.content?.focusRoot();
+}
+
+// ACT: 素材库是工作区级面板（文档视图也可见），快捷键必须挂在工作区而不是画布；
+// 画布视图里画布键盘只管项目/画布下拉，不会与这里重复。
+function toggleAssetLibrary() {
+  if (assetLibraryStore.visible) assetLibraryStore.visible = false;
+  else void openAssetLibrary();
+}
+
+function onWorkspaceShortcut(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.isComposing) return;
+  if (settingsVisible.value || workspaceStore.projectLoadingVisible) return;
+  if (!shortcutMatches(event, generalSettings.value.canvasShortcuts.assetLibrary)) return;
+  const target = event.target;
+  // ACT: 与画布快捷键同一套门禁：编辑控件自己在用的按键不抢，弹窗/遮罩里的按键归弹窗。
+  if (target instanceof Element && target.closest("input, textarea, select, button, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='slider'], [role='dialog'], .el-overlay")) return;
+  event.preventDefault();
+  if (event.repeat) return;
+  toggleAssetLibrary();
+}
+onMounted(() => window.addEventListener("keydown", onWorkspaceShortcut));
+onBeforeUnmount(() => window.removeEventListener("keydown", onWorkspaceShortcut));
 const settingsVisible = ref(false);
+useSettingsShortcut(() => settingsVisible.value, open => { settingsVisible.value = open; });
 const importVisible = ref(false);
 const importDialogRef = ref<InstanceType<typeof shareImportDialog>>();
 const { dragging: shareDragging } = useShareFileDrop(file => importDialogRef.value?.start({ file }));
@@ -333,11 +385,11 @@ async function handleShareImported(result: ShareImportResult) {
   }
 }
 
-// ACT: 关闭闸门调用时同时等待文档/画布保存、会话状态落盘与“上次画布”指针；
-// 三者互不依赖，并行等待缩短退出时间，但必须全部等完：任一失败只记录日志，不能提前回执。
+// ACT: 关闭闸门调用时同时等待文档/画布保存、会话状态落盘、上“上次画布”指针与视频查看产物清理；
+// 四者互不依赖，并行等待缩短退出时间，但必须全部等完：任一失败只记录日志，不能提前回执。
 onMounted(() => {
   setQuitFlush(async () => {
-    const results = await Promise.allSettled([flushSave(), sessionState.flush(), flushAllLastCanvas()]);
+    const results = await Promise.allSettled([flushSave(), sessionState.flush(), flushAllLastCanvas(), cleanupVideoInspectFiles()]);
     for (const result of results) {
       if (result.status === "rejected") console.warn("退出保存失败：", result.reason);
     }

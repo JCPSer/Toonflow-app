@@ -15,10 +15,31 @@ const toolWindow = window as typeof window & {
 toolWindow.toonflowToolHost = { vue: vueRuntime, elementPlus: elementPlusRuntime, axios, formCreate };
 const componentLoads = new Map<string, Promise<Record<string, Component>>>();
 let rendererRequest: Promise<ToolRenderer[]> | undefined;
+// 单次 5s + 300ms 退避 + 一次重试，总预算约 10.3s：既覆盖冷启动扫描，也不把快速失败拖太久。
+const rendererTimeoutMs = 5_000;
+const rendererRetryDelayMs = 300;
+
+/** 只重试"没有拿到响应"或 5xx；4xx、主动取消与非法 URL 直接抛出。 */
+function shouldRetryRendererRequest(error: unknown) {
+  if (!axios.isAxiosError(error) || axios.isCancel(error) || error.code === "ERR_INVALID_URL") return false;
+  return !error.response || error.response.status >= 500;
+}
+
+async function fetchToolRenderers() {
+  const request = () => axios.get<{ code: number; data: ToolRenderer[]; message?: string }>("/api/tools/renderers", { timeout: rendererTimeoutMs });
+  try {
+    return await request();
+  } catch (error) {
+    if (!shouldRetryRendererRequest(error)) throw error;
+    await new Promise(resolve => setTimeout(resolve, rendererRetryDelayMs));
+    return await request();
+  }
+}
 
 export async function loadToolComponent(toolName: string): Promise<Component | undefined> {
   // ACT: 只合并并发查询；新卡片重新查询安装状态，组件按内容版本复用。
-  rendererRequest ??= axios.get<{ code: number; data: ToolRenderer[]; message?: string }>("/api/tools/renderers")
+  // 主进程繁忙时列表请求可能长时间无响应，加超时并重试一次，避免整个工具卡片直接报加载失败。
+  rendererRequest ??= fetchToolRenderers()
     .then(({ data }) => {
       if (data.code !== 200 || !Array.isArray(data.data)) throw new Error(data.message || "工具界面列表无效");
       return data.data;

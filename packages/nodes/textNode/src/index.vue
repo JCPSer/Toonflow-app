@@ -1,6 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
+    :run="runFromShortcut"
     :running="generating"
     :busy="generating"
     :bottomVisible="node.selected"
@@ -288,6 +289,11 @@ async function loadModels() {
 const { getSelectedNodes } = useVueFlow();
 // ACT: 画布外（文档面板等）没有这个注入，默认视为前台，保证节点在其它上下文也能用 Esc 停止。
 const canvasActive = inject<ComputedRef<boolean>>("canvasActive", computed(() => true));
+
+// ACT: 画布快捷键 ⌘Enter 的入口；generateText 内部已有运行中/上游禁用等守卫。
+function runFromShortcut() {
+  return generateText();
+}
 
 async function generateText() {
   if (disabledUpstreams.value.length) return void ElMessage.warning(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);

@@ -1,5 +1,18 @@
 <template>
   <div class="privacy">
+    <section v-if="nativeAuth" class="settingSection" aria-labelledby="hiddenProjectsTitle">
+      <div class="settingHeader">
+        <h3 id="hiddenProjectsTitle">显示隐藏项目</h3>
+        <el-switch
+          :modelValue="hiddenUnlocked"
+          :loading="hiddenVerifying"
+          :disabled="hiddenVerifying || hiddenAuthSupported === false"
+          aria-label="显示隐藏项目"
+          @change="toggleHiddenProjects" />
+      </div>
+      <p class="description">打开需要 Touch ID 或系统登录密码验证。解锁只在本次运行有效，重启应用后自动锁定。隐藏只是不在界面中显示，项目文件仍在磁盘上。</p>
+    </section>
+
     <section class="settingSection" aria-labelledby="collectionTitle">
       <div class="settingHeader">
         <h3 id="collectionTitle">匿名使用统计</h3>
@@ -31,8 +44,28 @@
 
 <script setup lang="ts">
 import { translate } from "@toonflow/i18n/vue";
+import { ElMessage } from "element-plus";
 
+import { lockHiddenProjects, refreshAuthSupport, unlockHiddenProjects, useProjectPrivacy, usesNativeAuth } from "@/lib/projectPrivacy";
 import { privacySettings, settings } from "@/stores/settings";
+
+const { unlocked: hiddenUnlocked, verifying: hiddenVerifying, authSupported: hiddenAuthSupported } = useProjectPrivacy();
+const nativeAuth = usesNativeAuth();
+
+/** ACT: 开关只是解锁状态的镜像；打开必须过系统验证，关闭立即锁定。 */
+async function toggleHiddenProjects(value: string | number | boolean) {
+  if (value !== true) {
+    lockHiddenProjects();
+    return;
+  }
+  // ACT: 没探测过就先探测；安装包不具备验证能力时不允许打开，否则打开就再也关不回去。
+  if (!(await refreshAuthSupport())) {
+    ElMessage.warning("当前安装包不支持系统验证");
+    return;
+  }
+  const result = await unlockHiddenProjects();
+  if (!result.ok) ElMessage.warning(result.message ?? "验证未通过，隐藏项目保持锁定");
+}
 
 const metrics = [
   { get label() { return translate("使用与回访"); }, get description() { return translate("随机匿名标识、访问次数与时间"); } },

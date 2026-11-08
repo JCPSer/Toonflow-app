@@ -6,6 +6,10 @@ import { addUsage, emptyUsage, type SubAgentModel, type SubAgentResult } from "@
 import { createTeamRunner } from "@/agent/teams";
 import { runRemoteTeam } from "@/agent/teams/remote";
 import { getAgentHost } from "@/agent/host";
+import { runWithConcurrency } from "@/lib/concurrency";
+
+/** 单次 subAgent 调用最多同时执行的任务数；排队任务仍会全部执行。 */
+const maxConcurrentTasks = 8;
 
 const parameters = z.strictObject({
   tasks: z.array(z.strictObject({
@@ -25,7 +29,7 @@ export async function createSubAgentTool({ cwd, tools, canvas, runTask, ...model
   const teams = (await getAgentHost().teams.listTeams()).filter(team => team.enabled && !team.loadError);
   const subAgentTool: ToolDefinition = {
     name: "subAgent", label: "子任务与团队",
-    description: `并行执行委派的独立任务。省略 team 创建可继续对话的子 Agent，继承宿主工具，包括提问、继续委派和 report 上报；指定 team 调用已安装团队或外部 A2A。宿主工具：${[...tools.map(tool => tool.name), "subAgent"].join("、")}。团队目录：${JSON.stringify(teams.map(({ name, description, kind }) => ({ name, description, kind })))}。本地团队按清单分工。任务数量、并发数、执行轮次和总时长不设固定上限，可由用户停止。`,
+    description: `并行执行委派的独立任务。省略 team 创建可继续对话的子 Agent，继承宿主工具，包括提问、继续委派和 report 上报；指定 team 调用已安装团队或外部 A2A。宿主工具：${[...tools.map(tool => tool.name), "subAgent"].join("、")}。团队目录：${JSON.stringify(teams.map(({ name, description, kind }) => ({ name, description, kind })))}。本地团队按清单分工。单次最多同时执行 ${maxConcurrentTasks} 个任务，其余排队；任务总数、执行轮次和总时长不设固定上限，可由用户停止。`,
     promptSnippet: "按需使用 subAgent 委派独立工作，或指定已安装 team 调用专用团队。",
     promptGuidelines: [
       "简单任务直接完成；只委派相互独立的工作，提供必要背景和真实授权。并行任务不得修改同一文件或画布，依赖任务分次处理。",
@@ -40,9 +44,17 @@ export async function createSubAgentTool({ cwd, tools, canvas, runTask, ...model
       const results: SubAgentResult[] = tasks.map(task => ({ name: task.name, status: "running", result: "准备执行" }));
       const usage = emptyUsage();
       const content = () => [{ type: "text" as const, text: JSON.stringify({ tasks: results }) }];
-      const update = () => { if (!signal?.aborted) onUpdate?.({ content: content(), details: {} }); };
+      // 进度回调属于界面通知，抛错不能中断任务或让执行道提前退出。
+      const update = () => {
+        if (signal?.aborted) return;
+        try { onUpdate?.({ content: content(), details: {} }); } catch { /* 忽略界面通知异常 */ }
+      };
       update();
-      await Promise.all(tasks.map(async (task, index) => {
+      await runWithConcurrency(tasks, maxConcurrentTasks, async (task, index) => {
+        if (signal?.aborted) {
+          results[index] = { name: task.name, status: "cancelled", result: "已取消" };
+          return;
+        }
         const onProgress = (text: string) => { results[index]!.result = text; update(); };
         try {
           const remote = task.team && getAgentHost().teams.getRemoteTeam(task.team);
@@ -58,7 +70,7 @@ export async function createSubAgentTool({ cwd, tools, canvas, runTask, ...model
           results[index] = { name: task.name, status: signal?.aborted ? "cancelled" : "error", result: error instanceof Error ? error.message : String(error) };
         }
         update();
-      }));
+      });
       return { content: content(), details: {}, usage };
     },
   };

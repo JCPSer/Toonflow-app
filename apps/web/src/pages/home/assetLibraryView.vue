@@ -80,6 +80,7 @@ import { computed, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { translate } from "@toonflow/i18n/vue";
 import { IconStar, IconTag } from "@tabler/icons-vue";
+import { filterVisibleProjects, useProjectPrivacy } from "@/lib/projectPrivacy";
 import { useWorkspaceStore } from "@/stores/workspace";
 import AssetLibraryContent from "@/pages/workspace/panels/assetLibrary/index.vue";
 import assetDetailDrawer from "./assetDetailDrawer.vue";
@@ -91,7 +92,14 @@ const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true }
 const workspace = useWorkspaceStore();
 // ACT: 首页默认全局库；在左侧「项目」分组里点开某个项目才切过去。
 const activeDirectory = ref("");
-const projects = computed(() => workspace.projectList.map(project => ({ directory: project.directory, name: project.name })));
+// ACT: 素材库的项目分组也会暴露项目名，锁定态必须过滤隐藏项目。
+const projects = computed(() => filterVisibleProjects(workspace.projectList).map(project => ({ directory: project.directory, name: project.name })));
+// ACT: 锁定后如果正停在隐藏项目的素材库，立刻退出到全局库，否则项目名还挂在页面上。
+const { unlocked: hiddenUnlocked } = useProjectPrivacy();
+watch(hiddenUnlocked, value => {
+  if (value) return;
+  if (workspace.projectList.find(project => project.directory === activeDirectory.value)?.hidden) activeDirectory.value = "";
+});
 
 function onSelectProject(payload: { directory: string; path: string }) {
   activeDirectory.value = payload.directory;

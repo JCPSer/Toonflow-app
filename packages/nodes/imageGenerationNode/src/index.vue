@@ -1,6 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
+    :run="runFromShortcut"
     :busy="generating || cropping || uploading || !!editor?.busy || !!lighting?.generating || !!multiAngle?.generating || !!panorama?.busy || !!gridSplit?.splitting"
     v-model:bottomVisible="node.selected"
     :topVisible="node.selected"
@@ -399,6 +400,12 @@ async function confirmInpaint() {
   const imageReferences = refList.value.flatMap((item, index) => item.dataType === "IMAGE" && item.value ? [index + 1] : []);
   if (imageReferences.length) prompt += `\n重绘参考编号对应关系（前两张为原图和区域引导图）：${imageReferences.map((reference, index) => `重绘参考 ${reference} 对应第 ${index + 3} 张图`).join("；")}。`;
   await inpaintEditor.createInpaint({ prompt, images }, new AbortController().signal);
+}
+
+// ACT: 画布快捷键 ⌘Enter 的入口。与按钮同一套守卫：运行中直接忽略，失败按节点原有方式提示。
+function runFromShortcut() {
+  if (generating.value) return;
+  return startGeneration().catch(error => showNodeError(error, "图片生成失败"));
 }
 
 async function startGeneration() {

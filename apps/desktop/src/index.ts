@@ -6,7 +6,7 @@ import { existsSync, writeAtomicSync } from "@toonflow/file";
 import { file } from "@toonflow/file/bun";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
-import { dlopen, FFIType, ptr } from "bun:ffi";
+import { dlopen, FFIType, JSCallback, ptr } from "bun:ffi";
 import type { DesktopRuntime, PluginInstallRequest } from "@toonflow/server/desktop";
 import { showNativeSplash } from "@toonflow/startup";
 import Electrobun, { ApplicationMenu, BrowserWindow, PATHS, Screen, Utils, Updater } from "electrobun/main";
@@ -131,6 +131,86 @@ if (process.platform === "darwin" && existsSync(macActivationLibrary)) {
   } catch (error) {
     console.error("加载 macOS 激活辅助库失败：", error);
   }
+}
+// ACT: 隐藏项目的系统验证（Touch ID / 系统密码）。和 activation 一样随包放在 app/mac 下；
+// 载入主进程后系统弹窗归属于 Toonflow 应用本身。
+const macAuthLibrary = resolve(PATHS.VIEWS_FOLDER, "../mac/libToonflowAuth.dylib");
+type DesktopAuthCode = "ok" | "cancelled" | "unavailable" | "failed" | "notInteractive";
+/** JSCallback 被 GC 后 C 侧指针失效；验证挂起期间必须保持引用。 */
+const pendingAuthCallbacks = new Set<JSCallback>();
+let nativeAuthenticate: ((reason: string, onResult: (code: number) => void) => void) | undefined;
+let nativeAuthAvailable: (() => boolean) | undefined;
+let nativeCancelAuth: (() => void) | undefined;
+if (process.platform === "darwin" && existsSync(macAuthLibrary)) {
+  try {
+    const { symbols } = dlopen(macAuthLibrary, {
+      tnf_auth_available: { args: [], returns: FFIType.i32 },
+      tnf_authenticate: { args: [FFIType.cstring, FFIType.function], returns: FFIType.void },
+      tnf_cancel: { args: [], returns: FFIType.void },
+    });
+    // ACT: 只判断库是否加载还不够：机器没有任何可用凭据（没指纹也没设密码）时同样不能隐藏项目。
+    nativeAuthAvailable = () => symbols.tnf_auth_available() !== 2;
+    nativeCancelAuth = () => symbols.tnf_cancel();
+    nativeAuthenticate = (reason, onResult) => {
+      // ACT: 回调来自 LocalAuthentication 的后台队列，默认的 JSCallback 只允许同线程调用，
+      // 必须显式声明 threadsafe，否则是未定义行为。
+      const callback = new JSCallback((code: number) => {
+        pendingAuthCallbacks.delete(callback);
+        onResult(typeof code === "number" ? code : 3);
+        // ACT: 结果已回来，释放 native 侧引用；延后到当前调用栈结束再 close，避免在自己执行中销毁。
+        queueMicrotask(() => callback.close());
+      }, { args: [FFIType.i32], returns: FFIType.void, threadsafe: true });
+      pendingAuthCallbacks.add(callback);
+      symbols.tnf_authenticate(Buffer.from(`${reason}\0`, "utf8"), callback);
+    };
+  } catch (error) {
+    console.error("加载 macOS 验证辅助库失败：", error);
+  }
+}
+function mapAuthCode(code: number): DesktopAuthCode {
+  if (code === 0) return "ok";
+  if (code === 1) return "cancelled";
+  if (code === 2) return "unavailable";
+  if (code === 4) return "notInteractive";
+  return "failed";
+}
+/**
+ * 调起系统验证。弹窗由用户掌控，最长等 5 分钟；超时按失败处理，避免前端轮询永远拿不到结果。
+ * ACT: dylib 缺失（非 macOS 构建、旧安装包）时直接返回 unavailable，绝不静默放行。
+ */
+function supportsSystemAuthentication(): boolean {
+  if (!nativeAuthenticate || !nativeAuthAvailable) return false;
+  try {
+    return nativeAuthAvailable();
+  } catch (error) {
+    console.error("查询系统验证能力失败：", error);
+    return false;
+  }
+}
+function authenticateWithSystem(reason: string): Promise<{ ok: boolean; code: DesktopAuthCode }> {
+  const authenticate = nativeAuthenticate;
+  if (!authenticate) return Promise.resolve({ ok: false, code: "unavailable" });
+  return new Promise(resolveAuth => {
+    let settled = false;
+    const finish = (result: { ok: boolean; code: DesktopAuthCode }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolveAuth(result);
+    };
+    // ACT: 比服务端会话的 5 分钟 TTL 短一分钟，避免会话先过期、前端只拿到「验证已失效」。
+    const timer = setTimeout(() => {
+      // ACT: 超时同时关掉弹窗，否则它会一直悬在屏幕上，下一次验证也会被同进程的并发判断挡掉。
+      try { nativeCancelAuth?.(); } catch {}
+      finish({ ok: false, code: "failed" });
+    }, 4 * 60 * 1000);
+    try {
+      authenticate(reason, code => finish({ ok: code === 0, code: mapAuthCode(code) }));
+    } catch (error) {
+      console.error("系统验证调用失败：", error);
+      finish({ ok: false, code: "failed" });
+    }
+  });
 }
 let lastFolderPickerDirectory: string | undefined;
 
@@ -670,6 +750,8 @@ async function start() {
         if (process.platform === "win32") confirmWindowsUpdateStartup(PATHS.RESOURCES_FOLDER);
         else await (Updater as DesktopRuntime["updater"]).confirmStartup?.();
       },
+      authenticate: authenticateWithSystem,
+      supportsAuthentication: supportsSystemAuthentication,
       openDevTools() { mainWindow.webview.openDevTools(); },
       // ACT: Windows 使用两阶段退出；Intel Mac 由兼容入口适配 1.18.1 更新器。
       // 两者都会在重启前申请一次 quit 批准，必须包一层先过关闭闸门，否则更新重启会被 veto。

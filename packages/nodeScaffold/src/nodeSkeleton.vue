@@ -128,7 +128,7 @@
         v-else
         class="labelText"
         :tabindex="readOnly || nodeDisabled ? undefined : 0"
-        :title="readOnly ? label : nodeDisabled ? `${label}（节点已禁用，双击不可编辑名称）` : `${label}（双击编辑名称）`"
+        :title="readOnly ? label : nodeDisabled ? `${label}（节点已禁用，双击不可编辑名称）` : `${label}（双击或按 Enter 编辑名称）`"
         @dblclick="!readOnly && ($event.stopPropagation(), editLabel())"
         @keydown.enter.stop.prevent="editLabel">
         {{ label }}
@@ -224,6 +224,8 @@ import type { DropdownInstance } from "element-plus";
 import { validateConnection } from "./connection";
 import { useNodeEvent } from "./nodeEvent";
 import { clearNodeBusy, isNodeBusy, markNodeBusy, markNodeRunning } from "./nodeBusy";
+import { registerNodeRun } from "./nodeRun";
+import { registerNodeRename } from "./nodeRename";
 import durationBadge from "./durationBadge.vue";
 import type { NodeConnectionFeedback, NodeData, NodeHandle } from "./connection";
 import { isNodeOutput, type NodeOutput } from "./values";
@@ -256,6 +258,9 @@ const props = withDefaults(
       fullscreenVisible?: boolean;
       /** ACT: 生成中钉住底栏，避免取消选中/多选/拖拽时底栏被卸载导致无法停止。 */
       bottomPinned?: boolean;
+      /** ACT: 节点主操作（当前只有四类生成节点传），供画布快捷键 ⌘Enter 调用。
+       *  返回未知值：节点可能返回生成状态对象，宿主只关心它是否抛出。 */
+      run?: () => unknown;
     }
   >(),
   {
@@ -305,10 +310,30 @@ const handleGroups = computed(() => [
 ]);
 const cardHeight = computed(() => Math.max(100, ...handleGroups.value.map((group) => (group.items.length + 1) * 44)));
 const { id: nodeId, node } = useNode();
+// ACT: 把节点主操作登记到全局表，画布快捷键按 nodeId 查找；节点组件用稳定的函数引用，避免每次渲染重注册。
+let unregisterRun: (() => void) | undefined;
+watch(() => props.run, () => {
+  unregisterRun?.();
+  unregisterRun = props.run ? registerNodeRun(nodeId, () => props.run?.()) : undefined;
+}, { immediate: true });
+onScopeDispose(() => {
+  unregisterRun?.();
+  unregisterRun = undefined;
+});
 // ACT: 禁用标记只能从 node.data 读。props 里虽然有 `disabled`（NodeData 展开），但 Boolean prop
 // 在未显式传值时会被 cast 成 false，读 props.disabled 会把「缺省=启用」错判成「显式启用」，
 // 后续把默认值改掉时会连带出错。这里统一用局部 computed。
 const nodeDisabled = computed(() => node.data?.disabled === true);
+// ACT: 画布单选节点后按 Enter 的入口；只读预览不能注册，否则会覆盖画布实例的入口。
+let unregisterRename: (() => void) | undefined;
+watch(() => props.readOnly, (readOnly) => {
+  unregisterRename?.();
+  unregisterRename = readOnly ? undefined : registerNodeRename(nodeId, () => editLabel());
+}, { immediate: true });
+onScopeDispose(() => {
+  unregisterRename?.();
+  unregisterRename = undefined;
+});
 // ACT: 运行中禁止切换禁用。全局表只认 busy/running 两个来源，再用 isNodeBusy 兜底
 // （同一节点可能被别的组件、例如 Agent 会话登记为运行中）。
 const isNodeRunning = computed(() => props.busy || props.running || isNodeBusy(nodeId));
@@ -690,6 +715,8 @@ async function handleCommand(command: string) {
 async function editLabel() {
   if (nodeDisabled.value) return;
   if (props.readOnly) return;
+  // ACT: 节点被 teleport 到文档视图时标题栏是隐藏的，进编辑态会让输入框聚焦失败并残留。
+  if (documentTarget.value) return;
   labelDraft.value = props.label;
   editingLabel.value = true;
   await nextTick();

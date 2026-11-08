@@ -68,4 +68,19 @@ execFileSync("clang", [
 execFileSync("codesign", ["--force", "--sign", "-", activationDylib], { stdio: "inherit" });
 console.log("已生成 macOS 激活辅助库：", activationDylib);
 
+// ACT: 隐藏项目的系统验证库。LocalAuthentication 的弹窗身份取自调用进程，放进主进程
+// dlopen 才能显示成 Toonflow；独立 helper 只会显示进程名。
+const authDylib = resolve(root, "build/desktop/mac/libToonflowAuth.dylib");
+execFileSync("clang", [
+  "-fobjc-arc",
+  "-framework", "Foundation",
+  "-framework", "LocalAuthentication",
+  "-dynamiclib",
+  "-O2",
+  "-o", authDylib,
+  resolve(here, "../native/auth.m"),
+], { stdio: "inherit" });
+execFileSync("codesign", ["--force", "--sign", "-", authDylib], { stdio: "inherit" });
+console.log("已生成 macOS 验证辅助库：", authDylib);
+
 console.log("已生成 macOS 目录选择器：", resolve(contents, "MacOS/folder-picker"));

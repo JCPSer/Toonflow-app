@@ -19,6 +19,8 @@
     "./workspaceFiles": "./src/workspaceFiles.ts",
     "./nodeTools": "./src/nodeTools.ts",
     "./nodeBusy": "./src/nodeBusy.ts",
+    "./nodeRun": "./src/nodeRun.ts",
+    "./nodeRename": "./src/nodeRename.ts",
     "./agentNode": "./src/agentNode.ts"
   },
   "scripts": {

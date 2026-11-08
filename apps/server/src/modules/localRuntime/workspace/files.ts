@@ -40,6 +40,7 @@ export async function copyWorkspaceFile(source: string, target: string) {
 
 export async function renameWorkspaceFile(source: string, target: string) {
   const info = await lstat(source);
+  if (info.isSymbolicLink()) throw Object.assign(new Error("不能重命名符号链接"), { status: 403 });
   if (source === target || (process.platform === "win32" && source.toLowerCase() === target.toLowerCase())) {
     if (source !== target) await rename(source, target);
     return;
@@ -50,8 +51,22 @@ export async function renameWorkspaceFile(source: string, target: string) {
     await rename(source, target);
     return;
   }
+  // ACT: 同卷 rename 是原子操作，读者只会看到旧文件或新文件，不会出现半截目标；
+  // 先查一次目标：POSIX rename 会静默覆盖，必须先保持「已存在则报错」的语义。
+  const existing = await lstat(target).catch((err: NodeJS.ErrnoException) => { if (err.code === "ENOENT") return null; throw err; });
+  // ACT: 大小写不敏感的文件系统（APFS 默认）上，只改大小写时 target 指向的就是 source 本身，
+  // 不能按「重名」拒绝；用 dev+ino 判定同一个 inode。
+  const sameEntry = existing && existing.dev === info.dev && existing.ino === info.ino;
+  if (existing && !sameEntry) throw Object.assign(new Error("已存在同名文件或目录"), { code: "EEXIST" });
+  try {
+    await rename(source, target);
+    return;
+  } catch (cause) {
+    // ACT: 只有跨文件系统（EXDEV）才需要回退到「复制 + 删除」。
+    if ((cause as NodeJS.ErrnoException)?.code !== "EXDEV") throw cause;
+  }
   await copyFileClone(source, target);
-  // ACT: 目标完整写入后才移除源文件；移除失败只回滚本次目标。
+  // ACT: 回退路径下目标完整写入后才移除源文件；移除失败只回滚本次目标。
   try { await unlink(source); }
   catch (err) {
     await unlink(target).catch(error => console.warn(`重命名回滚失败：${target}`, error));

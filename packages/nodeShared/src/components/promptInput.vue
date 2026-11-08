@@ -310,6 +310,8 @@ async function insertReference(reference: MentionItem) {
 }
 
 function handleMentionKey(event: KeyboardEvent) {
+  // ACT: 画布快捷键（如 ⌘Enter 运行节点）在 window 捕获阶段已经处理过，这里不能再顺手点一下候选。
+  if (event.defaultPrevented) return;
   // ACT: x-sender 只把 Ctrl+Y 当重做，⌘⇧Z 会命中它自己的撤销判定（不判 Shift），这里接管并显式重做。
   if (!event.isComposing && event.keyCode !== 229 && (event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === "Z" || event.key === "z" || event.code === "KeyZ")) {
     event.preventDefault();

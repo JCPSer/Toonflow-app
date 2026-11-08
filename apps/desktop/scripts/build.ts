@@ -67,6 +67,9 @@ if (isIntelMac) {
   process.exit(0);
 }
 const cli = resolve(projectDir, "apps/desktop/node_modules/electrobun/bin/electrobun.cjs");
+// ACT: macOS 原生 helper（目录选择器、激活让权库、系统验证库）必须随包；缺了只会静默降级，
+// 干净环境构建时不能依赖上一次的手工产物。
+if (isMac && mode !== "dev") await $`${process.execPath} run build:macPicker`.cwd(projectDir);
 if (isMac && mode !== "dev") await prepareMacDmg();
 await $`${process.execPath} ${cli} ${mode === "dev" ? "dev" : "build"} ${mode === "dev" ? [] : ["--env=stable"]}`.cwd(projectDir);
 if (mode === "package" && !isMac) {

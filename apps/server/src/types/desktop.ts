@@ -49,6 +49,13 @@ export interface DesktopRuntime {
   /** 打开文件对话框，返回绝对路径；取消返回 null。 */
   selectOpenFile(extension: string): Promise<string | null>;
   ready(failed?: boolean): Promise<void>;
+  /**
+   * 调起 macOS 系统验证（Touch ID，可回落登录密码）。ok=false 时按 code 区分取消/不可用/失败，
+   * 调用方必须保持锁定，不得静默放行。
+   */
+  authenticate(reason: string): Promise<{ ok: boolean; code: "ok" | "cancelled" | "unavailable" | "failed" | "notInteractive" }>;
+  /** 当前安装包是否具备系统验证能力（macOS 且验证库已加载）。 */
+  supportsAuthentication(): boolean;
   openDevTools(): void;
   updater: {
     getLocalInfo(): Promise<{ version: string; channel: string; hash: string; baseUrl: string }>;

@@ -30,7 +30,10 @@ export default router.get("/", validateFields({ directory: z.string().min(1).max
     return res.status(404).json(error("缩略图不可用", null, 404));
   }
   const etag = `"${thumbnail.etag}"`;
-  res.set({ "Cache-Control": "private, max-age=31536000, immutable", "ETag": etag, "X-Content-Type-Options": "nosniff" });
+  // ACT: 工作区文件允许同路径原地覆写（首尾帧固定写 frame-first.jpg），路径本身不带版本。
+  // immutable 会让浏览器永不回源，覆写后仍显示旧图；这里改为每次用 ETag 协商：
+  // 没变返回 304，变了返回新图，重启/换客户端也不会停在旧字节。
+  res.set({ "Cache-Control": "private, no-cache", "ETag": etag, "X-Content-Type-Options": "nosniff" });
   if (req.get("if-none-match") === etag) return res.status(304).end();
   res.type("image/jpeg");
   await sendFile(res, thumbnail.path, {}, err => { if (err) next(err); });

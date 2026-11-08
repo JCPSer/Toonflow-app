@@ -53,7 +53,8 @@ export async function acquireFileAccess(paths: PathLike[], kind: AccessKind, sig
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   signal?.addEventListener("abort", abort, { once: true });
-  const timer = setTimeout(() => controller.abort(Object.assign(new Error("文件正在使用，等待操作超时"), { code: "EBUSY" })), 30000);
+  // ACT: 等锁超时与「刚被占用」要区分：前者已经等了 30 秒，再让客户端重试只会把等待乘以重试次数。
+  const timer = setTimeout(() => controller.abort(Object.assign(new Error("文件正在使用，等待操作超时"), { code: "EBUSYTIMEOUT" })), 30000);
   timer.unref?.();
   try {
     for (const { entry } of requests) handles.push(await waitForAccess(entry, kind, controller.signal));

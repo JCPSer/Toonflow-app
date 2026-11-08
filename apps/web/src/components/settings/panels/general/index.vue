@@ -76,7 +76,7 @@
       <div class="settingHeader">
         <div class="settingInfo">
           <h3 id="completionSoundTitle">节点提示音</h3>
-          <p class="description">节点任务运行超过 30 秒后完成或失败，或画布 Agent 提问时播放提示音；窗口在前台或后台、节点面板是否打开都会响。手动停止不响。</p>
+          <p class="description">节点任务运行超过 30 秒后完成或失败，或画布 Agent 提问时播放提示音；窗口在前台或后台、节点面板是否打开都会响。手动停止不响。音量调到 0 即静音，开关状态保持不变。</p>
         </div>
         <el-radio-group
           class="soundOptions"
@@ -86,6 +86,21 @@
           <el-radio-button value="always">开启</el-radio-button>
           <el-radio-button value="off">关闭</el-radio-button>
         </el-radio-group>
+      </div>
+      <div class="soundVolume">
+        <span class="volumeLabel">音量</span>
+        <el-slider
+          v-model="completionVolume"
+          class="volumeSlider"
+          :min="0"
+          :max="100"
+          :step="5"
+          :disabled="generalSettings.completionSound === 'off'"
+          :formatTooltip="(value: number) => `${value}%`"
+          :formatValueText="(value: number) => `${value}%`"
+          aria-label="提示音音量"
+          @change="(value) => typeof value === 'number' && updateGeneralSettings({ completionSoundVolume: value })" />
+        <span class="volumeValue" aria-hidden="true">{{ completionVolume }}%</span>
       </div>
     </section>
     <section class="settingSection" aria-labelledby="taskNotificationTitle">
@@ -130,9 +145,14 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from "vue";
 import { defaultUiSettings, generalSettings, normalizeCompletionSound, uiSettings, updateGeneralSettings, updateUiSettings } from "@/stores/settings";
 import canvasShortcuts from "./canvasShortcuts.vue";
 import nodeMenuSettings from "./nodeMenuSettings.vue";
+
+// ACT: 滑杆拖动期间只改本地值，松手（change）才落盘——直接绑 settings 会让每一步都触发一次保存。
+const completionVolume = ref(generalSettings.value.completionSoundVolume);
+watch(() => generalSettings.value.completionSoundVolume, value => { completionVolume.value = value; });
 </script>
 
 <style lang="scss" scoped>
@@ -178,6 +198,34 @@ import nodeMenuSettings from "./nodeMenuSettings.vue";
           font-size: 12px;
           line-height: 1.6;
         }
+      }
+    }
+
+    .soundVolume {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+
+      .volumeLabel {
+        flex: none;
+        color: var(--el-text-color-regular);
+        font-size: 13px;
+      }
+
+      .volumeSlider {
+        flex: 1;
+        min-width: 120px;
+        max-width: 320px;
+      }
+
+      .volumeValue {
+        flex: none;
+        width: 42px;
+        color: var(--el-text-color-secondary);
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
       }
     }
   }

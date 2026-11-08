@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants, copyFile, createReadStream, lstat, mkdir, opendir, readFile, readdir, rename, rm, unlink, writeAtomic } from "@toonflow/file";
 import { basename, dirname, extname, join, relative, sep } from "node:path";
+import { awaitAbortable } from "@/lib/abortable";
 import { getDocumentMimeType } from "@/lib/documentFormats";
 import { mentionAssetType } from "@/lib/mentionSources";
 import { copyWorkspaceFile, isWithin, lockWorkspaceFiles, protectWorkspaceRoot, resolveWorkspacePath, writeWorkspaceFile } from "@/modules/localRuntime/workspace/files";
@@ -394,20 +395,44 @@ export async function writeAssetEntry(library: AssetLibrary, path: string, conte
   } finally { release(); }
 }
 
+type AssetReadPayload = { content: Uint8Array; revision: string };
+
+/** 同一绝对路径只在读取进行中合并；读取结束立即移除，后续读取仍能拿到最新内容。 */
+const inflightAssetReads = new Map<string, Promise<AssetReadPayload>>();
+
 export async function readAssetEntry(library: AssetLibrary, path: string, signal?: AbortSignal) {
   signal?.throwIfAborted();
   const relativePath = normalizeAssetPath(path);
   if (!relativePath) throw Object.assign(new Error("只能读取普通素材文件"), { status: 400 });
   const target = await resolveLibraryPath(library.root, relativePath);
-  const release = lockWorkspaceFiles([target.path]);
-  try {
-    const info = await lstat(target.path);
-    if (!info.isFile()) throw Object.assign(new Error("只能读取普通素材文件"), { status: 400 });
-    if (info.size > maxAssetBytes) throw Object.assign(new Error("素材文件不能超过 100 MB"), { status: 413, code: "EFBIG" });
-    const content = await readFile(target.path, { signal });
-    if (content.byteLength > maxAssetBytes) throw Object.assign(new Error("素材文件不能超过 100 MB"), { status: 413, code: "EFBIG" });
-    return { path: relativePath, content, revision: createHash("sha256").update(content).digest("hex") };
-  } finally { release(); }
+  signal?.throwIfAborted();
+  // ACT: 多个 Agent 同时读取同一素材时，后到者会在 busyFiles 上撞出 409「文件正在使用」。
+  // 合并同一路径的在途读取，既避免误报冲突，也避免重复读盘与重复哈希。
+  // 查 Map 到写 Map 之间不能插入 await，否则两个调用会同时走到 lockWorkspaceFiles。
+  let task = inflightAssetReads.get(target.path);
+  if (!task) {
+    const created = (async (): Promise<AssetReadPayload> => {
+      const release = lockWorkspaceFiles([target.path]);
+      try {
+        const info = await lstat(target.path);
+        if (!info.isFile()) throw Object.assign(new Error("只能读取普通素材文件"), { status: 400 });
+        if (info.size > maxAssetBytes) throw Object.assign(new Error("素材文件不能超过 100 MB"), { status: 413, code: "EFBIG" });
+        // 共享读取不绑定任何调用方：一个 Agent 停止不能打断其他 Agent 的读取。
+        // 代价是最后一个等待者取消后仍会读完（上限 100 MB、通常毫秒级），读取期间写同一文件仍按原语义 409。
+        const content = await readFile(target.path);
+        if (content.byteLength > maxAssetBytes) throw Object.assign(new Error("素材文件不能超过 100 MB"), { status: 413, code: "EFBIG" });
+        return { content, revision: createHash("sha256").update(content).digest("hex") };
+      } finally { release(); }
+    })();
+    task = created;
+    inflightAssetReads.set(target.path, created);
+    // 成功和失败都必须消费并清理，避免未处理的拒绝和过期缓存。
+    const cleanup = () => { if (inflightAssetReads.get(target.path) === created) inflightAssetReads.delete(target.path); };
+    void created.then(cleanup, cleanup);
+  }
+  const payload = await awaitAbortable(task, signal);
+  // path 用各调用方自己的相对路径，避免大小写或不同 selector 指向同一 realpath 时串用。
+  return { path: relativePath, ...payload };
 }
 
 async function measureDirectorySize(path: string, budget = { remaining: maxScannedEntries }): Promise<number> {

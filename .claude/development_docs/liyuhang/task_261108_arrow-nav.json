@@ -1,0 +1,63 @@
+{
+  "task_id": "task_261108_arrow-nav",
+  "created": "2026-11-08T19:20:00+08:00",
+  "project": "/Users/liyuhang/Documents/git_projects/Toonflow-app",
+  "spec": ".claude/development_docs/liyuhang/2_requirements_solutions/2026-11-08-19-20-arrow-key-node-navigation.md",
+  "status": "done",
+  "decisions": {
+    "semantics": "方向键只切换选中，不移动节点",
+    "algorithm": "方向锥 ±45° 内最近（score=distance+perp）",
+    "origin": "无选中时取视口中心最近节点；有选中时取选区外接框中心",
+    "shift": "Shift+方向键追加选中，裸方向键替换为单选",
+    "groups": "canvasGroup 不参与导航",
+    "viewport": "每次导航都把目标节点居中，缩放不变",
+    "configurable": "写死，不进设置页"
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "name": "nodeNavigation 纯几何 + 单测",
+      "owner": "self",
+      "status": "done",
+      "depends": []
+    },
+    {
+      "id": "T2",
+      "name": "canvas/index.vue 按键接线（守卫、选区、居中）",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T1"
+      ]
+    },
+    {
+      "id": "T3",
+      "name": "文档：需求矩阵/方案/测试结果/记忆/索引",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T1"
+      ]
+    },
+    {
+      "id": "T4",
+      "name": "子 agent 代码评审并处理发现",
+      "owner": "code-reviewer",
+      "status": "done",
+      "depends": [
+        "T2"
+      ]
+    },
+    {
+      "id": "T5",
+      "name": "构建 web 并同步到应用（不重启）",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T4"
+      ]
+    }
+  ],
+  "notes": "方向键当前在画布完全空闲；Vue Flow 的 keyboard a11y 与 nodes-focusable 均已关闭，无内置冲突。 评审 P1/P2/P3 已处理；剩余已知副作用：方向键仍可在设置页被录制成其它快捷键并失效（未做录制端拦截）。",
+  "updated": "2026-11-08T19:32:00+08:00"
+}

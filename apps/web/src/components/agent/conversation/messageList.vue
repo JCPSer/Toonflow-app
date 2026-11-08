@@ -295,6 +295,21 @@ const messageVirtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>(comput
     },
   };
 }));
+// ACT: TanStack Virtual 从 3.14 起在「向上滚动」时跳过视口上方行高变化的滚动补偿，
+// 于是往上翻历史时，图片、工具卡片、代码块这类实测高度与 240px 估算差很远的行
+// 每进入一批就把下方内容整体顶一次，表现为一路跳。这是实例级谓词，会整体替换库的默认判定；
+// 这里只去掉「向上滚动不补偿」的限制，其余条件与库默认保持一致——
+// 首次测量看顶边是否在视口上方，重复测量只补整行都在视口上方的行，
+// 跨视口上沿的长行（流式回复）在下方增长时仍不能拽动视口。
+// 它必须赋在实例上：options 里没有这个字段，setOptions 只替换 this.options，赋值一次即可。
+// 前提是本列表没有设置 initialOffset / enabled（两者为默认 0 / true），与 getScrollOffset() 等价。
+messageVirtualizer.value.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
+  const offset = (instance.scrollOffset ?? 0) + instance.scrollAdjustments;
+  if (item.start >= offset) return false;
+  if (!instance.itemSizeCache.has(item.key)) return true;
+  const size = instance.itemSizeCache.get(item.key) ?? item.size;
+  return item.start + size <= offset;
+};
 const visibleMessages = computed(() => messageVirtualizer.value.getVirtualItems().map(row => ({ row, item: displayedMessages.value[row.index]! })));
 // ACT: 轮次目录与虚拟列表共用 displayedMessages，下标即虚拟行号；标签取纯文本并压缩空白，
 // 只有附件或引用的提问也要给一个可辨识的占位，否则目录里会出现空白行。

@@ -106,6 +106,7 @@ import { computed, inject, nextTick, onBeforeUnmount, ref, shallowRef, watch, ty
 import { Panel, useVueFlow, type FlowExportObject } from "@vue-flow/core";
 import { ElMessage, ElMessageBox, type DropdownInstance, type FilterNodeMethodFunction, type InputInstance, type LoadFunction, type TreeInstance } from "element-plus";
 import { IconVector, IconCheck, IconChevronDown, IconChevronUp, IconChevronRight, IconDots, IconFolder, IconFolderOpen, IconFolderPlus, IconPlus, IconSearch } from "@tabler/icons-vue";
+import { filterVisibleProjects } from "@/lib/projectPrivacy";
 import { useWorkspaceStore } from "@/stores/workspace";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { readLastCanvas } from "@/lib/projectUi";
@@ -127,7 +128,8 @@ const projectListVisible = ref(false);
 const projectQuery = ref("");
 const filteredProjects = computed(() => {
   const query = projectQuery.value.trim().toLocaleLowerCase();
-  return [...workspaceStore.projectList]
+  // ACT: 隐藏项目在锁定态不出现在项目下拉（含搜索）；解锁走 projectPrivacy 的统一判断。
+  return filterVisibleProjects([...workspaceStore.projectList])
     .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt)
     .filter(project => !query || project.name.toLocaleLowerCase().includes(query) || project.directory.toLocaleLowerCase().includes(query));
 });
@@ -968,7 +970,23 @@ function syncDocumentNode(canvasId: string, nodeId: string, handleId: string, te
   else if (inline) (data.outputs ??= {})[handleId] = { dataType: "STRING", value: text };
 }
 
-defineExpose({ getCanvases, peekCanvases, initialized, addCanvas, switchCanvas, renameCanvas, syncCanvasPath, syncDocumentNode, loadError });
+// ACT: 快捷键入口。两个下拉互斥显示，且**不抢焦点**：焦点留在画布，才能再按同一个键收起、
+// 按另一个键切换；抢到搜索框后按键就变成输入字符，开关与互斥都会失效。搜索框仍需手动点击。
+function toggleProjectPicker() {
+  if (projectListVisible.value) { projectListVisible.value = false; return; }
+  if (!workspaceStore.project || workspaceStore.projectLoadingVisible || props.switching) return;
+  canvasListVisible.value = false;
+  projectListVisible.value = true;
+}
+
+function toggleCanvasPicker() {
+  if (canvasListVisible.value) { canvasListVisible.value = false; return; }
+  if (!props.directory || busy.value || props.switching || workspaceStore.projectLoadingVisible) return;
+  projectListVisible.value = false;
+  canvasListVisible.value = true;
+}
+
+defineExpose({ getCanvases, peekCanvases, initialized, addCanvas, switchCanvas, renameCanvas, syncCanvasPath, syncDocumentNode, loadError, toggleProjectPicker, toggleCanvasPicker });
 </script>
 
 <style lang="scss" scoped>

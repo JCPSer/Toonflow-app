@@ -3,6 +3,8 @@ import { isMobile, isRemoteConnection } from "./platform";
 import { toValue, type MaybeRefOrGetter } from "vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { registerApiLanguage } from "@/lib/i18n";
+import { bumpFileVersion, fileVersion, normalizeWorkspacePath } from "./fileVersions";
+import { withBusyRetry } from "./busyRetry";
 
 type WorkspaceEntry = { name: string; path: string; type: "file" | "directory" };
 export type TextSnapshot = { text: string; revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" };
@@ -11,13 +13,17 @@ registerApiLanguage(client);
 const fileUrls = new Map<string, { directory: string; path: string; url: Promise<string>; users: number }>();
 
 function cachePath(path: string) {
-  return path.replaceAll("\\", "/").split("/").filter(part => part && part !== ".").join("/").toLowerCase();
+  return normalizeWorkspacePath(path);
 }
 
 function invalidateUrls(directory: string, path: string) {
   // ACT: 仅失效时保守合并路径写法；实际读取仍交服务端校验，区分大小写的文件最多多读一次。
   directory = cachePath(directory);
   path = cachePath(path);
+  // ACT: 缩略图缓存与 blob 缓存是两套——路径上即使没有在途 blob 缓存，缩略图 URL 也必须换一条：
+  // 常驻的 `<img>` 只在 src 字符串变化时才重新请求，否则同路径覆写后界面会停在旧内容（首尾帧即如此）。
+  // 服务端的 no-cache 只保证「请求了就会拿到最新的」，不会替我们发起请求。
+  bumpFileVersion(directory, path);
   for (const [key, entry] of fileUrls) {
     const entryPath = cachePath(entry.path);
     if (cachePath(entry.directory) === directory && (entryPath === path || entryPath.startsWith(`${path}/`))) fileUrls.delete(key);
@@ -110,17 +116,18 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
 
   async function writeTextSnapshot(path: string, text: string, snapshot: Pick<TextSnapshot, "revision" | "encoding">) {
     const directory = getDirectory();
-    const { data } = await client.put<{ data: { revision: string } }>("/write", text, {
+    // ACT: 同一路径正在被其他操作占用时服务端返回 409 EBUSY；这里统一退避重试。
+    const { data } = await withBusyRetry(() => client.put<{ data: { revision: string } }>("/write", text, {
       params: { directory, path, expectedRevision: snapshot.revision, encoding: snapshot.encoding },
       headers: { "Content-Type": "application/octet-stream" },
-    });
+    }));
     invalidateUrls(directory, path);
     return data.data.revision;
   }
 
   async function write(path: string, content: string | Blob | ArrayBuffer, exclusive = false, signal?: AbortSignal) {
     const directory = getDirectory();
-    await client.put("/write", content, { params: { directory, path, exclusive }, signal, headers: { "Content-Type": "application/octet-stream" } });
+    await withBusyRetry(() => client.put("/write", content, { params: { directory, path, exclusive }, signal, headers: { "Content-Type": "application/octet-stream" } }));
     invalidateUrls(directory, path);
   }
 
@@ -130,14 +137,14 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
 
   async function rename(path: string, target: string) {
     const directory = getDirectory();
-    await client.post("/rename", { directory, path, target });
+    await withBusyRetry(() => client.post("/rename", { directory, path, target }));
     invalidateUrls(directory, path);
     invalidateUrls(directory, target);
   }
 
   async function copy(path: string, target: string) {
     const directory = getDirectory();
-    await client.post("/copy", { directory, path, target });
+    await withBusyRetry(() => client.post("/copy", { directory, path, target }));
     invalidateUrls(directory, target);
   }
 
@@ -149,16 +156,19 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
 
   async function remove(path: string, recursive = false) {
     const directory = getDirectory();
-    await client.delete("/remove", { data: { directory, path, recursive } });
+    await withBusyRetry(() => client.delete("/remove", { data: { directory, path, recursive } }));
     invalidateUrls(directory, path);
   }
 
   async function mkdir(path: string) {
-    await client.post("/mkdir", { directory: getDirectory(), path });
+    await withBusyRetry(() => client.post("/mkdir", { directory: getDirectory(), path }));
   }
 
   function thumbUrl(path: string, size = 512) {
-    const params = new URLSearchParams({ directory: getDirectory(), path, size: String(size) });
+    const directory = getDirectory();
+    // ACT: v 是该文件在本次会话里的写版本（见 fileVersions）：同路径原地覆写后 URL 必须变化，
+    // 否则下游引用卡等常驻 `<img>` 根本不会发请求，一直显示旧帧。服务端路由会忽略这个参数。
+    const params = new URLSearchParams({ directory, path, size: String(size), v: String(fileVersion(directory, path)) });
     return `/api/workspaces/files/thumb?${params.toString()}`;
   }
 

@@ -1,6 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
+    :run="runFromShortcut"
     :busy="generating || uploading || !!actions?.processing"
     v-model:bottomVisible="node.selected"
     :topVisible="node.selected"
@@ -135,6 +136,8 @@ import videoPlayer from "@toonflow/node-video/videoPlayer";
 import videoActions from "@toonflow/node-video/videoActions";
 import frameOutputMenu from "@toonflow/node-video/frameOutputMenu";
 import { buildFrameHandles, createFrameOutputTool, staticNodeHandles, useFrameOutputs, type FrameOutputConfig } from "@toonflow/node-video/frameOutput";
+import { createVideoInspect } from "@toonflow/node-video/inspectVideo";
+import { createVideoInspectTools } from "@toonflow/node-video/inspectVideoTool";
 import referenceItem from "@toonflow/node-shared/referenceItem";
 import mediaHistory from "@toonflow/node-shared/mediaHistory";
 import mediaPrice from "@toonflow/node-shared/mediaPrice";
@@ -281,6 +284,24 @@ const generationInput = computed<Omit<NodeVideoRequest, "directory"> | undefined
   };
 });
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
+// ACT: Agent 查看视频：宫格看全片、单帧看细节；生成中直接拒绝，避免拿上一版视频下结论。
+const videoInspect = createVideoInspect({
+  id: nodeId,
+  getFiles: files.getWorkspaceFiles,
+  createFfmpeg: ffmpeg,
+  getVideo: () => outputFile.value && /^video\//.test(outputFile.value.mimeType)
+    ? { path: outputFile.value.url, mimeType: outputFile.value.mimeType } : undefined,
+  blockedReason: () => generating.value ? "视频正在生成，请等生成结束再查看"
+    : deleting.value ? "节点正在删除，请稍后重试"
+      : uploading.value ? "视频处理中，请稍后重试" : undefined,
+});
+const inspectTools = createVideoInspectTools(videoInspect);
+nodeTools.register(inspectTools.sampleFrames);
+nodeTools.register(inspectTools.captureFrame);
+// ACT: 卸载时按目录引用计数释放；没真正查看过的节点不会登记，也不会在关窗时发无意义的删除请求。
+onScopeDispose(() => { void videoInspect.dispose(); });
+// ACT: 视频换了（含打开项目时的残留）就清掉旧查看产物，避免 Agent 还能 read 到上一版画面。
+watch(() => outputFile.value?.url, () => { void videoInspect.clear(); }, { immediate: true });
 
 function selectVideo(value: NodeMediaValue) {
   outputs.value.video = { dataType: "VIDEO", value };
@@ -391,6 +412,12 @@ function loadModels() {
     modelsRequest = undefined;
   });
   return modelsRequest;
+}
+
+// ACT: 画布快捷键 ⌘Enter 的入口。与按钮同一套守卫：运行中直接忽略，失败按节点原有方式提示。
+function runFromShortcut() {
+  if (generating.value) return;
+  return startGeneration().catch(error => showNodeError(error, "视频生成失败"));
 }
 
 async function startGeneration() {

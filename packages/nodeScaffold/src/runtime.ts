@@ -12,3 +12,5 @@ export * from "./agentNode";
 export * from "./nodeAi";
 export * from "./nodeFfmpeg";
 export * from "./nodeAsr";
+export { registerNodeRun, getNodeRun, hasNodeRun, type NodeRunHandler } from "./nodeRun";
+export { registerNodeRename, getNodeRename, hasNodeRename, type NodeRenameHandler } from "./nodeRename";

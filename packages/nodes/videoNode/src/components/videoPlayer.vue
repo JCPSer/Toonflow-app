@@ -1,26 +1,30 @@
 <template>
   <div ref="rootElement" class="videoPlayer" @pointerenter="clearIdle" @pointerleave="scheduleIdle">
-    <video
-      v-if="hasSource"
-      ref="video"
-      class="videoPreview"
-      :class="{ nodrag: fullscreen }"
-      :src="src"
-      :poster="poster"
-      :controls="fullscreen"
-      playsinline
-      preload="auto"
-      draggable="false"
-      :aria-label="label"
-      @fullscreenchange="fullscreen = !!video?.matches(':fullscreen')"
-      @loadedmetadata="readMetadata"
-      @loadeddata="readPreview"
-      @timeupdate="currentTime = video?.currentTime ?? 0"
-      @play="playing = true"
-      @pause="playing = false"
-      @ended="playing = false"
-      @volumechange="readVolume"
-      @error="mediaError" />
+    <!-- ACT: 视频与「暂停帧画布」放在同一个定位盒里，画布才能严丝合缝盖住画面区（见 recordPausedFrame）。 -->
+    <div v-if="hasSource" class="videoStage">
+      <video
+        ref="video"
+        class="videoPreview"
+        :class="{ nodrag: fullscreen }"
+        :src="src"
+        :poster="poster"
+        :controls="fullscreen"
+        playsinline
+        preload="auto"
+        draggable="false"
+        :aria-label="label"
+        @fullscreenchange="readFullscreen"
+        @loadedmetadata="readMetadata"
+        @loadeddata="readPreview"
+        @timeupdate="currentTime = video?.currentTime ?? 0"
+        @play="onPlay"
+        @pause="onPause"
+        @ended="onEnded"
+        @seeked="onSeeked"
+        @volumechange="readVolume"
+        @error="mediaError" />
+      <canvas v-show="pausedFrameVisible" ref="pausedFrame" class="pausedFrame" aria-hidden="true" />
+    </div>
     <div v-if="!hasSource" class="posterStage" :class="{ empty: !posterUrl }">
       <img v-if="posterUrl" class="posterImage" :src="posterUrl" :alt="label" draggable="false" @load="readPosterSize" />
       <el-button class="posterPlay" circle :icon="IconPlayerPlay" :loading="activating" aria-label="播放视频" title="播放" @click.stop="requestPlay" />
@@ -63,12 +67,17 @@ import { IconPlayerPlay, IconPlayerPause, IconVolume, IconVolumeOff, IconPhotoSc
 import { ensureNodeDirectory, useNodeFiles, workspaceMediaPath, type WorkspaceFiles } from "@toonflow/nodes-scaffold/workspaceFiles";
 import { revealNodeInViewport, useNodeFfmpeg, type BrowserFfmpegCommand } from "@toonflow/nodes-scaffold/runtime";
 import { FRAME_EPSILON, frameTarget, type FrameCommand } from "../frameTarget";
+import { runFfmpegCommand } from "../ffmpegTask";
 
 const { src, posterUrl = "", label = "节点视频", readOnly = false, resolveSource, sourcePath = "" } = defineProps<{ src: string; posterUrl?: string; label?: string; readOnly?: boolean; resolveSource?: () => Promise<void>; sourcePath?: string }>();
 // ACT: 海报态由父层提供首帧图；src 为空时只显示海报，用户点播放才 emit activate 索取视频。
 const emit = defineEmits<{ loadedmetadata: [event: Event]; posterSize: [width: number, height: number]; activate: []; deactivate: [] }>();
 const video = ref<HTMLVideoElement>();
 const rootElement = ref<HTMLElement>();
+// ACT: 暂停帧覆盖层。Electrobun 的 WKWebView 在暂停后不会保留最后一帧（画面区整块变黑，
+// 节点其余部分与继续播放都正常，见 2026-11-03 的问题记录），把这一帧自己画到画布上兜底。
+const pausedFrame = ref<HTMLCanvasElement>();
+const pausedFrameVisible = ref(false);
 const fullscreen = ref(false);
 const ready = ref(false);
 const poster = ref("");
@@ -111,6 +120,7 @@ watch(() => src, () => {
   ready.value = false;
   poster.value = "";
   playing.value = false;
+  pausedFrameVisible.value = false;
   currentTime.value = 0;
   duration.value = 0;
   presentedMediaTime = Number.NaN;
@@ -255,8 +265,114 @@ function readPreview(event: Event) {
 function mediaError() {
   ready.value = false;
   playing.value = false;
+  pausedFrameVisible.value = false;
   ElMessage.error("无法预览该视频");
 }
+
+// ACT: 暂停帧覆盖层的绘制。只用「元素布局尺寸 × DPR」当画布尺寸——getBoundingClientRect 会把
+// Vue Flow 的画布缩放算进去（高倍缩放下位图按 zoom² 膨胀），而且视频自身也会被同一个缩放放大，
+// 按布局尺寸画、交给合成器缩放才和 <video> 一致。按固有分辨率画则同屏十几个节点就是几十 MB。
+// 画面按 object-fit: contain 口径居中留白，与 <video> 一致。
+function recordPausedFrame() {
+  const source = video.value;
+  const canvas = pausedFrame.value;
+  // ACT: 先判定失败即撤层：宁可露出原生层（虽然当前会黑），也不能让过期帧盖住刚 seek 到的新位置。
+  pausedFrameVisible.value = false;
+  if (fullscreen.value) return;
+  if (!source || !canvas || source.readyState < 2 || !source.videoWidth || !source.videoHeight) return;
+  const layoutWidth = source.clientWidth;
+  const layoutHeight = source.clientHeight;
+  if (!layoutWidth || !layoutHeight) return;
+  const ratio = window.devicePixelRatio || 1;
+  const width = Math.max(1, Math.round(layoutWidth * ratio));
+  const height = Math.max(1, Math.round(layoutHeight * ratio));
+  if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+  const scale = Math.min(width / source.videoWidth, height / source.videoHeight);
+  const drawWidth = source.videoWidth * scale;
+  const drawHeight = source.videoHeight * scale;
+  try {
+    // ACT: 空帧不覆盖——画布全透明时留着 <video> 自己那层，比盖一块黑底更不容易误导。
+    if (isBlankFrame(source)) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.clearRect(0, 0, width, height);
+    context.drawImage(source, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+  } catch (error) {
+    console.warn("暂停帧绘制失败", error);
+    return;
+  }
+  pausedFrameVisible.value = true;
+}
+
+// ACT: 恢复播放后等真正呈现一帧再撤掉覆盖层，避免「先撤层、视频层还没出画」闪一下黑。
+async function clearPausedFrame() {
+  if (!pausedFrameVisible.value) return;
+  const source = video.value;
+  if (source) await presentedFrame(source);
+  if (!playing.value) return;
+  pausedFrameVisible.value = false;
+}
+
+function onPlay() {
+  playing.value = true;
+  void clearPausedFrame();
+}
+
+function onPause() {
+  playing.value = false;
+  // ACT: 在暂停事件里同步画——此时解码器仍持有最后一帧；挪到 rAF/await 之后可能已经拿不到。
+  recordPausedFrame();
+}
+
+function onEnded() {
+  playing.value = false;
+  recordPausedFrame();
+}
+
+// ACT: 暂停态拖进度条后画布要跟着换帧；播放中的 seeked 由播放本身刷新，不需要覆盖。
+// seeked 只代表解码器有新数据，帧未必已经可绘制（见 nudgeFrame 的注释），所以等一次「帧已呈现」再画。
+// 这里不能要求覆盖层当前可见：上一次绘制失败（空帧）后层是撤掉的，拖动仍要能重新画出来。
+async function onSeeked() {
+  if (playing.value) return;
+  const source = video.value;
+  if (!source) return;
+  await presentedFrame(source);
+  if (playing.value) return;
+  recordPausedFrame();
+}
+
+function readFullscreen() {
+  fullscreen.value = !!video.value?.matches(":fullscreen");
+  // ACT: 原生全屏只渲染 video 自己（top layer），覆盖层盖不上去；退出全屏若仍是暂停态就补画一次。
+  if (fullscreen.value) { pausedFrameVisible.value = false; return; }
+  requestAnimationFrame(() => {
+    if (!playing.value && !fullscreen.value) recordPausedFrame();
+  });
+}
+
+// ACT: 节点宽度变化会改元素盒子，暂停态就地重画，避免覆盖层被拉伸。逐帧合并到 rAF，
+// 拖动节点宽度/连续缩放时不会每个观察回调都做一次 drawImage。
+let frameResizeObserver: ResizeObserver | undefined;
+let frameResizeHandle: number | undefined;
+watch(video, (element, _previous, onCleanup) => {
+  frameResizeObserver?.disconnect();
+  frameResizeObserver = undefined;
+  if (!element) return;
+  frameResizeObserver = new ResizeObserver(() => {
+    if (!pausedFrameVisible.value || frameResizeHandle !== undefined) return;
+    frameResizeHandle = requestAnimationFrame(() => {
+      frameResizeHandle = undefined;
+      if (pausedFrameVisible.value) recordPausedFrame();
+    });
+  });
+  frameResizeObserver.observe(element);
+  onCleanup(() => {
+    frameResizeObserver?.disconnect();
+    frameResizeObserver = undefined;
+    if (frameResizeHandle !== undefined) cancelAnimationFrame(frameResizeHandle);
+    frameResizeHandle = undefined;
+  });
+}, { flush: "post" });
 
 async function togglePlayback() {
   if (!video.value) return;
@@ -384,12 +500,13 @@ async function nudgeFrame(source: HTMLVideoElement, target: number, signal: Abor
 
 // ACT: 8×8 缩略采样判断这一帧是否真的画出了内容。drawImage 拿到空帧时画布全透明，
 // 此时不能把 PNG 交给用户（会得到一张空白图片节点），必须重试或明确报错。
+// 探针画布复用：暂停帧覆盖层在缩放/拖动时会反复调用，每次新建 canvas + getImageData 都是 GPU 回读。
+let blankProbe: HTMLCanvasElement | undefined;
 function isBlankFrame(source: HTMLVideoElement) {
-  const probe = document.createElement("canvas");
-  probe.width = 8;
-  probe.height = 8;
+  const probe = blankProbe ??= Object.assign(document.createElement("canvas"), { width: 8, height: 8 });
   const context = probe.getContext("2d");
   if (!context) return false;
+  context.clearRect(0, 0, 8, 8);
   context.drawImage(source, 0, 0, 8, 8);
   const data = context.getImageData(0, 0, 8, 8).data;
   for (let index = 3; index < data.length; index += 4) if (data[index]) return false;
@@ -429,29 +546,10 @@ async function captureOnHost(command: FrameCommand, id: string, workspaceFiles: 
 }
 
 function runFfmpeg(command: BrowserFfmpegCommand, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    function finish(error?: unknown) {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal.removeEventListener("abort", abort);
-      if (error === undefined) resolve();
-      else reject(error);
-    }
-    // ACT: kill 只是取消握手，宿主子进程还在收尾；等 end/error 到达（或 2s 宽限）才算结束，
-    // 否则调用方立刻删目录会和仍在写盘的 ffmpeg 交错。
-    function stop(reason: unknown) {
-      command.kill("SIGKILL");
-      window.setTimeout(() => finish(reason), 2000);
-    }
-    function abort() { stop(signal.reason ?? new Error("截帧已取消")); }
-    const timer = window.setTimeout(() => stop(new Error("视频取帧超时")), CAPTURE_TIMEOUT_MS);
-    if (signal.aborted) return abort();
-    signal.addEventListener("abort", abort, { once: true });
-    command.on("end", () => finish(signal.aborted ? signal.reason ?? new Error("截帧已取消") : undefined));
-    command.on("error", (error: Error) => finish(error));
-    command.run();
+  return runFfmpegCommand(command, signal, {
+    timeoutMs: CAPTURE_TIMEOUT_MS,
+    timeoutMessage: "视频取帧超时",
+    abortMessage: "截帧已取消",
   });
 }
 
@@ -678,6 +776,17 @@ async function captureFrame(command: "current" | "first" | "last") {
       backdrop-filter: none;
       &:hover { background: rgb(0 0 0 / 65%); }
     }
+  }
+  .videoStage {
+    position: relative;
+  }
+  .pausedFrame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: var(--el-border-radius-base);
+    pointer-events: none;
   }
   .videoPreview {
     display: block;

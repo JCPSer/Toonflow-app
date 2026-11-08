@@ -83,12 +83,29 @@
           <section class="projectList" data-home-section="projects" aria-labelledby="projectListTitle">
             <div class="projectListHeader">
               <h2 id="projectListTitle">项目</h2>
-              <el-button v-if="canShareProject" class="importProjectButton" :icon="IconFileImport" :disabled="creating || opening" @click="chooseImportFile">
-                导入工程…
-              </el-button>
+              <div class="projectListTools">
+                <el-radio-group v-if="hiddenUnlocked" v-model="projectTab" class="projectTabs" size="small" aria-label="项目分类">
+                  <el-radio-button value="projects">项目</el-radio-button>
+                  <el-radio-button value="hidden">隐藏项目</el-radio-button>
+                </el-radio-group>
+                <el-button
+                  v-if="hiddenAuthCapable && hiddenAuthSupported !== false"
+                  class="hiddenLockButton"
+                  :icon="hiddenUnlocked ? IconLockOpen : IconLock"
+                  :loading="hiddenVerifying"
+                  :disabled="creating || opening"
+                  circle
+                  text
+                  :title="hiddenUnlocked ? '锁定' : '解锁'"
+                  :aria-label="hiddenUnlocked ? '锁定隐藏项目' : '解锁隐藏项目'"
+                  @click="toggleHiddenLock" />
+                <el-button v-if="canShareProject" class="importProjectButton" :icon="IconFileImport" :disabled="creating || opening" @click="chooseImportFile">
+                  导入工程…
+                </el-button>
+              </div>
             </div>
             <div class="projectItems">
-              <el-card class="projectCard" shadow="never" :bodyStyle="{ padding: '0', height: '100%' }">
+              <el-card v-if="projectTab === 'projects'" class="projectCard" shadow="never" :bodyStyle="{ padding: '0', height: '100%' }">
                 <button class="projectLaunch" type="button" :disabled="creating || opening || relocationPicker?.selecting" :aria-busy="creating || relocationPicker?.selecting" title="选择空文件夹新建，或打开已有项目" @click="createProject(false)">
                   <span class="launchIcon">
                     <icon-loader-2 v-if="creating || relocationPicker?.selecting" class="isLoading" :size="24" aria-hidden="true" />
@@ -100,7 +117,7 @@
                   </span>
                 </button>
               </el-card>
-              <el-card v-for="project in sortedProjects" :key="project.directory" class="projectCard" shadow="never" :bodyStyle="{ padding: '0', height: '100%' }" @contextmenu="openProjectMenu($event, project)">
+              <el-card v-for="project in displayedProjects" :key="project.directory" class="projectCard" shadow="never" :bodyStyle="{ padding: '0', height: '100%' }" @contextmenu="openProjectMenu($event, project)">
                 <button class="projectEntry" type="button" :disabled="creating || opening" :title="project.directory" :aria-label="`打开项目 ${project.name}`" @click="openProject(project)">
                   <projectCover :directory="project.directory" />
                   <span class="projectInfo">
@@ -109,10 +126,18 @@
                   </span>
                 </button>
                 <div class="projectActions">
+                  <el-button
+                    circle
+                    :icon="projectTab === 'hidden' ? IconEye : IconEyeOff"
+                    :disabled="creating || opening || (hiddenAuthCapable && hiddenAuthSupported === false)"
+                    :aria-label="projectTab === 'hidden' ? `取消隐藏项目 ${project.name}` : `隐藏项目 ${project.name}`"
+                    :title="projectTab === 'hidden' ? '取消隐藏' : '隐藏'"
+                    @click="toggleProjectHidden(project)" />
                   <el-button circle :icon="IconEdit" :disabled="creating || opening" :aria-label="`重命名项目 ${project.name}`" title="重命名" @click="renameProject(project)" />
                   <el-button circle plain type="danger" :icon="IconTrash" :disabled="creating || opening" :aria-label="`移除项目 ${project.name}`" title="从列表移除，不删除文件" @click="workspaceStore.removeProject(project.directory)" />
                 </div>
               </el-card>
+              <p v-if="projectTab === 'hidden' && !displayedProjects.length" class="projectEmpty">还没有隐藏项目。在「项目」里点击卡片右上角的眼睛图标即可隐藏。</p>
             </div>
           </section>
           <div data-home-section="explore"><explore :scrollElement="pageScroll?.wrapRef" /></div>
@@ -158,7 +183,7 @@ import {
   IconQrcode, IconDeviceDesktop, IconHome, IconCompass,
   IconArrowUp, IconPlus, IconLoader2,
   IconFolder, IconEdit, IconFileImport, IconShare,
-  IconTrash, IconPaperclip,
+  IconTrash, IconPaperclip, IconLock, IconLockOpen, IconEye, IconEyeOff,
 } from "@tabler/icons-vue";
 import modelPopover from "@/components/modelPopover.vue";
 import attachmentList from "@/components/agent/attachmentList.vue";
@@ -169,6 +194,7 @@ import shareExportDialog from "@/components/projectShare/shareExportDialog.vue";
 import shareImportDialog from "@/components/projectShare/shareImportDialog.vue";
 import { useShareFileDrop } from "@/components/projectShare/useShareDrop";
 import { selectShareSourceFile, shareErrorMessage, type ShareImportResult } from "@/lib/projectShare";
+import { filterVisibleProjects, isProjectHidden, lockHiddenProjects, refreshAuthSupport, unlockHiddenProjects, useProjectPrivacy, usesNativeAuth } from "@/lib/projectPrivacy";
 import { isDesktop, isRemoteConnection } from "@/lib/platform";
 import logoUrl from "@toonflow/assets/logo.svg";
 import { useWorkspaceStore, type Project } from "@/stores/workspace";
@@ -177,6 +203,7 @@ import { deviceHubEnabled, mobileConnection, mobileConnectionLabel } from "@/lib
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { waitForControlValue } from "@/lib/mcpControl";
 import settings from "@/components/settings/index.vue";
+import { useSettingsShortcut } from "@/components/settings/useSettingsShortcut";
 import assetLibraryView from "./assetLibraryView.vue";
 import bg from "./bg.vue";
 import explore from "./explore.vue";
@@ -184,6 +211,7 @@ import projectCover from "./projectCover.vue";
 import workspacePicker from "./workspacePicker.vue";
 
 const settingsVisible = ref(false);
+useSettingsShortcut(() => settingsVisible.value, open => { settingsVisible.value = open; });
 const settingsRef = ref<InstanceType<typeof settings>>();
 const assetsMode = ref(false);
 // 惰性挂载：第一次进入才创建素材库，之后用 v-show 保留树的展开状态与上传队列。
@@ -215,7 +243,12 @@ const draggingAttachments = ref(false);
 let attachmentDragDepth = 0;
 const workspaceStore = useWorkspaceStore();
 const { project, projectList } = storeToRefs(workspaceStore);
-const workspaceDirectory = ref(project.value?.directory ?? "");
+// ACT: 隐藏项目的解锁状态与 tab 都只活在内存里；重启后回到「项目 + 锁定」。
+const projectTab = ref<"projects" | "hidden">("projects");
+const { unlocked: hiddenUnlocked, verifying: hiddenVerifying, authSupported: hiddenAuthSupported } = useProjectPrivacy();
+const hiddenAuthCapable = usesNativeAuth();
+// ACT: 锁定态不把上次打开的隐藏项目预填进创作框，否则路径与项目名直接露在首页。
+const workspaceDirectory = ref(project.value?.hidden && !hiddenUnlocked.value ? "" : project.value?.directory ?? "");
 const placeholderPhrases = [
   "描述你想创作的内容，让灵感从这里开始…",
   "把一个故事灵感，变成一段精彩的短片…",
@@ -244,6 +277,8 @@ function onWindowKeydown(event: KeyboardEvent) {
 }
 
 onMounted(() => {
+  // ACT: 先探测验证能力，再允许隐藏项目；探测失败时隐藏按钮保持禁用。
+  void refreshAuthSupport();
   window.addEventListener("keydown", onWindowKeydown);
   window.addEventListener("pointerdown", dismissProjectMenu, true);
   window.addEventListener("scroll", closeProjectMenu, true);
@@ -312,7 +347,40 @@ watch([creating, opening], ([creating, opening]) => {
 
 const selectedModel = ref("");
 const reasoningEffort = ref("");
-const sortedProjects = computed(() => [...projectList.value].sort((left, right) => right.lastOpenedAt - left.lastOpenedAt));
+const sortedVisibleProjects = computed(() => filterVisibleProjects([...projectList.value]).sort((left, right) => right.lastOpenedAt - left.lastOpenedAt));
+const sortedHiddenProjects = computed(() => projectList.value.filter(isProjectHidden).sort((left, right) => right.lastOpenedAt - left.lastOpenedAt));
+// ACT: 锁定态即使 tab 停在 hidden 也不能露出隐藏项目（例如在设置里关掉开关后）。
+const displayedProjects = computed(() => (projectTab.value === "hidden" && hiddenUnlocked.value ? sortedHiddenProjects.value : sortedVisibleProjects.value));
+
+/** 锁图标：未解锁时发起系统验证，已解锁时立即锁定。 */
+async function toggleHiddenLock() {
+  if (!hiddenAuthCapable) return;
+  if (hiddenUnlocked.value) {
+    lockHiddenProjects();
+    projectTab.value = "projects";
+    return;
+  }
+  const result = await unlockHiddenProjects();
+  if (!result.ok) ElMessage.warning(result.message ?? "验证未通过，隐藏项目保持锁定");
+}
+
+watch(hiddenUnlocked, value => {
+  if (!value) projectTab.value = "projects";
+  // ACT: 刚在设置里锁定后，创作框里可能还留着隐藏项目的目录，一并清掉。
+  if (!value && project.value?.hidden) workspaceDirectory.value = "";
+});
+
+function toggleProjectHidden(project: Project) {
+  const hidden = project.hidden !== true;
+  // ACT: 安装包没有系统验证能力时（Windows/旧包/验证库缺失），藏进去就再也解不开，直接拒绝。
+  if (hidden && hiddenAuthCapable && hiddenAuthSupported.value === false) {
+    ElMessage.warning("当前安装包不支持系统验证，无法隐藏项目");
+    return;
+  }
+  workspaceStore.setProjectHidden(project.directory, hidden);
+  // ACT: 取消隐藏后仍停留在隐藏 tab，看到项目从列表消失才是明确反馈。
+  ElMessage.success(hidden ? "已隐藏项目" : "已取消隐藏");
+}
 
 // ACT: 分享包依赖桌面宿主的保存/打开文件对话框；浏览器与远程连接只能用拖拽导入。
 const canShareProject = isDesktop && !isRemoteConnection;
@@ -998,10 +1066,35 @@ async function createProject(fromPrompt = true) {
               line-height: 1.5;
             }
 
+            .projectListTools {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              flex-shrink: 0;
+            }
+
+            .projectTabs {
+              flex-shrink: 0;
+            }
+
+            .hiddenLockButton {
+              margin: 0;
+              flex-shrink: 0;
+            }
+
             .importProjectButton {
               flex-shrink: 0;
               margin: 0;
             }
+          }
+
+          .projectEmpty {
+            grid-column: 1 / -1;
+            margin: 0;
+            padding: 32px 0;
+            color: var(--el-text-color-secondary);
+            font-size: 13px;
+            text-align: center;
           }
 
           .projectItems {

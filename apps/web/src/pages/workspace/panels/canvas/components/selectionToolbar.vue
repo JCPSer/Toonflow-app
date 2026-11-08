@@ -27,7 +27,7 @@
       <span class="toolbarDivider" aria-hidden="true" />
       <el-tooltip :disabled="canSaveToAssets" content="仅支持图片/视频节点" placement="top">
         <span class="toolbarItem">
-          <el-button text :icon="IconLibraryPlus" :loading="saving" :disabled="busy || disabled || !canSaveToAssets" @click="saveToAssets">加入素材库</el-button>
+          <el-button text :icon="IconLibraryPlus" :disabled="busy || disabled || !canSaveToAssets" @click="saveToAssets">加入素材库</el-button>
         </span>
       </el-tooltip>
       <template v-if="disableTargets.length || enableTargets.length">
@@ -49,6 +49,8 @@
       </template>
     </div>
   </el-card>
+  <!-- ACT: 弹窗挂在工具栏本体上而不是卡片内部：卡片随选区显隐，弹窗打开后选区变化不能把它一起卸载。 -->
+  <batchSaveToLibraryDialog ref="batchSaveDialog" :directory="workspace.project?.directory" @saved="onBatchSaved" />
 </template>
 
 <script setup lang="ts">
@@ -61,12 +63,13 @@ import {
 } from "@tabler/icons-vue";
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
 import { useWorkspaceStore } from "@/stores/workspace";
-import { useAssetLibraryStore } from "@/stores/assetLibrary";
 import { finishGroupDrag, getSelectionRoots, getSelectionTree } from "../selectionNodes";
 import { detachAgentSession } from "../agentSessionCopy";
 import { gridSize, snapOffset, snapPoint, subtractPoint } from "../snapNodes";
 import { arrangeSelection, type ArrangeSelectionMode } from "../arrangeSelection";
-import { expandSelectionForAssets, getAssetSource, saveSelectionToAssets } from "../saveSelectionToAssets";
+import { expandSelectionForAssets, getAssetSource, prepareSelectionAssets } from "../selectionAssets";
+import type { SaveSelectionToAssetsResult } from "../saveSelectionToAssets";
+import batchSaveToLibraryDialog from "./batchSaveToLibraryDialog.vue";
 
 const props = defineProps<{
   batchHistory: (action: () => Promise<void>) => Promise<void>;
@@ -77,7 +80,7 @@ const flow = useVueFlow();
 const workspace = useWorkspaceStore();
 const toolbar = ref<InstanceType<typeof ElCard>>();
 const busy = ref(false);
-const saving = ref(false);
+const batchSaveDialog = ref<InstanceType<typeof batchSaveToLibraryDialog>>();
 const layoutActions = [
   { mode: "horizontal", label: "水平排列", icon: IconLayoutColumns },
   { mode: "vertical", label: "垂直排列", icon: IconLayoutRows },
@@ -337,25 +340,23 @@ function startDragCopy(selection: GraphNode[], withEdges: boolean) {
   };
 }
 
-async function saveToAssets() {
-  const directory = workspace.project?.directory;
-  if (saving.value || busy.value || props.disabled || !directory || !canSaveToAssets.value) return;
-  // ACT: 固定开始时的选中集合；批量入库期间用户继续点选不会把范围和序号带偏。
+function saveToAssets() {
+  if (busy.value || props.disabled || !workspace.project?.directory || !canSaveToAssets.value) return;
+  // ACT: 固定点击时的选中集合；弹窗打开后再改选区不会把范围和序号带偏。
   // 只传 eligible：分组已展开，禁用节点在上面的 assetSelection 里已剔除。
-  const selection = [...assetSelection.value];
-  saving.value = true;
-  try {
-    const result = await saveSelectionToAssets(flow, selection, directory, useAssetLibraryStore().getSaveDefaults(directory));
-    if (result.saved) {
-      ElMessage.success(`已加入 ${result.saved} 个素材${result.renamed ? `，其中 ${result.renamed} 个重名已自动改名` : ""}`);
-    }
-    if (result.failed.length) {
-      ElMessage.error(`失败 ${result.failed.length} 个：${result.failed[0]!.label}（${result.failed[0]!.reason}）`);
-    }
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : "加入素材库失败");
-  } finally {
-    saving.value = false;
+  const items = prepareSelectionAssets(flow, [...assetSelection.value]);
+  if (!items.length) return;
+  batchSaveDialog.value?.open(items);
+}
+
+function onBatchSaved(result: SaveSelectionToAssetsResult, target: { library: "project" | "global"; path: string }) {
+  if (result.saved) {
+    const library = target.library === "project" ? "本项目素材库" : "全局素材库";
+    const location = target.path ? `${library}/${target.path}` : `${library}根目录`;
+    ElMessage.success(`已加入 ${result.saved} 个素材到 ${location}${result.renamed ? `，其中 ${result.renamed} 个重名已自动改名` : ""}`);
+  }
+  if (result.failed.length) {
+    ElMessage.error(`失败 ${result.failed.length} 个：${result.failed[0]!.label}（${result.failed[0]!.reason}）`);
   }
 }
 

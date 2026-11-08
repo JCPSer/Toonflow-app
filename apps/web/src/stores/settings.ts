@@ -3,7 +3,7 @@ import { normalizeLocale } from "@toonflow/i18n";
 import { computed, nextTick, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { invalidateNodeModels } from "@toonflow/nodes-scaffold/nodeAi";
-import { canvasShortcutFields, defaultCanvasShortcuts, getShortcutBindings, isShortcutAllowed, normalizeShortcut, type CanvasShortcuts } from "@/lib/canvasShortcuts";
+import { canvasShortcutFields, defaultCanvasShortcuts, isShortcutAllowed, normalizeShortcut, shortcutConflicts, type CanvasShortcuts } from "@/lib/canvasShortcuts";
 import { normalizeNodeMenu, type StoredNodeMenuItem } from "@toonflow/server/nodeMenu";
 import type { ReasoningEfforts, ThinkingLevel } from "@toonflow/server/modelReasoning";
 import "element-plus/es/components/message/style/css";
@@ -56,6 +56,16 @@ export function normalizeCompletionSound(value: unknown): "always" | "off" {
   return value === "off" ? "off" : "always";
 }
 
+/** 提示音音量百分比：0 = 静音，100 = 满音量；40 为默认值（约等于原先固定增益的两倍多）。 */
+export const defaultCompletionSoundVolume = 40;
+
+export function normalizeCompletionSoundVolume(value: unknown) {
+  // ACT: 0 是合法值（静音），不能用 `x || 默认值` 兜底；只有缺键或非数字才回落默认。
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(100, Math.max(0, Math.round(value)))
+    : defaultCompletionSoundVolume;
+}
+
 export const generalSettings = computed(() => {
   const raw = settings.value.general;
   const general = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
@@ -76,6 +86,7 @@ export const generalSettings = computed(() => {
     canvasEdgeColor: typeof general.canvasEdgeColor === "string" && /^#[\da-f]{6}$/i.test(general.canvasEdgeColor) ? general.canvasEdgeColor : defaultUiSettings.primaryColor,
     // ACT: 节点提醒的开关是新增项，老配置里没有键；缺省值必须合法，否则提示音在升级后静默失效。
     completionSound: normalizeCompletionSound(general.completionSound),
+    completionSoundVolume: normalizeCompletionSoundVolume(general.completionSoundVolume),
     taskNotification: general.taskNotification !== false,
     // ACT: 画布工具条上的显示偏好；缺键按关，升级后仍显示禁用节点的名称与徽标。
     hideDisabledNodeTitles: general.hideDisabledNodeTitles === true,
@@ -86,8 +97,9 @@ export const generalSettings = computed(() => {
     canvasShortcuts: Object.fromEntries(canvasShortcutFields.map(field => {
       if (savedBindings.has(field.id)) return [field.id, savedBindings.get(field.id)];
       const binding = defaultCanvasShortcuts[field.id];
+      // ACT: None 对普通按键是「关闭」哨兵（不冲突）；按住类手势之间都为 None 仍视为抢同一手势。
       const conflicts = canvasShortcutFields.some(other => other.gesture === field.gesture
-        && getShortcutBindings(savedBindings.get(other.id) ?? "").some(value => getShortcutBindings(binding).includes(value)));
+        && shortcutConflicts(binding, [{ binding: savedBindings.get(other.id) ?? "", hold: other.hold }], field.hold));
       return [field.id, conflicts ? "" : binding];
     })) as CanvasShortcuts,
   };

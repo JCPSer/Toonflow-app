@@ -1,6 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
+    :run="runFromShortcut"
     :busy="generating || transcribing || uploading || !!actions?.processing"
     :topVisible="node.selected"
     :bottomVisible="node.selected"
@@ -202,6 +203,12 @@ function loadModels() {
     modelsRequest = undefined;
   });
   return modelsRequest;
+}
+
+// ACT: 画布快捷键 ⌘Enter 的入口。与按钮同一套守卫：运行中直接忽略，失败按节点原有方式提示。
+function runFromShortcut() {
+  if (generating.value) return;
+  return startGeneration().catch(error => showNodeError(error, "音频生成失败"));
 }
 
 async function startGeneration() {

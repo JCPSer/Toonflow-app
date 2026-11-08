@@ -108,7 +108,7 @@ import type { AgentMention } from "@toonflow/server/agent/types";
 import type { AgentEvent } from "@toonflow/server/agent/types";
 import { createConversationStream, readAgentEvents } from "./replyStream";
 import { mentionPlainText } from "./mentionText";
-import type { CanvasContext } from "@toonflow/tool-canvas/runtime";
+import type { CanvasCallOrigin, CanvasContext } from "@toonflow/tool-canvas/runtime";
 import messageList from "./conversation/messageList.vue";
 import messageInput from "./conversation/messageInput.vue";
 import { defaultMaxRounds, donePattern, goalPath, goalReviewPrompt, stripDoneMark, type GoalState } from "./conversation/goal";
@@ -716,11 +716,12 @@ async function uploadAttachments(attachments: AgentAttachment[], directory: stri
   }
 }
 
-async function sendCanvasResult(event: Extract<AgentEvent, { type: "canvasCall" }>, canvasContext: CanvasContext | undefined, signal: AbortSignal) {
+async function sendCanvasResult(event: Extract<AgentEvent, { type: "canvasCall" }>, canvasContext: CanvasContext | undefined,
+  signal: AbortSignal, origin?: CanvasCallOrigin) {
   let body: string;
   try {
     if (!canvasContext) throw new Error("当前页面没有激活的画布");
-    const result = await canvasContext.call(event, signal);
+    const result = await canvasContext.call(event, signal, origin);
     body = JSON.stringify({ directory, callId: event.callId, result: result ?? null });
   } catch (error) {
     body = JSON.stringify({ directory, callId: event.callId, error: (error instanceof Error && error.message ? error.message : translate("画布操作失败")).slice(0, 8000) });
@@ -846,7 +847,7 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedDraft) {
       if (toolEvent.type === "canvasCall") {
         if (handledCanvasCalls.has(toolEvent.callId)) throw new Error("收到重复的画布调用");
         handledCanvasCalls.add(toolEvent.callId);
-        await sendCanvasResult(toolEvent, canvasContext, requestController.signal);
+        await sendCanvasResult(toolEvent, canvasContext, requestController.signal, props.nodeBinding);
         continue;
       }
       switch (event.type) {

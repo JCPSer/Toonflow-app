@@ -70,6 +70,7 @@ import route67 from "./routes/desktop/update/apply";
 import route68 from "./routes/desktop/update/check";
 import route69 from "./routes/desktop/update/download";
 import route70 from "./routes/desktop/update/index";
+import routeDesktopAuth from "./routes/desktop/auth";
 import route71 from "./routes/exec/cancel";
 import route72 from "./routes/exec/index";
 import route73 from "./routes/ext/install";
@@ -239,6 +240,7 @@ export default (app: Express) => {
   app.use("/api/desktop/clipboard/read", route58);
   app.use("/api/desktop/clipboard/write", route59);
   app.use("/api/desktop/devtools", route60);
+  app.use("/api/desktop/auth", routeDesktopAuth);
   app.use("/api/desktop/dialog", route61);
   app.use("/api/desktop/openUrl", route62);
   app.use("/api/desktop/plugins/install", route63);

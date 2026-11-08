@@ -80,7 +80,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, ref, watch } from "vue";
+import { computed, getCurrentInstance, nextTick, onScopeDispose, ref, watch } from "vue";
 import { useNodeId, useVueFlow } from "@vue-flow/core";
 import { IconVideo, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconMovie, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { ElButton, ElMessage, ElProgress, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
@@ -89,6 +89,8 @@ import videoPlayer from "./components/videoPlayer.vue";
 import videoActions from "./components/videoActions.vue";
 import frameOutputMenu from "./components/frameOutputMenu.vue";
 import { buildFrameHandles, createFrameOutputTool, staticNodeHandles, useFrameOutputs, type FrameOutputConfig } from "./frameOutput";
+import { createVideoInspect } from "./inspectVideo";
+import { createVideoInspectTools } from "./inspectVideoTool";
 
 defineOptions({
   inheritAttrs: false,
@@ -132,6 +134,22 @@ watch(nodeDisabled, (disabled) => {
 });
 
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
+// ACT: Agent 查看视频：宫格看全片、单帧看细节；产物写 assets/<nodeId>/inspect/，不碰首尾帧端口。
+const videoInspect = createVideoInspect({
+  id: nodeId,
+  getFiles: files.getWorkspaceFiles,
+  createFfmpeg: ffmpeg,
+  getVideo: () => outputFile.value && /^video\//.test(outputFile.value.mimeType)
+    ? { path: outputFile.value.url, mimeType: outputFile.value.mimeType } : undefined,
+  blockedReason: () => uploading.value ? "视频处理中，请稍后重试" : exporting.value ? "视频正在导出，请稍后重试" : undefined,
+});
+const inspectTools = createVideoInspectTools(videoInspect);
+nodeTools.register(inspectTools.sampleFrames);
+nodeTools.register(inspectTools.captureFrame);
+// ACT: 卸载时按目录引用计数释放；没真正查看过的节点不会登记，也不会在关窗时发无意义的删除请求。
+onScopeDispose(() => { void videoInspect.dispose(); });
+// ACT: 视频换了（含打开项目时的残留）就清掉旧查看产物，避免 Agent 还能 read 到上一版画面。
+watch(() => outputFile.value?.url, () => { void videoInspect.clear(); }, { immediate: true });
 // ACT: 默认只取服务端首帧图，点播放才把整段视频读成 Blob；闲置后自动释放。
 const { url: previewUrl, posterUrl, activate, deactivate } = files.useLazyFileUrl(
   outputFile,

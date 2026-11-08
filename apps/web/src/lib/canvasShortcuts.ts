@@ -1,5 +1,5 @@
 const isMac = globalThis.navigator?.platform?.includes("Mac") ?? false;
-const primaryModifier = isMac ? "Meta" : "Ctrl";
+export const primaryModifier = isMac ? "Meta" : "Ctrl";
 const modifiers = ["Ctrl", "Alt", "Shift", "Meta"];
 
 export const defaultCanvasShortcuts = {
@@ -17,7 +17,14 @@ export const defaultCanvasShortcuts = {
   handTool: "KeyH",
   arrange: "Alt+Shift+KeyF",
   search: `${primaryModifier}+KeyF`,
+  // ACT: 三个面板入口用裸字母键：现有字母键只有 V/H（工具），Q/W/E 全空；带修饰键的组合容易和系统/浏览器抢。
+  projectPicker: "KeyQ",
+  canvasPicker: "KeyW",
+  assetLibrary: "KeyE",
   delete: "Backspace",
+  clearAlerts: "Enter",
+  // ACT: ⌘Enter 跑选中节点。注意与 clearAlerts 的裸 Enter 不冲突：匹配是修饰键严格全等的。
+  runNode: `${primaryModifier}+Enter`,
   copy: `${primaryModifier}+KeyC`,
   cut: `${primaryModifier}+KeyX`,
   paste: `${primaryModifier}+KeyV`,
@@ -58,7 +65,12 @@ export const canvasShortcutFields: {
   { id: "redo", label: "重做" },
   { id: "toggleDisabled", label: "禁用/解除禁用节点" },
   { id: "search", label: "画布节点搜索" },
+  { id: "projectPicker", label: "项目下拉" },
+  { id: "canvasPicker", label: "画布下拉" },
+  { id: "assetLibrary", label: "素材库面板" },
   { id: "delete", label: "删除" },
+  { id: "clearAlerts", label: "清除未读提醒", allowNone: true },
+  { id: "runNode", label: "运行选中节点" },
   { id: "copy", label: "复制到剪贴板" },
   { id: "cut", label: "剪切到剪贴板" },
   { id: "paste", label: "粘贴" },
@@ -113,16 +125,42 @@ export function shortcutFromEvent(event: KeyboardEvent) {
     .filter(Boolean).join("+");
 }
 
+/**
+ * ACT: 「None」在按住类手势里表示「无需按键、始终生效」（如框选/平移），两个按住类动作都为 None
+ * 会抢同一个鼠标手势，仍算冲突；对普通按键动作（如清除未读提醒）None 表示「关闭」，不参与冲突。
+ */
+export function shortcutConflicts(binding: string, others: Iterable<{ binding: string; hold?: boolean }>, hold = false) {
+  const own = getShortcutBindings(binding);
+  for (const other of others) {
+    const theirs = getShortcutBindings(other.binding);
+    for (const value of own) {
+      if (!theirs.includes(value)) continue;
+      if (value !== "None" || (hold && other.hold === true)) return true;
+    }
+  }
+  return false;
+}
+
 export function shortcutMatches(event: KeyboardEvent, binding: string) {
   return !!binding && event.type !== "keyup" && getShortcutBindings(binding).includes(shortcutFromEvent(event));
 }
 
-export function shortcutPressed(event: Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">, binding: string, pressedCodes: ReadonlySet<string>) {
+export function shortcutPressed(
+  event: Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
+  binding: string,
+  pressedCodes: ReadonlySet<string>,
+  options: { allowExtraShift?: boolean } = {},
+) {
   return getShortcutBindings(binding).some(value => {
     if (value === "None") return true;
     const parts = value.split("+");
+    // ACT: Shift 固定留给画布轴锁，拖动手势按「忽略额外 Shift」匹配——Shift+Alt 仍然算 Alt 复制。
+    // 其余修饰键保持严格全等，避免 Ctrl/⌘ 之类误命中。
+    const shiftMatches = parts.includes("Shift")
+      ? event.shiftKey
+      : event.shiftKey === false || options.allowExtraShift === true;
     if (event.ctrlKey !== parts.includes("Ctrl") || event.altKey !== parts.includes("Alt")
-      || event.shiftKey !== parts.includes("Shift") || event.metaKey !== parts.includes("Meta")) return false;
+      || !shiftMatches || event.metaKey !== parts.includes("Meta")) return false;
     const key = parts.find(part => !modifiers.includes(part));
     return !key || pressedCodes.has(key);
   });

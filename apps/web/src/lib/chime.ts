@@ -1,9 +1,11 @@
 /**
- * 任务提示音：用 WebAudio 现场合成，不引入音频文件，也不依赖系统音量之外的任何配置。
+ * 任务提示音：用 WebAudio 现场合成，不引入音频文件；音量由设置页的「提示音音量」控制（缺省 40%，0 静音）。
  *
  * ACT: AudioContext 必须在用户手势里创建/恢复，否则浏览器（含桌面 WebView）会把它挂在
  * suspended 上，之后所有提示音都静默。启动时挂一次 pointerdown 做解锁，播放前再 resume 一次兜底。
  */
+
+import { generalSettings } from "@/stores/settings";
 
 export type ChimeKind = "success" | "failure" | "question";
 
@@ -14,8 +16,14 @@ const chimePitches: Record<ChimeKind, readonly [number, number]> = {
   question: [880, 880],
 };
 
-/** 单音总音量。节点提醒是背景信息，不能盖过用户正在试听的素材。 */
-const VOLUME = 0.18;
+/**
+ * ACT: 音量由设置页的「提示音音量」百分比决定（0-100，缺省 40），不再写死固定增益——
+ * 同一份提示音在不同机器/不同听音环境下感受差别很大。0 直接不发声，避免“以为关了”却还有残响。
+ */
+function currentVolume() {
+  // generalSettings 已做 0-100 归一化，这里只换算成增益，不再重复兜底。
+  return generalSettings.value.completionSoundVolume / 100;
+}
 /** 两个音之间的静默间隔。 */
 const GAP_SECONDS = 0.06;
 /** 指数衰减到接近零的终点；exponentialRamp 不允许到 0。 */
@@ -47,6 +55,9 @@ export function unlockChime() {
 
 /** 播放一组双音（音高见 chimePitches）。同一时刻只播一组。 */
 export function playChime(kind: ChimeKind) {
+  const volume = currentVolume();
+  // ACT: 调到 0 时连正在响的一声也立刻停掉，否则刚调静音还会听到上一次的尾音。
+  if (volume <= 0) { stopCurrent?.(); return; }
   const audio = getContext();
   if (!audio) return;
   void audio.resume().catch(() => {});
@@ -62,7 +73,7 @@ export function playChime(kind: ChimeKind) {
     const gain = audio.createGain();
     oscillator.type = "sine";
     oscillator.frequency.value = frequency;
-    gain.gain.setValueAtTime(VOLUME, cursor);
+    gain.gain.setValueAtTime(volume, cursor);
     gain.gain.exponentialRampToValueAtTime(SILENCE, cursor + duration);
     oscillator.connect(gain).connect(audio.destination);
     oscillator.start(cursor);

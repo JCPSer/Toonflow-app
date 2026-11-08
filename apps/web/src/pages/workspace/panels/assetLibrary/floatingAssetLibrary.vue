@@ -47,6 +47,8 @@
       </header>
       <AssetLibraryContent ref="contentRef" :directory="directory" :active="visible" />
     </div>
+    <!-- ACT: 面板右边缘的悬停关闭入口；面板关闭时不渲染，避免留下可聚焦的隐藏按钮。 -->
+    <assetPanelCloseTrigger v-if="visible" @close="visible = false" />
   </floatingPanel>
 </template>
 
@@ -59,6 +61,7 @@ import { useAssetLibraryStore } from "@/stores/assetLibrary";
 import { useSessionStateStore } from "@/stores/sessionState";
 import floatingPanel from "@/pages/workspace/components/floatingPanel.vue";
 import AssetLibraryContent from "./index.vue";
+import assetPanelCloseTrigger from "./assetPanelCloseTrigger.vue";
 
 type FloatingPanelLayout = { left: number | null; top: number | null; width: number; height: number };
 

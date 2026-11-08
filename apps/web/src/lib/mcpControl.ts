@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import type { NodeToolInfo } from "@toonflow/tools-scaffold/runtime";
 import { invalidateNodeModels } from "@toonflow/nodes-scaffold/nodeAi";
 import { saveSettings, settings } from "@/stores/settings";
+import { filterVisibleProjects, useProjectPrivacy } from "@/lib/projectPrivacy";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 type ControlCall = { type: "call"; callId: string; name: string; args: Record<string, unknown>; directory?: string };
@@ -13,6 +14,23 @@ type WorkspaceControl = {
   flushSave(): Promise<void>;
 };
 const workspaceControl = shallowRef<WorkspaceControl>();
+
+/** 锁定态下从 settings 快照里剔除隐藏项目的痕迹（列表项与按目录命名的 store 键）。 */
+function maskHiddenStores(snapshot: Record<string, unknown>, projects: { directory: string; hidden?: boolean }[]) {
+  const hiddenDirectories = projects.filter(project => project.hidden).map(project => project.directory);
+  if (!hiddenDirectories.length) return;
+  const stores = snapshot.stores as Record<string, any> | undefined;
+  if (!stores) return;
+  const projectStore = stores["toonflow.projectList"];
+  if (projectStore) {
+    if (projectStore.project?.hidden) projectStore.project = null;
+    if (Array.isArray(projectStore.projectList)) projectStore.projectList = filterVisibleProjects(projectStore.projectList, false);
+  }
+  for (const key of Object.keys(stores)) {
+    if (key === "toonflow.projectList") continue;
+    if (hiddenDirectories.some(directory => key.includes(directory))) delete stores[key];
+  }
+}
 
 export function registerWorkspaceControl(control: WorkspaceControl) {
   workspaceControl.value = control;
@@ -44,12 +62,20 @@ export function useMcpControl() {
   const router = useRouter();
   const workspaceStore = useWorkspaceStore();
   const calls = new Map<string, AbortController>();
-  const readSettings = () => JSON.parse(JSON.stringify(settings.value, (key, value) =>
-    /(?:api.?key|token|password|secret)$/i.test(key) && value ? "[REDACTED]" : value));
+  const { unlocked: hiddenUnlocked } = useProjectPrivacy();
+  const readSettings = () => {
+    const clone = JSON.parse(JSON.stringify(settings.value, (key, value) =>
+      /(?:api.?key|token|password|secret)$/i.test(key) && value ? "[REDACTED]" : value));
+    // ACT: settings.stores 里既有完整项目列表，也有按项目目录命名的文档布局键；
+    // 锁定态必须一起抹掉，否则外部控制仍能拿到隐藏项目名和路径。
+    if (!hiddenUnlocked.value) maskHiddenStores(clone, workspaceStore.projectList);
+    return clone;
+  };
   const getState = () => ({
     directory: null, canvasId: null, panel: router.currentRoute.value.path.slice(1), tools: [] as NodeToolInfo[],
     ...workspaceControl.value?.getState(),
-    projectList: workspaceStore.projectList,
+    // ACT: 外部控制同样不能看到锁定态的隐藏项目，否则等于绕过系统验证。
+    projectList: filterVisibleProjects(workspaceStore.projectList),
   });
   watch(() => workspaceStore.project?.directory, () => {
     for (const controller of calls.values()) controller.abort(new Error("工作区已切换，本次调用已停止"));
@@ -127,6 +153,9 @@ export function useMcpControl() {
           } else if (request.name === "openProject") {
             const directory = request.args.directory;
             if (typeof directory !== "string" || !directory.trim()) throw new Error("缺少工作目录");
+            // ACT: 外部指令也可能拿着缓存里的路径直接点名打开隐藏项目，必须在这里再拦一次。
+            const target = workspaceStore.projectList.find(item => item.directory === directory);
+            if (target?.hidden && !hiddenUnlocked.value) throw new Error("该隐藏项目已锁定，请先在首页完成身份验证");
             await workspaceControl.value?.flushSave();
             callSignal.throwIfAborted();
             // ACT: 切换项目会取消旧画布调用；当前打开项目命令属于应用层。

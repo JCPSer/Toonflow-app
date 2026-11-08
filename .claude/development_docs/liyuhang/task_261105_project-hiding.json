@@ -1,0 +1,73 @@
+{
+  "task_id": "task_261105_project-hiding",
+  "created": "2026-11-05T08:55:00+08:00",
+  "project": "/Users/liyuhang/Documents/git_projects/Toonflow-app",
+  "spec": ".claude/development_docs/liyuhang/2_requirements_solutions/2026-11-05-08-53-project-hiding-touchid.md",
+  "status": "done",
+  "tasks": [
+    {
+      "id": "T1",
+      "name": "原生 auth dylib + 构建脚本（clang/codesign）",
+      "owner": "self",
+      "status": "done",
+      "depends": []
+    },
+    {
+      "id": "T2",
+      "name": "主进程 authenticate + DesktopRuntime 类型 + /api/desktop/auth 两段式路由",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T1"
+      ]
+    },
+    {
+      "id": "T3",
+      "name": "web: projectPrivacy 状态 + desktopAuth 客户端 + Project.hidden 与 addProject 保留",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T2"
+      ]
+    },
+    {
+      "id": "T4",
+      "name": "首页项目区锁图标/分段 tab + 悬停隐藏按钮",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T3"
+      ]
+    },
+    {
+      "id": "T5",
+      "name": "设置隐私开关 + 画布下拉/素材库/设备连接/MCP 过滤 + 工作区拦截",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T3"
+      ]
+    },
+    {
+      "id": "T6",
+      "name": "单测 + typecheck + 构建（web / desktop main / dylib）",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T4",
+        "T5"
+      ]
+    },
+    {
+      "id": "T7",
+      "name": "子 agent 代码审查 + 部署（不重启）+ 文档归档",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T6"
+      ]
+    }
+  ],
+  "updated": "2026-11-05T09:08:00+08:00",
+  "notes": "隐藏为 UI 层能力，不加密磁盘；解锁状态仅本次进程内存有效；远程/浏览器默认显示隐藏项目（用户确认）"
+}

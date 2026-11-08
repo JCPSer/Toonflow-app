@@ -22,6 +22,7 @@ import {
   type FrameOutputConfig,
 } from "./frameOutputPlan";
 import { frameErrorMessage, type FrameApplyResult, type FrameOutputState } from "./frameOutputTool";
+import { runFfmpegCommand } from "./ffmpegTask";
 
 export type { FrameKey, FrameOutputConfig } from "./frameOutputPlan";
 export { buildFrameHandles, FRAME_OUTPUTS, staticNodeHandles } from "./frameOutputPlan";
@@ -140,29 +141,10 @@ export function useFrameOutputs(options: FrameOutputOptions) {
   }
 
   function runFfmpeg(command: BrowserFfmpegCommand, signal: AbortSignal) {
-    return new Promise<void>((resolve, reject) => {
-      let settled = false;
-      function finish(reason?: unknown) {
-        if (settled) return;
-        settled = true;
-        window.clearTimeout(timer);
-        signal.removeEventListener("abort", abort);
-        if (reason === undefined) resolve();
-        else reject(reason);
-      }
-      // ACT: kill 只是取消握手，宿主子进程还在收尾；等 end/error 到达（或 2s 宽限）才算结束。
-      function stop(reason: unknown) {
-        command.kill("SIGKILL");
-        window.setTimeout(() => finish(reason), 2000);
-      }
-      function abort() { stop(signal.reason ?? new Error("抽帧已取消")); }
-      const timer = window.setTimeout(() => stop(new Error("视频抽帧超时")), CAPTURE_TIMEOUT_MS);
-      if (signal.aborted) return abort();
-      signal.addEventListener("abort", abort, { once: true });
-      command.on("end", () => finish(signal.aborted ? signal.reason ?? new Error("抽帧已取消") : undefined));
-      command.on("error", (reason: Error) => finish(reason));
-      // ACT: run() 同步抛错时也要清掉定时器与 abort 监听，不能把 Promise 之外的资源留着。
-      try { command.run(); } catch (reason) { finish(reason); }
+    return runFfmpegCommand(command, signal, {
+      timeoutMs: CAPTURE_TIMEOUT_MS,
+      timeoutMessage: "视频抽帧超时",
+      abortMessage: "抽帧已取消",
     });
   }
 

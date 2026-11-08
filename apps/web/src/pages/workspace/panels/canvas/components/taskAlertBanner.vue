@@ -20,12 +20,12 @@
       :key="alert.id"
       type="button"
       class="taskAlertItem"
-      :title="`${alert.nodeLabel} · 耗时 ${formatTaskDuration(alert.durationMs)}`"
+      :title="`${alert.nodeLabel} · ${formatTaskAlertTime(alert.at)} · 耗时 ${formatTaskDuration(alert.durationMs)}`"
       @click.stop="emit('select', alert)">
       <icon-alert-triangle v-if="alert.kind === 'failed'" class="taskAlertIcon failed" :size="14" aria-hidden="true" />
       <icon-circle-check v-else class="taskAlertIcon done" :size="14" aria-hidden="true" />
       <span class="taskAlertNode">{{ alert.nodeLabel }}</span>
-      <span class="taskAlertMeta">· 耗时 {{ formatTaskDuration(alert.durationMs) }}</span>
+      <span class="taskAlertMeta">· {{ formatTaskAlertTime(alert.at) }} · 耗时 {{ formatTaskDuration(alert.durationMs) }}</span>
       <icon-chevron-right class="taskAlertChevron" :size="14" aria-hidden="true" />
     </button>
     <div v-if="hiddenCount" class="taskAlertMore">还有 {{ hiddenCount }} 条</div>
@@ -35,7 +35,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { IconAlertTriangle, IconBell, IconChevronRight, IconCircleCheck } from "@tabler/icons-vue";
-import { formatTaskDuration, type TaskAlert } from "@/stores/taskAlerts";
+import { formatTaskAlertTime, formatTaskDuration, type TaskAlert } from "@/stores/taskAlerts";
 
 const props = defineProps<{
   /** 未读提醒，按新到旧排列；组件只负责展示，读写状态由宿主决定。 */

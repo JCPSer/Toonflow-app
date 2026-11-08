@@ -2,14 +2,14 @@
   <div
     ref="canvasElement"
     class="canvas"
-    :class="{ edgesHidden: !showEdges, handMode, multiSelectionMode: flow.multiSelectionActive.value, compositingEnabled: generalSettings.canvasCompositingEnabled, hideDisabledNodeTitles: generalSettings.hideDisabledNodeTitles }"
+    :class="{ edgesHidden: !showEdges, handMode, multiSelectionMode: flow.multiSelectionActive.value, compositingEnabled: generalSettings.canvasCompositingEnabled, hideDisabledNodeTitles: generalSettings.hideDisabledNodeTitles, dragPaused: dragActive }"
     :style="{ '--canvasEdgeColor': generalSettings.canvasEdgeColorMode === 'custom' ? generalSettings.canvasEdgeColor : 'var(--el-color-primary)' }"
     @dblclick="openNodeMenu"
     @wheel.capture="zoomCanvas"
     @gesturestart.capture="zoomCanvas"
     @gesturechange.capture="zoomCanvas"
     @gestureend.capture="zoomCanvas"
-    @pointerdown.capture="updateCanvasSelection"
+    @pointerdown.capture="onCanvasPointerDown"
     @click.capture="updateCanvasSelection"
     @auxclick.capture="preventMiddleClick"
     @pointermove="onCanvasPointerMove"
@@ -107,7 +107,6 @@
         @clear="taskAlertsStore.clear()" />
       <canvasControls
         ref="canvasControlsRef"
-        v-model:assetsVisible="assetsVisible"
         v-model:snapEnabled="snapEnabled"
         v-model:showEdges="showEdges"
         v-model:showMap="showMap"
@@ -267,6 +266,7 @@ import { useMentionSources, type MentionOutput } from "@/components/agent/mentio
 import { useAgentComposerStore } from "@/stores/agentComposer";
 import { captureGroupChildren, finishGroupDrag, getSelectionTree, refitGroupsAfterRemoval } from "./selectionNodes";
 import { normalizeNodesToGrid, snapValue } from "./snapNodes";
+import { createAxisLock } from "./axisLock";
 import type { NodeOutput } from "@toonflow/nodes-scaffold/values";
 import type { NodeConnectionFeedback, NodeHandle } from "@toonflow/nodes-scaffold/connection";
 import { useNodeEvent } from "@toonflow/nodes-scaffold/nodeEvent";
@@ -275,6 +275,9 @@ import type { AgentQuestionNotice } from "@/components/agent/types";
 import type { NodeDocumentContext, NodeDocumentState } from "@toonflow/nodes-scaffold/nodeDocument";
 import { useNodeToolsContext } from "@toonflow/nodes-scaffold/nodeTools";
 import { isNodeBusy, NODE_BUSY_CHANGE_EVENT } from "@toonflow/nodes-scaffold/nodeBusy";
+import { getNodeRun, hasNodeRun } from "@toonflow/nodes-scaffold/nodeRun";
+import { getNodeRename } from "@toonflow/nodes-scaffold/nodeRename";
+import { boundingRect, nodeRect, pickNodeInDirection, pickNodeNearestPoint, rectCenter, type NavDirection } from "./nodeNavigation";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { requestExitProject } from "../../exitProject";
 import { generalSettings } from "@/stores/settings";
@@ -351,6 +354,7 @@ const assetsVisible = computed({
 });
 const edgeDisconnect = ref<{ id: string; x: number; y: number }>();
 const flow = useVueFlow(props.runtimeKey);
+const axisLock = createAxisLock();
 const nodeDocument: NodeDocumentContext = { targets: shallowReactive(new Map()), mounts: new Map(), states: shallowReactive(new Map()) };
 const canvasDirty = ref(false);
 const canvasSaveError = ref("");
@@ -362,16 +366,25 @@ onScopeDispose(anonymousData.observeCanvas(() => props.active && canvasId.value
   : undefined));
 let dragCopy: ReturnType<InstanceType<typeof selectionToolbar>["startDragCopy"]>;
 flow.onNodeDragStart(({ event, nodes }) => {
+  // ACT: 锚点必须在 Vue Flow 应用第一段位移之前记下来，按住 Shift 时另一轴要回到这个坐标。
+  axisLock.start(nodes);
   dragCopy = undefined;
   if (!props.active || props.settingsVisible) return;
   const shortcuts = generalSettings.value.canvasShortcuts;
-  const withEdges = shortcutPressed(event, shortcuts.duplicateOnDrag, pressedCodes);
-  if (withEdges || shortcutPressed(event, shortcuts.copyOnDrag, pressedCodes)) {
+  // ACT: Shift 固定用于轴锁；拖动复制忽略额外按住的 Shift，Shift+Alt 仍能拖出副本。
+  const dragShortcut = { allowExtraShift: true };
+  const withEdges = shortcutPressed(event, shortcuts.duplicateOnDrag, pressedCodes, dragShortcut);
+  if (withEdges || shortcutPressed(event, shortcuts.copyOnDrag, pressedCodes, dragShortcut)) {
     dragCopy = selectionToolbarRef.value?.startDragCopy(nodes, withEdges);
   }
 });
-flow.onNodeDrag(() => dragCopy?.update());
+flow.onNodeDrag(({ event, nodes }) => {
+  // ACT: 先锁轴再更新副本——拖动复制的副本读取的是原节点坐标。
+  axisLock.apply(event, nodes);
+  dragCopy?.update();
+});
 flow.onNodeDragStop(({ nodes }) => {
+  axisLock.reset();
   const copy = dragCopy;
   dragCopy = undefined;
   if (copy) copy.finish();
@@ -635,6 +648,16 @@ flow.onNodeClick(({ node, event }) => {
   else agentNodePanelRef.value?.close();
 });
 watch([canvasId, () => project.value?.directory], closeAgentPortMenu, { flush: "post" });
+// ACT: 拖动被切画布/失活打断时不会再有 nodeDragStop，主动清掉轴锁状态，避免依赖下一次按下。
+// dragging 同理：d3-drag 只在 window 上等 mouseup，失焦/窗口外松开时不会再复位，会一直让连线停流动。
+function clearStuckDragging() {
+  for (const node of flow.nodes.value) if (node.dragging) node.dragging = false;
+}
+watch([canvasId, () => props.active], () => {
+  axisLock.reset();
+  clearStuckDragging();
+}, { flush: "post" });
+onScopeDispose(() => axisLock.reset());
 let canvasController = new AbortController();
 let workspaceController = new AbortController();
 const createCanvasContext = useCanvasTools({
@@ -1778,11 +1801,84 @@ function onCanvasPointerLeave() {
   pointerInCanvas.value = false;
 }
 
+function onCanvasPointerDown(event: PointerEvent) {
+  // ACT: 记下本次手势的指针起点，拖动开始后按「相对按下点的位移」判定 Shift 主轴。
+  axisLock.press(event);
+  updateCanvasSelection(event);
+}
+
 function updateCanvasSelection(event: MouseEvent | KeyboardEvent) {
   // 失焦期间可能漏掉修饰键；不能在按下到抬起之间改变已命中的选区，避免 click 落到画布清空选择。
   if (event.type === "pointerdown" && event.target instanceof Element && event.target.closest(".vue-flow__nodesselection-rect")) return;
   flow.multiSelectionActive.value = props.active && !props.settingsVisible && !handMode.value
     && shortcutPressed(event, generalSettings.value.canvasShortcuts.multiSelection, pressedCodes);
+}
+
+/**
+ * ⌘Enter：并行启动所有选中且可运行的生成节点。
+ * ACT: 运行中/禁用的节点跳过；节点未声明运行入口（便签、素材、Agent 等）也不算错误，只在全部落空时提示。
+ */
+function runSelectedNodes() {
+  const selected = [...flow.getSelectedNodes.value];
+  if (!selected.length) {
+    ElMessage.info("请先选中要运行的节点");
+    return;
+  }
+  let started = 0;
+  let skipped = 0;
+  for (const node of selected) {
+    const run = getNodeRun(node.id);
+    if (!run || node.data?.disabled === true || isNodeBusy(node.id)) {
+      skipped++;
+      continue;
+    }
+    started++;
+    // ACT: 节点自己的启动函数会把失败提示落到节点卡片；这里只兜住意外异常，避免 unhandled rejection。
+    Promise.resolve()
+      .then(() => run())
+      .catch(error => console.warn("节点运行失败", error));
+  }
+  if (!started) {
+    ElMessage.info(skipped && selected.every(node => hasNodeRun(node.id)) ? "选中的节点正在运行或已禁用" : "选中的节点没有可运行的生成任务");
+  }
+}
+
+/**
+ * 方向键空间导航：有选区时从选区外接框中心出发，无选区时从视口中心最近节点起跳。
+ * ACT: 只切换选中、不移动节点；分组节点不参与，避免方向键总是选中整块背景。
+ */
+function navigateSelection(direction: NavDirection, extend: boolean, instant = false) {
+  const nodes = flow.getNodes.value;
+  if (!nodes.length) return false;
+  const selected = flow.getSelectedNodes.value;
+  let target: GraphNode | undefined;
+  if (selected.length) {
+    const bounds = boundingRect(selected);
+    if (!bounds) return false;
+    target = pickNodeInDirection(nodes, rectCenter(bounds), direction);
+  } else {
+    const center = viewportCenterInFlow();
+    if (!center) return false;
+    target = pickNodeNearestPoint(nodes, center);
+  }
+  if (!target) return false;
+  flow.nodesSelectionActive.value = false;
+  // ACT: 只清节点选中，保留连线选中——方向键管的是节点，顺手清掉连线会让用户在连线上做的事白丢。
+  if (!extend && selected.length) flow.removeSelectedNodes([...selected]);
+  flow.addSelectedNodes([target]);
+  const rect = nodeRect(target);
+  // ACT: 目标始终居中，缩放不变；长按 repeat 时不再补间，否则动画一直追不上按键。
+  void flow.setCenter(rect.x + rect.width / 2, rect.y + rect.height / 2, { zoom: flow.viewport.value.zoom, duration: instant ? 0 : 180 });
+  return true;
+}
+
+// 视口中心换算回画布坐标：屏幕坐标 = 画布坐标 × zoom + viewport 偏移。
+function viewportCenterInFlow() {
+  const { width, height } = flow.dimensions.value;
+  if (!width || !height) return undefined;
+  const { x, y, zoom } = flow.viewport.value;
+  const scale = zoom || 1;
+  return { x: (width / 2 - x) / scale, y: (height / 2 - y) / scale };
 }
 
 function updateCanvasKeys(event: KeyboardEvent) {
@@ -1800,12 +1896,15 @@ function updateCanvasKeys(event: KeyboardEvent) {
   const inAgentNodePanel = panelOpen && isInsideAgentNodePanel(target);
   // ACT: 素材库等其它浮层打开时不认领 body 焦点，避免在别处按 Backspace 把画布节点删了。
   const panelOpenOnBody = panelOpen && !assetsVisible.value && (target === document.body || target === document.documentElement);
+  // ACT: 节点提示词的「展开编辑」是 teleport 到 body 的 dialog；它属于节点输入框的一部分，
+  // 其余弹窗（设置、素材详情、文本编辑等）仍按 role=dialog 排除。
+  const inNodePromptEditor = target instanceof Element && !!target.closest(".promptEditorDialog");
   const inCanvas =
     target instanceof Element &&
     !panelOpenOnBody &&
     !target.closest("#agentPanel") &&
-    (inAgentNodePanel || !target.closest("[role='dialog']")) &&
-    (target === document.body || target === document.documentElement || canvasElement.value?.contains(target));
+    (inAgentNodePanel || !target.closest("[role='dialog']") || inNodePromptEditor) &&
+    (target === document.body || target === document.documentElement || canvasElement.value?.contains(target) || inNodePromptEditor);
   // None 只配置默认鼠标手势，不能触发会禁用节点交互的临时抓手或节点内部缩放。
   zoomKeyPressed.value = !event.isComposing && shortcutPressed(event, getShortcutBindings(shortcuts.zoom).filter(binding => binding !== "None").join(" / "), pressedCodes);
   selectionKeyPressed.value = !event.isComposing && shortcutPressed(event, shortcuts.selection, pressedCodes);
@@ -1819,13 +1918,52 @@ function updateCanvasKeys(event: KeyboardEvent) {
   // ACT: 焦点在 Agent 节点面板内（含落到 body）时允许 Delete/Backspace 删除选中节点：
   // 面板与画布共用同一份选区，删除后节点面板随之关闭，撤销可恢复。
   const panelDelete = !editing && !hasCanvasAreaSelection() && (inAgentNodePanel || panelOpenOnBody);
-  if (event.type === "keyup" || event.defaultPrevented || event.isComposing || editing) return;
-  const action = ([
+  if (event.type === "keyup" || event.defaultPrevented || event.isComposing) return;
+  // ACT: 画布上单选节点时裸 Enter 进入标题编辑（Finder 习惯）；空选时 Enter 仍归「清除未读提醒」。
+  // 多选不响应，避免改名对象不明确；禁用节点与没有重命名入口的节点不消费按键。
+  const selectedNodes = flow.getSelectedNodes.value;
+  const rename = event.code === "Enter" && event.key === "Enter"
+    && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey
+    && selectedNodes.length === 1 && selectedNodes[0]!.data?.disabled !== true
+    ? getNodeRename(selectedNodes[0]!.id)
+    : undefined;
+  const action = (rename ? "renameNode" : undefined) ?? ([
     "group", "mergeGroup", "ungroup", "addNode", "moveTool", "handTool", "arrange", "search",
-    "delete", "copy", "cut", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView", "toggleDisabled",
+    "projectPicker", "canvasPicker",
+    "delete", "copy", "cut", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView", "toggleDisabled", "clearAlerts", "runNode",
   ] as const).find((action) =>
     shortcutMatches(event, shortcuts[action])
   );
+  // ACT: 项目/画布下拉不抢焦点，但点完按钮后焦点常停在 button 上；这两个键只让位给文本类控件，
+  // 否则"点一下触发按钮，再按 Q/W"会失效。
+  const textEditing =
+    !(target instanceof Element) ||
+    !!target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='slider']");
+  const pickerAction = action === "projectPicker" || action === "canvasPicker";
+  // ACT: 运行选中节点要在节点提示词输入框里也能用（写完直接 ⌘Enter），所以它是 editing 的唯一例外；
+  // 弹窗、Agent 面板里的输入框仍由下面的 inCanvas 判定挡住。
+  const runAction = action === "runNode";
+  // ACT: 方向键是画布空间导航，只让位给文本类控件、弹窗和 Agent 面板。
+  // 画布工具条按钮点完后焦点常停在按钮上，这里不能复用 editing（它把 button 也算编辑中），否则方向键会一直失效。
+  const arrow = event.code === "ArrowUp" ? "up"
+    : event.code === "ArrowDown" ? "down"
+    : event.code === "ArrowLeft" ? "left"
+    : event.code === "ArrowRight" ? "right"
+    : undefined;
+  if (arrow) {
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    // ACT: 节点内部有大量用方向键的控件（相机/灯光角度、裁剪、3D 场景、音频片段），
+    // 它们落在画布 DOM 里且不属于文本控件，必须按节点区域整体让位；节点本体不可聚焦，所以不影响「点节点再按方向键」。
+    const inNodeWidget = target instanceof Element && !!target.closest(".vue-flow__node, .vue-flow__edge");
+    // ACT: 画布下拉的条目菜单 append 到画布内部（canvasMenu 的 appendTo），Element Plus 的 roving focus 同样靠方向键。
+    const inFloatingMenu = target instanceof Element && !!target.closest(".el-popper, [role='menu'], [role='listbox']");
+    if (textEditing || inNodeWidget || inFloatingMenu || inAgentNodePanel || !inCanvas || hasModalOverlay()) return;
+    if (navigateSelection(arrow, event.shiftKey, event.repeat)) event.preventDefault();
+    return;
+  }
+  // ACT: 重命名也会改节点标题，弹窗打开时（含节点提示词的展开编辑）必须让位，否则会在弹窗背后进入编辑态。
+  const modalBlocked = (pickerAction || action === "renameNode") && hasModalOverlay();
+  if ((editing && !(pickerAction && !textEditing) && !runAction) || modalBlocked) return;
   if (!inCanvas && !(panelDelete && action === "delete")) return;
   // ACT: 面板语境只放行与选区相关的复制/粘贴/删除；成组、整理、撤销等仍留在画布语境，
   // 否则在面板里读消息时按到组合键会意外改组画布。
@@ -1838,6 +1976,16 @@ function updateCanvasKeys(event: KeyboardEvent) {
     const nativeClipboardKey = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
       && (event.code === "KeyV" || event.code === "KeyC" && flow.getSelectedNodes.value.length && !window.getSelection()?.toString());
     if (panKeyPressed.value || nativeClipboardKey) event.preventDefault();
+    return;
+  }
+  // ACT: 清未读提醒只在画布空选、且确实有提醒时消费按键；没有提醒时不拦截 Enter。
+  if (action === "clearAlerts") {
+    // ACT: 只认「焦点在画布空白处」；节点内 tabindex 元素（如分组名 span）有自己的 Enter 行为，不能顺带清提醒。
+    if (event.target !== document.body && event.target !== document.documentElement) return;
+    if (flow.getSelectedNodes.value.length || flow.getSelectedEdges.value.length || hasCanvasAreaSelection()) return;
+    if (!taskAlertsStore.unread.length) return;
+    event.preventDefault();
+    if (!event.repeat) taskAlertsStore.clear();
     return;
   }
   if (!canvasId.value || !project.value?.directory) return;
@@ -1857,6 +2005,8 @@ function updateCanvasKeys(event: KeyboardEvent) {
       });
     return;
   }
+  if (action === "runNode") { runSelectedNodes(); return; }
+  if (action === "renameNode") { rename?.(); return; }
   if (action === "copy") void copySelectedNodes();
   else if (action === "cut") void cutSelectedNodes();
   else if (action === "paste") void pasteNodeAtCenter();
@@ -1868,6 +2018,8 @@ function updateCanvasKeys(event: KeyboardEvent) {
   else if (action === "moveTool" || action === "handTool") selectedTool.value = action === "handTool" ? "hand" : "move";
   else if (action === "arrange") void canvasControlsRef.value?.arrangeNodes();
   else if (action === "search") nodeSearchRef.value?.open();
+  else if (action === "projectPicker") canvasMenuRef.value?.toggleProjectPicker();
+  else if (action === "canvasPicker") canvasMenuRef.value?.toggleCanvasPicker();
   else void flow[action]();
 }
 
@@ -1878,6 +2030,11 @@ function hasCanvasAreaSelection() {
   if (!selection || selection.isCollapsed || !anchor) return false;
   const element = anchor instanceof Element ? anchor : anchor.parentElement;
   return !!element?.closest(".canvas, .agentNodePanel");
+}
+
+// ACT: 只认模态遮罩（对话框/抽屉），下拉浮层（.el-popper）不算——下拉开着时还要能用同一个键收起。
+function hasModalOverlay() {
+  return [...document.querySelectorAll<HTMLElement>(".el-overlay")].some(element => element.getClientRects().length > 0);
 }
 
 // ACT: Element Plus 用 Esc 关弹窗时不会 preventDefault，无法靠 defaultPrevented 判断"已被别人消化"，
@@ -1914,6 +2071,7 @@ function handleCanvasEscape(event: KeyboardEvent) {
 }
 
 function resetCanvasKeys() {
+  clearStuckDragging();
   pressedCodes.clear();
   gestureScale = undefined;
   zoomKeyPressed.value = false;
@@ -2080,6 +2238,10 @@ async function loadRemoteNodes(reloadName?: string) {
   }
 }
 
+// ACT: 拖动期间整张画布冻结连线流动。虚线动画会让每条关联边以 10Hz 重绘 SVG，与每帧位移叠加后连边越多越卡；
+// 用节点自身的 dragging 派生而不是手动状态，分组拖动（子节点 dragging 仍为 false）也能覆盖。
+// 冻结走根节点类名 + CSS 停动画（见样式里的 .dragPaused），保留虚线样式，边不必因拖动态变化重渲染。
+const dragActive = computed(() => flow.nodes.value.some(node => node.dragging));
 const defaultEdgeOptions = markRaw({
   type: "simplebezier",
   animated: false,
@@ -2253,6 +2415,12 @@ const defaultEdgeOptions = markRaw({
   // 但失效频率从 ~60Hz 降到 10Hz。offset 从 10 走到 0，正好覆盖一个 dasharray 周期，可无缝循环。
   :deep(.vue-flow__edge.animated path) {
     animation: canvasEdgeFlow 2s steps(20) infinite;
+  }
+
+  // ACT: 拖动期间只停动画、保留虚线：拖动时每条关联边每帧都在改几何，再叠加 10Hz 的动画失效，
+  // WKWebView 会成片重绘 SVG，连边越多的节点越卡。虚线样式来自 `animated`，所以不能摘类名。
+  &.dragPaused :deep(.vue-flow__edge.animated path) {
+    animation: none;
   }
 
   @keyframes canvasEdgeFlow {

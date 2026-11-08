@@ -290,6 +290,9 @@ export type AssetImportSource =
 export function importAsset(target: AssetSelector, source: AssetImportSource, options: { targetDir?: string; name?: string } = {}) {
   return unwrap<{ path: string; revision?: string; size?: number }>(client.post("/import", {
     ...selectorParams(target),
+    // ACT: 全局库的 selector 会剥掉 directory，但工作区来源必须让服务端知道源工作区；
+    // 这里的 directory 描述的是来源，不是目标库，因此要显式补回。
+    ...(source.kind === "workspace" && target.directory ? { directory: target.directory } : {}),
     ...(options.targetDir !== undefined ? { targetDir: options.targetDir } : {}),
     ...(options.name ? { name: options.name } : {}),
     source,

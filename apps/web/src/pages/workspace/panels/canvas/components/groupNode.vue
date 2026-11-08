@@ -35,7 +35,7 @@
       v-else
       class="groupLabel"
       :tabindex="readOnly ? undefined : 0"
-      :title="readOnly ? data.label || '分组' : `${data.label || '分组'}（双击编辑名称）`"
+      :title="readOnly ? data.label || '分组' : `${data.label || '分组'}（双击或按 Enter 编辑名称）`"
       @dblclick.stop="editLabel"
       @keydown.enter.stop.prevent="editLabel"
       @contextmenu.stop.prevent="openMenu($event)">
@@ -64,6 +64,7 @@ import { inject, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useVueFlow, type GraphNode, type NodeProps } from "@vue-flow/core";
 import { ElMessage, type DropdownInstance } from "element-plus";
 import { IconPencil, IconTrash } from "@tabler/icons-vue";
+import { registerNodeRename } from "@toonflow/nodes-scaffold/nodeRename";
 import { gridSize, snapOffset, snapPoint } from "../snapNodes";
 
 const props = withDefaults(defineProps<NodeProps & { readOnly?: boolean }>(), { readOnly: false });
@@ -75,6 +76,16 @@ const deleteSelection = inject<((nodes: GraphNode[]) => Promise<void>) | undefin
 const editingLabel = ref(false);
 const labelDraft = ref("");
 const labelInput = ref<HTMLInputElement>();
+// ACT: 画布单选分组后按 Enter 进入改名；只读预览不注册，且随 readOnly 变化维护注册。
+let unregisterRename: (() => void) | undefined;
+watch(() => props.readOnly, (readOnly) => {
+  unregisterRename?.();
+  unregisterRename = readOnly ? undefined : registerNodeRename(props.id, () => editLabel());
+}, { immediate: true });
+onBeforeUnmount(() => {
+  unregisterRename?.();
+  unregisterRename = undefined;
+});
 const resizeCorners = [
   { name: "topLeft", label: "左上角", x: -1, y: -1 },
   { name: "topRight", label: "右上角", x: 1, y: -1 },
