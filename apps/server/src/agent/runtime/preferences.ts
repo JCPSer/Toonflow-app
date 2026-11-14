@@ -41,17 +41,23 @@ export function compactReserveTokens(contextWindow: number, percent = getAgentPr
   return Math.min(reserve, Math.floor(contextWindow / 2));
 }
 
+/** 压缩后保留的近期上下文上限；大窗口模型按窗口 1/4 保留，最多到此值。 */
+export const MAX_KEEP_RECENT_TOKENS = 60_000;
+
 /**
  * 自动压缩策略：窗口太小时直接关闭（压缩后仍可能超限），并给出与窗口匹配的保留量。
- * keepRecent + 预留 + 摘要余量必须小于窗口，否则会陷入「压完立刻再压」。
+ * 预留量同时是摘要的输出预算（SDK 取 0.8×reserve），公式里的 2048 是摘要余量的经验值：
+ * 默认 80% 阈值下 keep + reserve + 0.8×reserve 仍在窗口内，只有把压缩百分比调到 55% 左右才会逼近上限。
  */
 export function autoCompactStrategy(contextWindow: number, maxOutputTokens = 0, percent = getAgentPreferences().compactPercent) {
   if (!Number.isFinite(contextWindow) || contextWindow <= 0) return { enabled: false, reserveTokens: 16384, keepRecentTokens: 20000 };
   if (contextWindow <= 16384) return { enabled: false, reserveTokens: 4096, keepRecentTokens: Math.max(1000, Math.floor(contextWindow / 4)) };
   const reserveTokens = compactReserveTokens(contextWindow, percent, maxOutputTokens);
   const budget = contextWindow - reserveTokens;
-  const byEighth = Math.floor(contextWindow / 8);
-  const keepRecentTokens = Math.max(1000, Math.min(20000, byEighth, budget - 2048));
+  // ACT: 摘要之后保留窗口的 1/4，最多 6 万 token。旧的 2 万上限在 200k 以上窗口只占 2%–10%，
+  // 压缩后模型会丢掉刚做完的细节，又得立刻重新读文件；保留量仍受 budget 约束，避免压完即再压。
+  const byQuarter = Math.floor(contextWindow / 4);
+  const keepRecentTokens = Math.max(1000, Math.min(MAX_KEEP_RECENT_TOKENS, byQuarter, budget - 2048));
   return { enabled: true, reserveTokens, keepRecentTokens };
 }
 

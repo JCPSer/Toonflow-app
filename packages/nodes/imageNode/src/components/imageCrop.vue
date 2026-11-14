@@ -34,7 +34,19 @@
           aria-label="左右镜像"
           @click="flipped = !flipped">
           <icon-flip-horizontal :size="14" aria-hidden="true" />
-          翻转
+          左右
+        </button>
+        <button
+          type="button"
+          class="flipButton"
+          :class="{ active: flippedV }"
+          :aria-pressed="flippedV"
+          :disabled="applying || !naturalSize"
+          title="上下镜像"
+          aria-label="上下镜像"
+          @click="flippedV = !flippedV">
+          <icon-flip-vertical :size="14" aria-hidden="true" />
+          上下
         </button>
         <span class="sourceSize">{{ naturalSize ? `${naturalSize.width} × ${naturalSize.height}` : "读取中…" }}</span>
       </div>
@@ -48,7 +60,7 @@
           @keydown="onKeydown"
           @dblclick.stop>
           <div ref="frame" class="cropFrame">
-            <img ref="imageElement" :src="src" :class="{ mirrored: flipped }" alt="待裁剪图片" draggable="false" @load="onLoad" @error="onError" />
+            <img ref="imageElement" :src="src" :style="previewTransform" alt="待裁剪图片" draggable="false" @load="onLoad" @error="onError" />
             <template v-if="rect && naturalSize">
               <i class="cropMask top" :style="maskStyle.top" aria-hidden="true" />
               <i class="cropMask bottom" :style="maskStyle.bottom" aria-hidden="true" />
@@ -92,14 +104,14 @@
 import { computed, inject, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useNode, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElDialog, ElInputNumber } from "element-plus";
-import { IconFlipHorizontal } from "@tabler/icons-vue";
+import { IconFlipHorizontal, IconFlipVertical } from "@tabler/icons-vue";
 import { useNodeFiles, type NodeMediaValue } from "@toonflow/nodes-scaffold/runtime";
 import { showNodeError } from "@toonflow/node-shared/showNodeError";
 
 type Rect = { x: number; y: number; width: number; height: number };
 type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 type CropState = {
-  last?: Rect & { url: string; flipped?: boolean };
+  last?: Rect & { url: string; flipped?: boolean; flippedV?: boolean };
   previous?: NodeMediaValue;
   appliedUrl?: string;
 };
@@ -111,7 +123,7 @@ type Point = { x: number; y: number };
 
 const props = defineProps<{ src: string; source?: NodeMediaValue; active: boolean; disabled?: boolean }>();
 const emit = defineEmits<{
-  applied: [result: { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number; rect: Rect; flipped: boolean; cropped: boolean }];
+  applied: [result: { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number; rect: Rect; flipped: boolean; flippedV: boolean; cropped: boolean }];
   restore: [];
 }>();
 const { node } = useNode();
@@ -142,6 +154,8 @@ const naturalSize = ref<{ width: number; height: number }>();
 const loadFailed = ref(false);
 const rect = ref<Rect>();
 const flipped = ref(false);
+/** 上下镜像：与左右独立开关，两个都开等价于 180° 旋转。 */
+const flippedV = ref(false);
 const rectSource = ref("");
 const ratioKey = ref<string>("free");
 const fields = reactive({ x: 0, y: 0, width: 0, height: 0 });
@@ -172,7 +186,14 @@ const unchanged = computed(() => !!rect.value && !!naturalSize.value
   && rect.value.width === naturalSize.value.width && rect.value.height === naturalSize.value.height);
 const overLimit = computed(() => !!rect.value && rect.value.width * rect.value.height > MAX_PIXELS);
 // ACT: 整图 + 已翻转也算有效操作——弹窗要能当"翻转工具"用，否则只想翻一下也得先随便框一块。
-const canApply = computed(() => !!props.source && !!rect.value && !!naturalSize.value && (!unchanged.value || flipped.value) && !overLimit.value && !applying.value && !props.disabled);
+const canApply = computed(() => !!props.source && !!rect.value && !!naturalSize.value
+  && (!unchanged.value || flipped.value || flippedV.value) && !overLimit.value && !applying.value && !props.disabled);
+/** 状态文案用的方向描述；两个都没开时为空串，调用方靠非空判断，避免误显示单一方向。 */
+const flipLabel = computed(() => [flipped.value ? "左右" : "", flippedV.value ? "上下" : ""].filter(Boolean).join("+"));
+/** 预览镜像：两轴组合成一条 transform，避免两个 class 互相覆盖。 */
+const previewTransform = computed(() => (flipped.value || flippedV.value)
+  ? `scale(${flipped.value ? -1 : 1}, ${flippedV.value ? -1 : 1})`
+  : undefined);
 const applyLabel = computed(() => {
   if (applying.value) return "正在编码…";
   return unchanged.value ? "应用翻转" : "应用裁剪";
@@ -183,7 +204,9 @@ const statusMessage = computed(() => {
   if (!naturalSize.value) return "正在读取图片尺寸…";
   if (!rect.value) return "在图片上拖拽以选择裁剪区域";
   if (overLimit.value) return "裁剪区域超过 64 MP，请缩小范围";
-  if (unchanged.value) return flipped.value ? "整图镜像，应用后替换为左右翻转的图片" : "当前是整图，拖拽框选要保留的区域";
+  if (unchanged.value) return flipped.value || flippedV.value
+    ? `整图镜像（${flipLabel.value}），应用后替换为翻转后的图片`
+    : "当前是整图，拖拽框选要保留的区域";
   return `${rect.value.width} × ${rect.value.height}，已选原图的 ${percentage()}%`;
 });
 
@@ -227,6 +250,7 @@ watch(() => props.src, () => {
   rect.value = undefined;
   rectSource.value = "";
   flipped.value = false;
+  flippedV.value = false;
   ratioKey.value = "free";
   naturalSize.value = props.source ? sizeCache.get(props.source.url) : undefined;
 }, { flush: "sync" });
@@ -295,6 +319,7 @@ function onLoad(event: Event) {
     const last = cropState.value.last;
     // ACT: 上次没应用就关掉的框按源 url 关联，源图换了就自动回到整图。
     flipped.value = !!last && last.url === props.source?.url && last.flipped === true;
+    flippedV.value = !!last && last.url === props.source?.url && last.flippedV === true;
     rect.value = last && last.url === props.source?.url && last.width > 0 && last.height > 0
       ? clampRect({ x: last.x, y: last.y, width: last.width, height: last.height }, nextRatio())
       : { x: 0, y: 0, width: size.width, height: size.height };
@@ -594,7 +619,7 @@ function persistLast() {
   const value = rect.value;
   if (!value || !props.source || rectSource.value !== props.source.url) return;
   const data = node.data as { crop?: CropState };
-  data.crop = { ...data.crop, last: { url: props.source.url, ...value, flipped: flipped.value } };
+  data.crop = { ...data.crop, last: { url: props.source.url, ...value, flipped: flipped.value, flippedV: flippedV.value } };
 }
 
 // ACT: 以 source.mimeType 为准——上传名与内容不符时（.jpg 里其实是 PNG），按扩展名编码会把透明区编成黑块。
@@ -629,6 +654,7 @@ function apply() {
 async function runApply(startUrl: string, area: Rect) {
   const { extension, mimeType, formatChanged } = resolveOutputFormat(startUrl, props.source?.mimeType);
   const mirror = flipped.value;
+  const mirrorV = flippedV.value;
   const current = controller = new AbortController();
   const signal = current.signal;
   applying.value = true;
@@ -645,12 +671,19 @@ async function runApply(startUrl: string, area: Rect) {
     const context = canvas.getContext("2d");
     if (!context) throw new Error("无法创建画布");
     // ACT: 预览是 CSS 镜像，drawImage 拿的是原图；翻转时把源矩形按镜像换算，并把绘制结果再镜像一次。
+    // 两个轴各自独立：两次镜像依次叠加，合成 180° 旋转（不是相互抵消）。
+    // 这段正确性依赖 CSS transform-origin 为默认中心：若哪天改了 origin，这里的 sourceX/sourceY 必须同步改。
     const sourceX = mirror ? (naturalSize.value?.width ?? area.width) - area.x - area.width : area.x;
+    const sourceY = mirrorV ? (naturalSize.value?.height ?? area.height) - area.y - area.height : area.y;
     if (mirror) {
       context.translate(area.width, 0);
       context.scale(-1, 1);
     }
-    context.drawImage(image, sourceX, area.y, area.width, area.height, 0, 0, area.width, area.height);
+    if (mirrorV) {
+      context.translate(0, area.height);
+      context.scale(1, -1);
+    }
+    context.drawImage(image, sourceX, sourceY, area.width, area.height, 0, 0, area.width, area.height);
     signal.throwIfAborted();
     const blob = await new Promise<Blob>((resolve, reject) => canvas!.toBlob(
       value => value ? resolve(value) : reject(new Error("图片编码失败")),
@@ -666,7 +699,7 @@ async function runApply(startUrl: string, area: Rect) {
     await workspace.write(path, blob, true);
     signal.throwIfAborted();
     committed = true;
-    emit("applied", { path, mimeType, fromUrl: startUrl, formatChanged, width: area.width, height: area.height, rect: area, flipped: mirror, cropped: !unchanged.value });
+    emit("applied", { path, mimeType, fromUrl: startUrl, formatChanged, width: area.width, height: area.height, rect: area, flipped: mirror, flippedV: mirrorV, cropped: !unchanged.value });
     visible.value = false;
   } catch (error) {
     if (!signal.aborted) showNodeError(error, "图片裁剪失败");
@@ -695,6 +728,7 @@ async function cancelApply() {
 
 .cropPresets {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   margin-bottom: 12px;
@@ -755,10 +789,6 @@ async function cancelApply() {
     user-select: none;
     -webkit-user-drag: none;
   }
-}
-
-.cropFrame img.mirrored {
-  transform: scaleX(-1);
 }
 
 .cropMask {

@@ -1,7 +1,6 @@
 import {
   ensureNodeDirectory,
   type BrowserFfmpegFactory,
-  type FfprobeData,
   type WorkspaceFiles,
 } from "@toonflow/nodes-scaffold/runtime";
 import { frameErrorMessage } from "./frameOutputTool";
@@ -10,10 +9,8 @@ import {
   defaultGridCount,
   frameFile,
   frameFilePattern,
-  gridCell,
   gridFile,
   gridFilePattern,
-  gridFilter,
   gridLayout,
   gridSampleTimes,
   inspectDirectoryPath,
@@ -21,13 +18,12 @@ import {
   inspectJpegOptions,
   isStaleOutput,
   normalizeCaptureSeconds,
-  readVideoMeta,
   temporaryFile,
   videoMapSpec,
   type GridCount,
 } from "./inspectPlan";
+import { gridOutputOptions, probeVideoMeta } from "./videoGrid";
 
-const probeTimeoutMs = 15000;
 const commandTimeoutMs = 25000;
 /**
  * 一次截帧调用的总预算。节点函数本身有 120s 的调用闸门（nodeTools），
@@ -72,26 +68,6 @@ export type CaptureFrameResult = {
   source: string;
   note: string;
 };
-
-function probeVideo(factory: BrowserFfmpegFactory, path: string, signal: AbortSignal) {
-  return new Promise<FfprobeData>((resolve, reject) => {
-    const command = factory(path);
-    let settled = false;
-    const finish = (reason: unknown, data?: FfprobeData) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal.removeEventListener("abort", abort);
-      if (reason !== undefined) reject(reason);
-      else resolve(data!);
-    };
-    const abort = () => { command.kill(); finish(signal.reason ?? new Error("读取视频信息已取消")); };
-    const timer = setTimeout(() => { command.kill(); finish(new Error("读取视频信息超时")); }, probeTimeoutMs);
-    if (signal.aborted) return abort();
-    signal.addEventListener("abort", abort, { once: true });
-    command.ffprobe((error, data) => finish(error ?? undefined, data));
-  });
-}
 
 function ignoreExisting(error: { response?: { data?: { data?: { code?: string } } } }) {
   if (error.response?.data?.data?.code !== "EEXIST") throw error;
@@ -188,17 +164,18 @@ export function createVideoInspect(source: VideoInspectSource) {
   }
 
   async function sample(count: GridCount, signal: AbortSignal): Promise<SampleFramesResult> {
+    // ACT: 排队期间插件开关被关掉时，这一项还没开始就该直接作废，不必探测/抽帧。
+    signal.throwIfAborted();
     const { video, files, factory } = await prepare(source, signal);
-    const meta = readVideoMeta(await probeVideo(factory, video.path, signal));
+    const meta = await probeVideoMeta(factory, video.path, signal);
     const { columns, rows } = gridLayout(count);
     const directory = await inspectDirectory(files, signal);
     const target = `${directory}/${gridFile(count)}`;
     const temporary = temporaryFile(directory, `contact-${count}`);
     try {
       // ACT: 不 seek——fps 滤镜把首个采样点放在半格处，正好是「不贴开头」的效果，seek 会再偏移半格。
-      // ACT: -map 0:V:0（大写 V）排除封面图，避免首帧被 attached_pic 抢走。
       const task = factory(video.path).noAudio()
-        .outputOptions(...inspectJpegOptions, "-frames:v", "1", "-map", videoMapSpec(meta), "-vf", gridFilter(meta.duration, count, gridCell(meta.width, meta.height)))
+        .outputOptions(...gridOutputOptions(meta, count))
         .output(temporary);
       await runFfmpegCommand(task, signal, {
         timeoutMs: commandTimeoutMs,
@@ -229,7 +206,7 @@ export function createVideoInspect(source: VideoInspectSource) {
 
   async function capture(seconds: readonly number[], signal: AbortSignal): Promise<CaptureFrameResult> {
     const { video, files, factory } = await prepare(source, signal);
-    const meta = readVideoMeta(await probeVideo(factory, video.path, signal));
+    const meta = await probeVideoMeta(factory, video.path, signal);
     const points = normalizeCaptureSeconds(seconds, meta.duration);
     const directory = await inspectDirectory(files, signal);
     const frames: CaptureFrameResult["frames"] = [];
@@ -290,8 +267,23 @@ export function createVideoInspect(source: VideoInspectSource) {
     catch { /* 目录不存在或已卸载，忽略 */ }
   }
 
+  /** 正在执行的宫格查看：插件开关关闭时要能立刻中止，不能等长视频抽完。 */
+  let activeSample: AbortController | undefined;
+
   return {
-    sampleFrames: (count: GridCount = defaultGridCount, signal: AbortSignal) => enqueue(() => sample(count, signal)),
+    sampleFrames: (count: GridCount = defaultGridCount, signal: AbortSignal) => {
+      const controller = new AbortController();
+      activeSample = controller;
+      const merged = AbortSignal.any([signal, controller.signal]);
+      return enqueue(() => sample(count, merged)).finally(() => {
+        if (activeSample === controller) activeSample = undefined;
+      });
+    },
+    /** 只中止宫格查看；单帧截取是另一条独立能力，不受插件开关影响。 */
+    cancelSamples: () => {
+      activeSample?.abort(new Error("宫格查看已在插件设置中关闭"));
+      activeSample = undefined;
+    },
     captureFrame: (seconds: readonly number[], signal: AbortSignal) => enqueue(() => capture(seconds, signal)),
     clear,
     /** 节点卸载时调用：先等在途查看结算，最后一个持有该目录的实例卸载才真正删除。 */

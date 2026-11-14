@@ -23,7 +23,8 @@ export function createVideoInspectTools(inspect: VideoInspect) {
       "把此节点的视频按时间均匀抽帧拼成一张宫格联系表，用于快速了解全片的构图、动作、转场与节奏（不含片尾最后一小段，需要时再用 captureFrame）。"
       + `count 可选 4（2×2）、9（3×3，默认）、16（4×4）。返回的 path 是工作区相对路径，必须用 read 工具打开图片才能看到画面；`
       + "frameTimes 按从左到右、从上到下给出每格对应的秒数（近似值，误差不超过一个采样间隔）。宫格只用于查看，不是节点输出，不改变首尾帧端口；"
-      + "再次调用会覆盖上一批产物，之前返回的 path 会失效。",
+      + "若需要可接线的节点输出，请改用 setFrameOutputs 开启 grid（2×2 四格联系表）。"
+      + "再次调用会覆盖上一批产物，之前返回的 path 会失效。本工具可在插件设置中全局关闭。",
     parameters: sampleParameters,
     execute({ count }, { signal }) {
       return inspect.sampleFrames(count ?? defaultGridCount, signal ?? new AbortController().signal);
@@ -36,7 +37,7 @@ export function createVideoInspectTools(inspect: VideoInspect) {
       "按指定时间点从此节点的视频截取全分辨率单帧，一次可传 1–6 个时间点（秒）。"
       + "返回每张图的 path（工作区相对路径），必须用 read 工具打开才能看到画面；个别时间点失败会列在 failures 里，其余照常返回；"
       + "一次调用时间预算有限，返回 truncated=true 表示还没截完，需要再次调用。"
-      + "单帧只用于查看，不是节点输出；再次调用会覆盖上一批产物，之前返回的 path 会失效。只想先了解全片时优先用 sampleFrames，避免逐点截帧。",
+      + "单帧只用于查看，不是节点输出；再次调用会覆盖上一批产物，之前返回的 path 会失效。若工具清单里还有 sampleFrames，可先用它了解全片再逐点截帧；没有该函数时按时间点抽帧即可。",
     parameters: captureParameters,
     execute({ seconds }, { signal }) {
       return inspect.captureFrame(seconds, signal ?? new AbortController().signal);

@@ -2,7 +2,7 @@
   <nodeSkeleton
     v-bind="nodeProps"
     :run="runFromShortcut"
-    :busy="generating || cropping || uploading || !!editor?.busy || !!lighting?.generating || !!multiAngle?.generating || !!panorama?.busy || !!gridSplit?.splitting"
+    :busy="generating || cropping || adjusting || uploading || !!editor?.busy || !!lighting?.generating || !!multiAngle?.generating || !!panorama?.busy || !!gridSplit?.splitting"
     v-model:bottomVisible="node.selected"
     :topVisible="node.selected"
     topWidth="max-content"
@@ -19,6 +19,7 @@
       <el-button :icon="IconCameraRotate" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="多角度" aria-label="多角度" @click.stop="openMultiAngle">多角度</el-button>
       <el-button :icon="IconLayoutGrid" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl" :loading="gridSplit?.splitting" text title="宫格切分" aria-label="宫格切分" @click.stop="gridSplit?.open($event)">宫格切分</el-button>
       <el-button :icon="IconCrop" :disabled="cropping || generating || deleting || uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || !previewUrl" :loading="cropping" text title="裁剪" aria-label="裁剪" @click.stop="crop?.open()">裁剪</el-button>
+      <el-button :icon="IconAdjustments" :loading="adjusting" :disabled="cropping || generating || deleting || uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || !previewUrl" text title="调整" aria-label="调整" @click.stop="adjust?.open()">调整</el-button>
       <mediaHistory mediaType="image" :current="outputFile" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @select="selectHistory" @clear="selectHistory(undefined)" />
       <el-button :icon="IconTransfer" :loading="uploading" :disabled="cropping || generating || deleting || lighting?.generating || multiAngle?.generating || panorama?.busy" text title="替换图片" aria-label="替换图片" @click.stop="fileInput?.click()">替换图片</el-button>
       <input ref="fileInput" type="file" accept="image/*" hidden aria-label="选择替换图片" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @change="replaceOutput" />
@@ -107,6 +108,7 @@
   <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="nodeDisabled || cropping || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting" @open="openPanorama" />
   <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="nodeDisabled || cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
   <imageCrop ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
+  <imageAdjust ref="adjust" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || generating || deleting || uploading || cropping || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleAdjustApplied" @restore="handleAdjustRestore" />
   <el-image-viewer v-if="inpaintPreviewVisible && inpaintGuideUrl" :urlList="[inpaintGuideUrl]" teleported @close="inpaintPreviewVisible = false" />
   <el-image-viewer
     v-if="previewVisible && previewUrl"
@@ -118,7 +120,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer, ElMessage } from "element-plus";
-import { IconCheck, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconChevronDown, IconCrop } from "@tabler/icons-vue";
+import { IconCheck, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconChevronDown, IconCrop, IconAdjustments } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeMediaModel, type NodeImageRequest, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
 import { markNodeOutcome } from "@toonflow/nodes-scaffold/nodeBusy";
 import { groupNodeModels } from "@toonflow/node-shared/groupNodeModels";
@@ -131,6 +133,7 @@ import mediaHistory from "@toonflow/node-shared/mediaHistory";
 import mediaPrice from "@toonflow/node-shared/mediaPrice";
 import imageGridSplit from "@toonflow/node-image/imageGridSplit";
 import imageCrop from "@toonflow/node-image/imageCrop";
+import imageAdjust from "@toonflow/node-image/imageAdjust";
 import imageEditor from "@toonflow/node-image/imageEditor";
 import { buildInpaintRequest, useImageInpaint, type ImageInpaint } from "@toonflow/node-image/imageInpaint";
 import imageLighting from "@toonflow/node-image/imageLighting";
@@ -150,8 +153,10 @@ const vLoading = ElLoading.directive;
 const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals } = useNode({
   label: "图片生成",
 });
-type CropState = { last?: { url: string; x: number; y: number; width: number; height: number }; previous?: { url: string; mimeType: string }; appliedUrl?: string };
-type CropApplied = { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number; flipped: boolean; cropped: boolean };
+type CropState = { last?: { url: string; x: number; y: number; width: number; height: number; flipped?: boolean; flippedV?: boolean }; previous?: { url: string; mimeType: string }; appliedUrl?: string };
+type CropApplied = { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number; flipped: boolean; flippedV: boolean; cropped: boolean };
+type AdjustState = { previous?: { url: string; mimeType: string }; appliedUrl?: string };
+type AdjustApplied = { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number };
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
 const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; inpaint?: ImageInpaint });
 data.value.prompt ??= "";
@@ -171,6 +176,7 @@ const uploading = ref(false);
 const fileInput = ref<HTMLInputElement>();
 const gridSplit = ref<InstanceType<typeof imageGridSplit>>();
 const crop = ref<InstanceType<typeof imageCrop>>();
+const adjust = ref<InstanceType<typeof imageAdjust>>();
 const editor = ref<InstanceType<typeof imageEditor>>();
 const generateInpaint = useImageInpaint();
 const paintToolbar = ref<HTMLElement>();
@@ -256,6 +262,7 @@ const priceInput = computed(() => {
 });
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
 const cropping = computed(() => !!crop.value?.applying);
+const adjusting = computed(() => !!adjust.value?.applying);
 const inpaintGuideUrl = files.useFileUrl(
   () => data.value.inpaint?.guide ? { url: data.value.inpaint.guide, mimeType: "image/png" } : undefined,
   error => showNodeError(error, "重绘标注读取失败")
@@ -313,6 +320,7 @@ async function replaceOutput(event: Event) {
     // ACT: 保留历史输出文件，避免破坏撤销记录和复制节点的引用。
     outputs.value.image = { dataType: "IMAGE", value: { url, mimeType: file.type } };
     clearCropHistory();
+    clearAdjustHistory();
   } catch (error) {
     showNodeError(error, "图片替换失败");
   } finally {
@@ -324,6 +332,7 @@ async function replaceOutput(event: Event) {
 function selectHistory(value?: { url: string; mimeType: string }) {
   outputs.value.image = value ? { dataType: "IMAGE", value } : undefined;
   clearCropHistory();
+  clearAdjustHistory();
 }
 
 function cropState(): CropState {
@@ -343,6 +352,48 @@ function clearCropHistory() {
   delete state.last;
 }
 
+function adjustState(): AdjustState {
+  const value = (node.data as { adjust?: unknown }).adjust;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    (node.data as { adjust?: AdjustState }).adjust = {};
+  }
+  return (node.data as { adjust?: AdjustState }).adjust as AdjustState;
+}
+
+function clearAdjustHistory() {
+  const value = (node.data as { adjust?: unknown }).adjust;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const state = value as AdjustState;
+  delete state.previous;
+  delete state.appliedUrl;
+}
+
+function handleAdjustApplied(result: AdjustApplied) {
+  const current = outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined;
+  if (!current || current.url !== result.fromUrl) {
+    // ACT: 调整期间输出可能被重新生成或上传替换；放弃本次结果并尽力删除新文件。
+    void files.getWorkspaceFiles().remove(result.path).catch(() => {});
+    ElMessage.warning("图片已变化，已取消本次调整");
+    return;
+  }
+  const state = adjustState();
+  state.previous = { url: current.url, mimeType: current.mimeType };
+  state.appliedUrl = result.path;
+  outputs.value.image = { dataType: "IMAGE", value: { url: result.path, mimeType: result.mimeType } };
+  ElMessage.success(`已调整颜色为 ${result.width} × ${result.height}${result.formatChanged ? "，已转为 PNG" : ""}`);
+}
+
+function handleAdjustRestore() {
+  const current = outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined;
+  const state = adjustState();
+  const previous = state.previous;
+  if (!current || !previous || current.url !== state.appliedUrl) return;
+  outputs.value.image = { dataType: "IMAGE", value: { url: previous.url, mimeType: previous.mimeType } };
+  delete state.previous;
+  delete state.appliedUrl;
+  ElMessage.success("已恢复调整前的图片");
+}
+
 function handleCropApplied(result: CropApplied) {
   const current = outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined;
   if (!current || current.url !== result.fromUrl) {
@@ -355,7 +406,9 @@ function handleCropApplied(result: CropApplied) {
   state.previous = { url: current.url, mimeType: current.mimeType };
   state.appliedUrl = result.path;
   outputs.value.image = { dataType: "IMAGE", value: { url: result.path, mimeType: result.mimeType } };
-  const action = result.cropped ? (result.flipped ? "已裁剪并左右翻转" : "已裁剪") : "已左右翻转";
+  // ACT: 两个轴独立可选，文案要覆盖「左右 / 上下 / 双向」三种组合，不能只写左右。
+  const flipLabel = result.flipped && result.flippedV ? "左右、上下翻转" : result.flipped ? "左右翻转" : result.flippedV ? "上下翻转" : "";
+  const action = result.cropped ? (flipLabel ? `已裁剪并${flipLabel}` : "已裁剪") : `已${flipLabel}`;
   ElMessage.success(`${action}为 ${result.width} × ${result.height}${result.formatChanged ? "，已转为 PNG" : ""}`);
 }
 
@@ -410,7 +463,7 @@ function runFromShortcut() {
 
 async function startGeneration() {
   if (disabledUpstreams.value.length) throw new Error(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);
-  if (cropping.value) return void ElMessage.warning("正在处理图片，请稍候");
+  if (cropping.value || adjusting.value) return void ElMessage.warning("正在处理图片，请稍候");
   const input = generationInput.value;
   if (generating.value) throw new Error("图片正在生成，请等待完成");
   if (panorama.value?.visible) throw new Error("请先关闭全景图，再启动图片生成");
@@ -451,11 +504,12 @@ async function startGeneration() {
 }
 
 nodeEvent.on("save", (reason) => {
-  if (reason === "reload" && (cropping.value || generating.value || uploading.value || deleting.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy)) throw new Error("图片处理中，请完成后再刷新节点");
+  if (reason === "reload" && (cropping.value || adjusting.value || generating.value || uploading.value || deleting.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy)) throw new Error("图片处理中，请完成后再刷新节点");
 });
 nodeEvent.on("delete", async () => {
   await crop.value?.cancelApply();
-  if (cropping.value || uploading.value || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || (editor.value?.busy && !generating.value)) throw new Error("图片处理中，请稍后删除节点");
+  await adjust.value?.cancelApply();
+  if (cropping.value || adjusting.value || uploading.value || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || (editor.value?.busy && !generating.value)) throw new Error("图片处理中，请稍后删除节点");
   deleting.value = true;
   generationController?.abort();
   try {

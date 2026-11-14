@@ -18,7 +18,7 @@ import { getMissingBrowserFeatures } from "@/lib/browserCapabilities";
 import { registerAnonymousData } from "@/lib/anonymousData";
 import { installMediaPlayback } from "@/lib/mediaPlayback";
 import { installTaskAlerts } from "@/lib/taskAlerts";
-import { unlockChime } from "@/lib/chime";
+import { installChimeUnlock } from "@/lib/chime";
 // ACT: 同源请求/长连接计数探针（window.__toonflowNet），用于定位「执行期间全线超时」。
 import "@/lib/netProbe";
 import { loadSettings, settingsStorage } from "@/stores/settings";
@@ -31,8 +31,9 @@ import { locale, translate } from "@toonflow/i18n/vue";
 installMediaPlayback();
 // ACT: 节点完成/失败提醒的宿主侧订阅；与 installMediaPlayback 一起在挂载前装好，不依赖某个页面。
 installTaskAlerts();
-// ACT: 浏览器只在用户手势里允许创建/恢复 AudioContext；首次点击解锁一次，之后的提示音才出得来。
-window.addEventListener("pointerdown", unlockChime, { once: true, capture: true });
+// ACT: 浏览器只在用户手势里允许创建/恢复 AudioContext；监听常驻不摘除，锁屏/切后台造成的
+// 中断每次都要靠它重新拉起。
+installChimeUnlock();
 const app = createApp(App);
 app.onUnmount(registerLanguage());
 const requiresWebView2Update = isDesktop && /Windows/i.test(navigator.userAgent)

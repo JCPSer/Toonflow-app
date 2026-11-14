@@ -50,6 +50,7 @@ function toToolResult(result: FrameApplyResult) {
 const frameOutputParameters = z.strictObject({
   first: z.boolean().optional().describe("是否开启首帧输出"),
   last: z.boolean().optional().describe("是否开启尾帧输出"),
+  grid: z.boolean().optional().describe("是否开启宫格输出（2×2 四格联系表）"),
 });
 
 /**
@@ -60,7 +61,7 @@ export function createFrameOutputTool(frames: FrameOutputController): NodeToolDe
   return {
     name: "setFrameOutputs",
     description:
-      "开启或关闭此视频节点的首帧/尾帧输出端口。开启时按当前视频抽取 JPEG 并写入输出值，抽完才返回；节点还没有视频时先建端口并返回 pending=true、pendingReason=no-video，视频就绪后自动补帧。视频生成节点正在生成时会先对旧视频抽帧，生成完成后自动重抽；需要最新画面请等生成结束再查询。需要把首帧/尾帧交给下游图片节点时先调用本工具，再用 connectNodes 连接 firstFrame/lastFrame。关闭会移除端口并断开其上的连线，返回 removedEdges。未传的项保持原状态。",
+      "开启或关闭此视频节点的首帧/尾帧/宫格输出端口。开启时按当前视频抽取 JPEG 并写入输出值，抽完才返回；节点还没有视频时先建端口并返回 pending=true、pendingReason=no-video，视频就绪后自动补帧。视频生成节点正在生成时会先对旧视频抽帧，生成完成后自动重抽；需要最新画面请等生成结束再查询。宫格是 2×2 四格联系表（按 10%/30%/50%/70% 时间点采样），用于把上一段视频的场景、人物状态交给下游做参考，解决连续片段的场景一致性问题。需要把输出交给下游节点时先调用本工具，再用 connectNodes 连接 firstFrame/lastFrame/gridFrame。关闭会移除端口并断开其上的连线，返回 removedEdges。未传的项返回该项当前状态。",
     parameters: frameOutputParameters,
     async execute(patch, { signal }) {
       const result: Partial<Record<FrameKey, ReturnType<typeof toToolResult> & { error?: string }>> = {};

@@ -103,7 +103,7 @@ const nodeId = useNodeId();
 const baseHandles = staticNodeHandles<NodeHandle>(getCurrentInstance()?.type);
 const savedFrameConfig = (flow.findNode(nodeId)?.data as { frameOutputs?: FrameOutputConfig } | undefined)?.frameOutputs;
 const initialHandles = buildFrameHandles(savedFrameConfig, baseHandles);
-const { node, nodeProps, outputs, handles, ffmpeg, files, nodeEvent, updateNodeInternals } = useNode({
+const { node, nodeProps, outputs, handles, ffmpeg, files, nodeEvent, config: nodeConfig, updateNodeInternals } = useNode({
   label: "视频",
   handles: initialHandles,
 });
@@ -144,10 +144,22 @@ const videoInspect = createVideoInspect({
   blockedReason: () => uploading.value ? "视频处理中，请稍后重试" : exporting.value ? "视频正在导出，请稍后重试" : undefined,
 });
 const inspectTools = createVideoInspectTools(videoInspect);
-nodeTools.register(inspectTools.sampleFrames);
+// ACT: 宫格查看的识别准确度不稳定，插件设置里默认关闭；改配置后立即注册/注销，无需重开项目。
+let unregisterGridInspect: (() => void) | undefined;
+function syncGridInspectTool() {
+  unregisterGridInspect?.();
+  unregisterGridInspect = undefined;
+  if (nodeConfig.value.agentGridInspect !== true) return void videoInspect.cancelSamples();
+  unregisterGridInspect = nodeTools.register(inspectTools.sampleFrames, { nodeId, flow });
+}
+syncGridInspectTool();
+watch(() => nodeConfig.value.agentGridInspect, syncGridInspectTool);
 nodeTools.register(inspectTools.captureFrame);
 // ACT: 卸载时按目录引用计数释放；没真正查看过的节点不会登记，也不会在关窗时发无意义的删除请求。
-onScopeDispose(() => { void videoInspect.dispose(); });
+onScopeDispose(() => {
+  unregisterGridInspect?.();
+  void videoInspect.dispose();
+});
 // ACT: 视频换了（含打开项目时的残留）就清掉旧查看产物，避免 Agent 还能 read 到上一版画面。
 watch(() => outputFile.value?.url, () => { void videoInspect.clear(); }, { immediate: true });
 // ACT: 默认只取服务端首帧图，点播放才把整段视频读成 Blob；闲置后自动释放。
@@ -183,6 +195,9 @@ nodeEvent.on("save", (reason) => {
 });
 nodeEvent.on("delete", () => {
   if (uploading.value) throw new Error("视频上传中，请稍后删除节点");
+  // ACT: 只中止在途抽帧（宫格最慢），否则写盘可能在 removeNodeFiles 之后重建已删除的节点目录；
+  // 不能 clear()——删除失败或撤销时输出值还得留着。
+  frames.cancel();
   uploading.value = true;
   return files.removeNodeFiles().finally(() => {
     uploading.value = false;

@@ -158,7 +158,7 @@ const baseHandles = staticNodeHandles<NodeHandle>(getCurrentInstance()?.type);
 // ACT: 动态端口必须在 useNode 之前合并，否则 useNode 会按声明期端口过滤掉已保存的首/尾帧值。
 const savedFrameConfig = (flow.findNode(nodeId)?.data as { frameOutputs?: FrameOutputConfig } | undefined)?.frameOutputs;
 const initialHandles = buildFrameHandles(savedFrameConfig, baseHandles);
-const { id, node, nodeProps, nodeEvent, outputs, handles, ffmpeg, files, ai, updateNodeInternals } = useNode({
+const { id, node, nodeProps, nodeEvent, outputs, handles, ffmpeg, files, ai, config: nodeConfig, updateNodeInternals } = useNode({
   label: "视频生成",
   handles: initialHandles,
 });
@@ -296,10 +296,22 @@ const videoInspect = createVideoInspect({
       : uploading.value ? "视频处理中，请稍后重试" : undefined,
 });
 const inspectTools = createVideoInspectTools(videoInspect);
-nodeTools.register(inspectTools.sampleFrames);
+// ACT: 宫格查看的识别准确度不稳定，插件设置里默认关闭；改配置后立即注册/注销，无需重开项目。
+let unregisterGridInspect: (() => void) | undefined;
+function syncGridInspectTool() {
+  unregisterGridInspect?.();
+  unregisterGridInspect = undefined;
+  if (nodeConfig.value.agentGridInspect !== true) return void videoInspect.cancelSamples();
+  unregisterGridInspect = nodeTools.register(inspectTools.sampleFrames, { nodeId, flow });
+}
+syncGridInspectTool();
+watch(() => nodeConfig.value.agentGridInspect, syncGridInspectTool);
 nodeTools.register(inspectTools.captureFrame);
 // ACT: 卸载时按目录引用计数释放；没真正查看过的节点不会登记，也不会在关窗时发无意义的删除请求。
-onScopeDispose(() => { void videoInspect.dispose(); });
+onScopeDispose(() => {
+  unregisterGridInspect?.();
+  void videoInspect.dispose();
+});
 // ACT: 视频换了（含打开项目时的残留）就清掉旧查看产物，避免 Agent 还能 read 到上一版画面。
 watch(() => outputFile.value?.url, () => { void videoInspect.clear(); }, { immediate: true });
 
@@ -462,6 +474,9 @@ nodeEvent.on("save", (reason) => {
 });
 nodeEvent.on("delete", async () => {
   if (uploading.value) throw new Error("视频正在替换，请稍后删除节点");
+  // ACT: 只中止在途抽帧（宫格最慢），否则写盘可能在 removeNodeFiles 之后重建已删除的节点目录；
+  // 不能 clear()——删除失败或撤销时输出值还得留着。
+  frames.cancel();
   deleting.value = true;
   generationController?.abort();
   try {

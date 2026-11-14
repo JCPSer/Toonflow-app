@@ -3,7 +3,7 @@ import { normalizeLocale } from "@toonflow/i18n";
 import { computed, nextTick, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { invalidateNodeModels } from "@toonflow/nodes-scaffold/nodeAi";
-import { canvasShortcutFields, defaultCanvasShortcuts, isShortcutAllowed, normalizeShortcut, shortcutConflicts, type CanvasShortcuts } from "@/lib/canvasShortcuts";
+import { canvasShortcutFields, defaultCanvasShortcuts, isShortcutAllowed, normalizeShortcut, shortcutConflicts, shortcutsMayShareBinding, type CanvasShortcuts } from "@/lib/canvasShortcuts";
 import { normalizeNodeMenu, type StoredNodeMenuItem } from "@toonflow/server/nodeMenu";
 import type { ReasoningEfforts, ThinkingLevel } from "@toonflow/server/modelReasoning";
 import "element-plus/es/components/message/style/css";
@@ -98,7 +98,10 @@ export const generalSettings = computed(() => {
       if (savedBindings.has(field.id)) return [field.id, savedBindings.get(field.id)];
       const binding = defaultCanvasShortcuts[field.id];
       // ACT: None 对普通按键是「关闭」哨兵（不冲突）；按住类手势之间都为 None 仍视为抢同一手势。
-      const conflicts = canvasShortcutFields.some(other => other.gesture === field.gesture
+      // ACT: 预览与平移共用空格是设计好的（靠轻点/按住区分），不能在这里被当成冲突清空，
+      // 否则升级用户只要保存过 pan=Space，新功能就会静默消失。
+      const conflicts = canvasShortcutFields.some(other => !shortcutsMayShareBinding(field.id, other.id)
+        && other.gesture === field.gesture
         && shortcutConflicts(binding, [{ binding: savedBindings.get(other.id) ?? "", hold: other.hold }], field.hold));
       return [field.id, conflicts ? "" : binding];
     })) as CanvasShortcuts,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildFrameHandles, enabledFrameOutputs, frameOutputMeta, frameOutputOptions, JPEG_OUTPUT_OPTIONS, staticNodeHandles } from "./frameOutputPlan";
+import { buildFrameHandles, enabledFrameOutputs, frameOutputMeta, frameOutputOptions, GRID_OUTPUT_COUNT, JPEG_OUTPUT_OPTIONS, staticNodeHandles } from "./frameOutputPlan";
 
 const base = [
   { id: "in", type: "target" as const, dataType: "IMAGE" as const },
@@ -24,10 +24,21 @@ describe("buildFrameHandles", () => {
     expect(buildFrameHandles({ last: true, first: true }, base).map((item) => item.id)).toEqual(["in", "video", "firstFrame", "lastFrame"]);
   });
 
+  test("三路全开时宫格排在尾帧之后", () => {
+    const handles = buildFrameHandles({ first: true, last: true, grid: true }, base);
+    expect(handles.map((item) => item.id)).toEqual(["in", "video", "firstFrame", "lastFrame", "gridFrame"]);
+    expect(handles.at(-1)).toMatchObject({ type: "source", dataType: "IMAGE", label: "宫格输出" });
+  });
+
+  test("只开宫格时只多出 gridFrame", () => {
+    expect(buildFrameHandles({ grid: true }, base).map((item) => item.id)).toEqual(["in", "video", "gridFrame"]);
+  });
+
   test("关闭尾帧后端口上移，不占位", () => {
     const before = buildFrameHandles({ first: true, last: true }, base);
     expect(before).toHaveLength(4);
     expect(buildFrameHandles({ first: true }, base)).toHaveLength(3);
+    expect(buildFrameHandles({ first: true, grid: true }, base).map((item) => item.id)).toEqual(["in", "video", "firstFrame", "gridFrame"]);
   });
 
   test("重复构造不会产生同名端口", () => {
@@ -42,6 +53,7 @@ describe("enabledFrameOutputs", () => {
     expect(enabledFrameOutputs(undefined)).toEqual([]);
     expect(enabledFrameOutputs({ first: true }).map((item) => item.key)).toEqual(["first"]);
     expect(enabledFrameOutputs({ first: false, last: true }).map((item) => item.key)).toEqual(["last"]);
+    expect(enabledFrameOutputs({ grid: true }).map((item) => item.key)).toEqual(["grid"]);
   });
 });
 
@@ -79,6 +91,8 @@ describe("frameOutputMeta / staticNodeHandles", () => {
   test("handleId 与文件名固定，不能漂移", () => {
     expect(frameOutputMeta("first")).toMatchObject({ handleId: "firstFrame", fileName: "frame-first.jpg" });
     expect(frameOutputMeta("last")).toMatchObject({ handleId: "lastFrame", fileName: "frame-last.jpg" });
+    expect(frameOutputMeta("grid")).toMatchObject({ handleId: "gridFrame", fileName: "frame-grid.jpg", label: "宫格" });
+    expect(GRID_OUTPUT_COUNT).toBe(4);
   });
 
   test("从组件类型上取声明期端口", () => {

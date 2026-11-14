@@ -105,6 +105,8 @@
         :style="taskAlertBannerStyle"
         @select="focusTaskAlert"
         @clear="taskAlertsStore.clear()" />
+      <!-- ACT: 空格轻点预览选中节点；媒体播放互斥由全局 installMediaPlayback 收敛。 -->
+      <nodePreview :target="previewTarget" :directory="project?.directory" @close="previewTarget = undefined" />
       <canvasControls
         ref="canvasControlsRef"
         v-model:snapEnabled="snapEnabled"
@@ -255,6 +257,8 @@ import { useSessionStateStore } from "@/stores/sessionState";
 import groupNode from "./components/groupNode.vue";
 import selectionToolbar from "./components/selectionToolbar.vue";
 import nodeSearch from "./components/nodeSearch.vue";
+import nodePreview from "./components/nodePreview.vue";
+import { pickNodePreview, type NodePreviewTarget } from "./nodePreview";
 import agentNodePanel from "./components/agentNodePanel.vue";
 import taskAlertBanner from "./components/taskAlertBanner.vue";
 import { useTaskAlertsStore } from "@/stores/taskAlerts";
@@ -369,6 +373,8 @@ flow.onNodeDragStart(({ event, nodes }) => {
   // ACT: 锚点必须在 Vue Flow 应用第一段位移之前记下来，按住 Shift 时另一轴要回到这个坐标。
   axisLock.start(nodes);
   dragCopy = undefined;
+  // ACT: 未被选中的禁用节点拖动时不会自动选中（selectNodesOnDrag 关闭），临时抬到选中档才看得见。
+  for (const node of nodes) if (isNodeDisabled(node)) node.zIndex = DISABLED_NODE_DRAG_Z_INDEX;
   if (!props.active || props.settingsVisible) return;
   const shortcuts = generalSettings.value.canvasShortcuts;
   // ACT: Shift 固定用于轴锁；拖动复制忽略额外按住的 Shift，Shift+Alt 仍能拖出副本。
@@ -389,6 +395,8 @@ flow.onNodeDragStop(({ nodes }) => {
   dragCopy = undefined;
   if (copy) copy.finish();
   else finishGroupDrag(flow.getNodes.value, nodes);
+  // 收回拖动期间给禁用节点的临时抬升。
+  syncDisabledNodeZ();
 });
 const requestNodeAssetsCleanup = inject<((directory: string, nodeIds: string[]) => void) | undefined>("requestNodeAssetsCleanup");
 // ACT: 文档面板是画布的兄弟节点，禁用节点时要 flush/关闭它的标签只能由 workspace 页 provide 下来。
@@ -653,10 +661,57 @@ watch([canvasId, () => project.value?.directory], closeAgentPortMenu, { flush: "
 function clearStuckDragging() {
   for (const node of flow.nodes.value) if (node.dragging) node.dragging = false;
 }
-watch([canvasId, () => props.active], () => {
+/** 空格轻点预览的候选状态：任何指针按下或滚轮都会清掉它，只留「纯按键轻点」这一种情况。 */
+let previewTap: { code: string; at: number } | undefined;
+/** 指针是否处于按下状态：拖动中途才按空格（手型/中键拖）不算轻点，不能弹预览。 */
+let pointerHeld = false;
+/** 轻点判定上限：按住超过这个时长按「平移准备」处理，不弹预览。 */
+const PREVIEW_TAP_MAX_MS = 400;
+const previewTarget = ref<NodePreviewTarget>();
+
+watch([canvasId, () => project.value?.directory, () => props.active], () => {
   axisLock.reset();
   clearStuckDragging();
+  // 拖动被打断时不会有 nodeDragStop，临时抬升的 zIndex 也要在这里收回。
+  syncDisabledNodeZ();
+  // 切画布/切项目/失活时收掉预览：旧工作区解析出来的 blob 不能再留着。
+  previewTarget.value = undefined;
+  previewTap = undefined;
 }, { flush: "post" });
+
+function cancelPreviewTap() {
+  previewTap = undefined;
+}
+
+/** 单选节点且有可预览的媒体输出时打开预览；禁用节点也能预览——禁用只是不参与执行。 */
+function openNodePreview() {
+  const selected = flow.getSelectedNodes.value;
+  if (selected.length !== 1 || hasModalOverlay()) return;
+  const target = pickNodePreview(selected[0]!);
+  if (target) previewTarget.value = target;
+}
+
+function onPreviewPointerDown() {
+  pointerHeld = true;
+  cancelPreviewTap();
+}
+function onPreviewPointerUp() {
+  pointerHeld = false;
+}
+
+onMounted(() => {
+  // ACT: 捕获阶段监听任何手势；只要用户开始拖/滚/点，这次「按键」就不再算轻点。
+  window.addEventListener("pointerdown", onPreviewPointerDown, { capture: true, passive: true });
+  window.addEventListener("pointerup", onPreviewPointerUp, { capture: true, passive: true });
+  window.addEventListener("pointercancel", onPreviewPointerUp, { capture: true, passive: true });
+  window.addEventListener("wheel", cancelPreviewTap, { capture: true, passive: true });
+});
+onScopeDispose(() => {
+  window.removeEventListener("pointerdown", onPreviewPointerDown, true);
+  window.removeEventListener("pointerup", onPreviewPointerUp, true);
+  window.removeEventListener("pointercancel", onPreviewPointerUp, true);
+  window.removeEventListener("wheel", cancelPreviewTap, true);
+});
 onScopeDispose(() => axisLock.reset());
 let canvasController = new AbortController();
 let workspaceController = new AbortController();
@@ -839,6 +894,35 @@ watch([canvasId, () => disabledNodeIds().sort().join("|")], ([id], previous) => 
   knownDisabled = current;
   if (added.length) void closePanelsForDisabled(added, true);
 }, { flush: "post" });
+
+/**
+ * ACT: 禁用节点恒在下层。Vue Flow 的节点 z 取 node.zIndex，选中时再加 1000，
+ * 所以用负数把禁用节点压到启用节点（z 0）之下；选中/拖动时它仍会升到 999，
+ * 看得见也点得到，只是不会高过选中的启用节点（1000）。
+ * 组内节点由 Vue Flow 按「父级 z 与自身 z 取大再 +1」计算，最低只能到分组上方，
+ * 这是刻意的：再低就会被分组底色/边框盖住。
+ * zIndex 是派生值，不落盘进撤销快照；节点列表被整体替换（加载/撤销/粘贴）后必须重算。
+ */
+const DISABLED_NODE_Z_INDEX = -1;
+/**
+ * ACT: 画布关掉了 selectNodesOnDrag，直接按住未选中的禁用节点拖动时 Vue Flow 不会把它标成选中，
+ * 也就拿不到 +1000 的提升，拖动全程都被启用节点盖住。拖动期间临时给到「选中档」，
+ * 松开（或拖动被打断）时由 syncDisabledNodeZ 收回。
+ */
+const DISABLED_NODE_DRAG_Z_INDEX = DISABLED_NODE_Z_INDEX + 1000;
+
+function syncDisabledNodeZ() {
+  for (const node of flow.getNodes.value) {
+    if (isNodeDisabled(node)) node.zIndex = DISABLED_NODE_Z_INDEX;
+    else if (node.zIndex !== undefined) delete node.zIndex;
+  }
+}
+
+watch(
+  () => [flow.getNodes.value, ...flow.getNodes.value.map(node => isNodeDisabled(node))],
+  syncDisabledNodeZ,
+  { immediate: true, flush: "post" }
+);
 
 function toggleDisabledSelection() {
   const nodes = flow.getSelectedNodes.value.filter(node => node.type !== "canvasGroup");
@@ -1301,8 +1385,20 @@ let savePaused = false;
 let saveCancelled = false;
 let changedWhilePaused = false;
 let saveRevision = 0;
+/**
+ * ACT: zIndex 是禁用态的派生值，属于运行时事实。它不进撤销快照，也不能落盘/进剪贴板，
+ * 否则项目文件里会留下与 data.disabled 冗余的脏字段（下次加载还会被重算覆盖）。
+ */
+function stripDerivedNodeFields(node: Node) {
+  if (node.zIndex === undefined) return node;
+  const saved = { ...node };
+  delete saved.zIndex;
+  return saved;
+}
+
 const saveCanvas = debounce((directory: string, fileName: string) => {
-  const flow = toObject();
+  const serialized = toObject();
+  const flow = { ...serialized, nodes: serialized.nodes.map(stripDerivedNodeFields) };
   const revision = saveRevision;
   // ACT: 同页保存按顺序完成，防止慢请求覆盖后续修改；不处理多个客户端的并发编辑。
   saving = saving.then(async () => {
@@ -1353,6 +1449,8 @@ const nodeRuntimeFields = new Set([
   "resizing",
   "dragging",
   "events",
+  // ACT: 禁用态的 zIndex 是派生值，由禁用集合推导；当成普通字段会每次同步都触发一次保存/撤销记录。
+  "zIndex",
 ]);
 const edgeRuntimeFields = new Set(["data", "selected", "sourceNode", "targetNode", "sourceX", "sourceY", "targetX", "targetY", "events"]);
 // ACT: 仅增删、替换元素时扫描列表；位移与 data 各自监听，单个节点变化不遍历其余节点。
@@ -1915,6 +2013,26 @@ function updateCanvasKeys(event: KeyboardEvent) {
   panKeyPressed.value = !!inCanvas && !editing && !event.isComposing
     && shortcutPressed(event, getShortcutBindings(shortcuts.pan).filter(binding => binding !== "None").join(" / "), pressedCodes);
   updateCanvasSelection(event);
+  // ACT: 空格轻点预览、按住平移。按下只记候选；期间出现任何指针按下/滚轮（平移、拖节点、框选）
+  // 或敲了别的键就作废，抬起时超过阈值也不触发——平移手势不能被预览抢走。
+  // ACT: 必须用「本事件是否就是这个键」（shortcutMatches）判定，不能复用按住集合 pressedCodes：
+  // 按住空格时任何别的裸键都会命中，反而把候选改写成那个键，松开就误弹预览。
+  const previewBinding = getShortcutBindings(shortcuts.preview).filter(binding => binding !== "None").join(" / ");
+  const previewWidget = target instanceof Element
+    && !!target.closest("input, textarea, select, button, [role='button'], a[href], [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='slider'], .vue-flow__node, .vue-flow__edge, .el-popper, [role='menu'], [role='listbox']");
+  const previewHit = event.type === "keydown" && !!inCanvas && !event.isComposing && !pointerHeld
+    && !!previewBinding && !event.repeat && !previewWidget
+    && shortcutMatches(event, previewBinding);
+  if (event.type === "keydown") {
+    if (previewHit) previewTap = { code: event.code, at: performance.now() };
+    else previewTap = undefined;
+  } else if (event.type === "keyup" && previewTap?.code === event.code) {
+    const tap = previewTap;
+    previewTap = undefined;
+    if (!event.defaultPrevented && performance.now() - tap.at <= PREVIEW_TAP_MAX_MS) openNodePreview();
+  }
+  // ACT: 预览层打开时画布快捷键整体让位，避免在预览背后删节点/改选区；Esc 由预览层自己关。
+  if (previewTarget.value) return;
   // ACT: 焦点在 Agent 节点面板内（含落到 body）时允许 Delete/Backspace 删除选中节点：
   // 面板与画布共用同一份选区，删除后节点面板随之关闭，撤销可恢复。
   const panelDelete = !editing && !hasCanvasAreaSelection() && (inAgentNodePanel || panelOpenOnBody);
@@ -2034,13 +2152,15 @@ function hasCanvasAreaSelection() {
 
 // ACT: 只认模态遮罩（对话框/抽屉），下拉浮层（.el-popper）不算——下拉开着时还要能用同一个键收起。
 function hasModalOverlay() {
-  return [...document.querySelectorAll<HTMLElement>(".el-overlay")].some(element => element.getClientRects().length > 0);
+  // ACT: 图片查看器不是 el-dialog，用的是自己的 wrapper；漏掉它会让预览打开时画布快捷键仍然生效。
+  return [...document.querySelectorAll<HTMLElement>(".el-overlay, .el-image-viewer__wrapper")]
+    .some(element => element.getClientRects().length > 0);
 }
 
 // ACT: Element Plus 用 Esc 关弹窗时不会 preventDefault，无法靠 defaultPrevented 判断"已被别人消化"，
 // 只能在调用前自己扫一遍可见浮层，否则打开着下拉/弹窗时按 Esc 会同时弹出退出确认。
 function hasVisibleOverlay() {
-  const overlays = document.querySelectorAll<HTMLElement>(".el-overlay, .el-popper, .el-select__popper, .el-dropdown__popper");
+  const overlays = document.querySelectorAll<HTMLElement>(".el-overlay, .el-popper, .el-select__popper, .el-dropdown__popper, .el-image-viewer__wrapper");
   return [...overlays].some(element => element.style.display !== "none" && element.getClientRects().length > 0);
 }
 
@@ -2073,6 +2193,9 @@ function handleCanvasEscape(event: KeyboardEvent) {
 function resetCanvasKeys() {
   clearStuckDragging();
   pressedCodes.clear();
+  // 失活/打开设置/窗口失焦时清掉预览候选，避免稍后 keyup 在别的语境里补弹预览。
+  cancelPreviewTap();
+  pointerHeld = false;
   gestureScale = undefined;
   zoomKeyPressed.value = false;
   panKeyPressed.value = false;

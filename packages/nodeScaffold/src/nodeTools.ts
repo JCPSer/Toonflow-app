@@ -77,16 +77,21 @@ function getRegistry(flow: ReturnType<typeof useVueFlow>) {
 }
 
 export const nodeTools = {
-  register<Schema extends z.ZodType>(definition: NodeToolDefinition<Schema>) {
-    if (!getCurrentScope()) throw new Error("请在节点 setup 中注册 nodeTools");
-    const nodeId = useNodeId();
+  /**
+   * `options.nodeId` / `options.flow` 供 setup 之外的动态注册使用（例如插件级开关切换时重新注册）：
+   * 作用域外的 `useNodeId()` 与 `useVueFlow()` 都拿不到画布实例（useVueFlow 会新建一份存储），
+   * 必须由调用方把 setup 里取到的 id 与 flow 传进来。
+   * ACT: 没有活跃作用域时不做自动回收，注销由调用方负责；旧调用方式行为不变。
+   */
+  register<Schema extends z.ZodType>(definition: NodeToolDefinition<Schema>, options?: { nodeId?: string; flow?: ReturnType<typeof useVueFlow> }) {
+    const nodeId = options?.nodeId ?? useNodeId();
     if (!nodeId) throw new Error("当前组件不属于画布节点");
     if (!/^[a-z][a-zA-Z0-9]{0,63}$/.test(definition.name)) throw new Error("节点函数名必须使用小驼峰，最多 64 个字符");
     const parameters = z.toJSONSchema(definition.parameters, { io: "input", target: "draft-07" });
     if (!definition.description.trim() || parameters.type !== "object" || typeof definition.execute !== "function") {
       throw new Error("节点函数需要描述、Zod 对象参数和 execute 方法");
     }
-    const { registry } = getRegistry(useVueFlow());
+    const { registry } = getRegistry(options?.flow ?? useVueFlow());
     const name = `node:${definition.name}` as const;
     const key = `${nodeId}:${name}`;
     const entry: RegisteredNodeTool = {
@@ -100,7 +105,7 @@ export const nodeTools = {
     };
     registry.set(key, entry);
     const unregister = () => { if (registry.get(key) === entry) registry.delete(key); };
-    onScopeDispose(unregister);
+    if (getCurrentScope()) onScopeDispose(unregister);
     return unregister;
   },
 };

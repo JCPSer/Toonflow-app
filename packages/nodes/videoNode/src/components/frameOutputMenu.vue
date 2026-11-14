@@ -24,7 +24,8 @@
               <IconSquare v-else />
             </el-icon>
             <span class="frameLabel">{{ item.label }}输出</span>
-            <img v-if="thumb(item.key)" class="frameThumb" :src="thumb(item.key)!" :alt="`${item.label}预览`" />
+            <!-- ACT: 宫格整体比例随视频（竖屏 576×1024），必须 contain，cover 会把四格裁成中间一条。 -->
+            <img v-if="thumb(item.key)" class="frameThumb" :class="{ contain: item.key === 'grid' }" :src="thumb(item.key)!" :alt="`${item.label}预览`" />
             <span v-else class="frameThumbPlaceholder" aria-hidden="true">
               <IconPhoto :size="18" stroke="1.25" />
             </span>
@@ -117,6 +118,10 @@ function onCommand(command: string | number | object) {
   object-fit: cover;
   border-radius: 4px;
   background: var(--el-fill-color-light);
+
+  &.contain {
+    object-fit: contain;
+  }
 }
 
 .frameThumbPlaceholder {

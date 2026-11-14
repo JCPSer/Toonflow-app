@@ -101,6 +101,12 @@
           aria-label="提示音音量"
           @change="(value) => typeof value === 'number' && updateGeneralSettings({ completionSoundVolume: value })" />
         <span class="volumeValue" aria-hidden="true">{{ completionVolume }}%</span>
+        <!-- ACT: 试听既是功能也是排障入口：能立刻区分「事件没触发」还是「音频没启动」。 -->
+        <el-button
+          class="previewButton"
+          size="small"
+          :disabled="generalSettings.completionSound === 'off'"
+          @click="previewChime">试听</el-button>
       </div>
     </section>
     <section class="settingSection" aria-labelledby="taskNotificationTitle">
@@ -146,13 +152,27 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { ElMessage } from "element-plus";
 import { defaultUiSettings, generalSettings, normalizeCompletionSound, uiSettings, updateGeneralSettings, updateUiSettings } from "@/stores/settings";
+import { chimeSupported, playChime, resumeChime } from "@/lib/chime";
 import canvasShortcuts from "./canvasShortcuts.vue";
 import nodeMenuSettings from "./nodeMenuSettings.vue";
 
 // ACT: 滑杆拖动期间只改本地值，松手（change）才落盘——直接绑 settings 会让每一步都触发一次保存。
 const completionVolume = ref(generalSettings.value.completionSoundVolume);
 watch(() => generalSettings.value.completionSoundVolume, value => { completionVolume.value = value; });
+
+// ACT: 试听按当前音量播一声完成音；顺手把音频上下文恢复一遍，失败就明确告诉用户，不让人猜。
+async function previewChime() {
+  if (generalSettings.value.completionSound === "off") return;
+  const running = await resumeChime();
+  playChime("success");
+  if (!running) {
+    ElMessage.warning(chimeSupported()
+      ? "音频上下文没有启动，请再点一次试听"
+      : "当前环境不支持提示音");
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -217,6 +237,10 @@ watch(() => generalSettings.value.completionSoundVolume, value => { completionVo
         flex: 1;
         min-width: 120px;
         max-width: 320px;
+      }
+
+      .previewButton {
+        flex: none;
       }
 
       .volumeValue {

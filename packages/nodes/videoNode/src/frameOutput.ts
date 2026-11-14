@@ -18,11 +18,14 @@ import {
   FRAME_OUTPUTS,
   frameOutputMeta,
   frameOutputOptions,
+  GRID_OUTPUT_COUNT,
+  type FrameCaptureKey,
   type FrameKey,
   type FrameOutputConfig,
 } from "./frameOutputPlan";
 import { frameErrorMessage, type FrameApplyResult, type FrameOutputState } from "./frameOutputTool";
 import { runFfmpegCommand } from "./ffmpegTask";
+import { gridOutputOptions, probeVideoMeta } from "./videoGrid";
 
 export type { FrameKey, FrameOutputConfig } from "./frameOutputPlan";
 export { buildFrameHandles, FRAME_OUTPUTS, staticNodeHandles } from "./frameOutputPlan";
@@ -32,6 +35,11 @@ export type { FrameOutputController } from "./frameOutputTool";
 
 const VIDEO_MIME = /^video\//;
 const CAPTURE_TIMEOUT_MS = 30000;
+/**
+ * ACT: 宫格要解完整段视频才能按 fps 采样，比单帧慢很多，单独放宽。
+ * 三路串行的典型耗时在工具 120s 闸门内，但三路都超时的最坏情况会撞上闸门（整体取消，而非按路报错）。
+ */
+const GRID_CAPTURE_TIMEOUT_MS = 45000;
 
 /** 抽帧结果被更新的调用/视频变化作废；UI 与工具都要把它和真实失败区分开。 */
 export class FrameSupersededError extends Error {
@@ -64,7 +72,7 @@ type FrameOutputOptions = {
 };
 
 /**
- * 首帧 / 尾帧输出端口的唯一实现：端口增删、抽帧、值回填、切换视频时的清空与重抽。
+ * 首帧 / 尾帧 / 宫格输出端口的唯一实现：端口增删、抽帧、值回填、切换视频时的清空与重抽。
  * 两个视频节点都只调用这里，避免各自写一份 ffmpeg 命令。
  */
 export function useFrameOutputs(options: FrameOutputOptions) {
@@ -82,11 +90,15 @@ export function useFrameOutputs(options: FrameOutputOptions) {
   const busy = ref(false);
   const error = ref<string>();
   /** 每路独立错误：关闭 A 不能把 B 的失败原因一起清掉。 */
-  const errors: Record<FrameKey, string | undefined> = { first: undefined, last: undefined };
+  const errors = Object.fromEntries(FRAME_OUTPUTS.map((item) => [item.key, undefined])) as Record<FrameKey, string | undefined>;
+  // ACT: 汇总必须遍历 FRAME_OUTPUTS——写死 first/last 时，宫格单独失败会静默丢失提示。
+  function summarizeFrameErrors() {
+    const messages = FRAME_OUTPUTS.flatMap((item) => errors[item.key] ? [errors[item.key]!] : []);
+    return messages.length ? messages.join("；") : undefined;
+  }
   function setFrameError(key: FrameKey, cause?: unknown) {
     errors[key] = cause === undefined ? undefined : describe(cause);
-    // ACT: 两路都失败时都要能看到，不能只显示首帧的错误。
-    error.value = errors.first && errors.last ? `${errors.first}；${errors.last}` : errors.first ?? errors.last;
+    error.value = summarizeFrameErrors();
   }
 
   // ACT: refresh 的整轮抽帧串行排队；单路开关有自己的 controller，不能互相取消。
@@ -94,10 +106,12 @@ export function useFrameOutputs(options: FrameOutputOptions) {
   /** 整轮代次：clear() 一升，排队中还没开跑的旧 runJob 必须整轮作废。 */
   let round = 0;
   /** 该路是否有一轮 refresh 已入队但还没开始：retry 与 pendingReason 都要看它。 */
-  const queuedRounds: Record<FrameKey, number | undefined> = { first: undefined, last: undefined };
-  const controllers: Record<FrameKey, AbortController | undefined> = { first: undefined, last: undefined };
+  const queuedRounds = Object.fromEntries(FRAME_OUTPUTS.map((item) => [item.key, undefined])) as Record<FrameKey, number | undefined>;
+  const controllers = Object.fromEntries(FRAME_OUTPUTS.map((item) => [item.key, undefined])) as Record<FrameKey, AbortController | undefined>;
   /** 每路一个单调递增的「意图代次」：只判断该路结果是否过时，关闭/开启一路不会作废另一路。 */
-  const epochs: Record<FrameKey, number> = { first: 0, last: 0 };
+  const epochs = Object.fromEntries(FRAME_OUTPUTS.map((item) => [item.key, 0])) as Record<FrameKey, number>;
+  /** 正在「开启」但配置尚未落盘的项：视频变化时 refresh 要把这些意图一并接过去。 */
+  const pendingEnables = new Set<FrameKey>();
   /** 在途操作计数。busy 只由它决定——任何提前 return 都必须走 finally 减一，否则 UI 永久禁用。 */
   let activeOps = 0;
 
@@ -134,18 +148,39 @@ export function useFrameOutputs(options: FrameOutputOptions) {
   function clear() {
     round += 1;
     abortAll();
-    for (const item of FRAME_OUTPUTS) if (enabled.value[item.key]) delete outputs.value[item.handleId];
-    errors.first = undefined;
-    errors.last = undefined;
+    for (const item of FRAME_OUTPUTS) {
+      if (enabled.value[item.key]) delete outputs.value[item.handleId];
+      errors[item.key] = undefined;
+    }
     error.value = undefined;
   }
 
-  function runFfmpeg(command: BrowserFfmpegCommand, signal: AbortSignal) {
+  function runFfmpeg(command: BrowserFfmpegCommand, signal: AbortSignal, key: FrameKey) {
     return runFfmpegCommand(command, signal, {
-      timeoutMs: CAPTURE_TIMEOUT_MS,
-      timeoutMessage: "视频抽帧超时",
+      timeoutMs: key === "grid" ? GRID_CAPTURE_TIMEOUT_MS : CAPTURE_TIMEOUT_MS,
+      timeoutMessage: key === "grid" ? "宫格抽取超时，视频可能过大或过长" : "视频抽帧超时",
       abortMessage: "抽帧已取消",
     });
+  }
+
+  /**
+   * 临时文件提交：确认已写盘 → 代次仍有效 → 删旧 → 再确认 → rename。
+   * ACT: 工作区的 rename 是「不覆盖」语义（目标已存在直接 409 EEXIST），重抽时必须先删旧帧。
+   * ACT: remove 与 rename 之间还隔着 await，过期结果连目标文件都不能碰，否则会删掉新一次刚写好的帧。
+   */
+  async function commitTemporary(files: WorkspaceFiles, temporary: string, target: string, isValid: () => boolean, label: string) {
+    const temporaryName = splitPath(temporary).name;
+    const listed = await files.list(splitPath(temporary).directory).catch(() => undefined);
+    // ACT: 目录列表可能滞后于写入（inspect 为此加了同样的兜底）；列表没命中时再读一次文件，
+    // 否则刚抽好的宫格会被误判成「未生成文件」，整次结果丢弃。
+    const exists = listed === undefined
+      || listed.entries.some((entry) => entry.type === "file" && entry.name === temporaryName)
+      || await files.read(temporary).then(() => true, () => false);
+    if (!exists) throw new Error(`${label}抽取失败：未生成文件`);
+    if (!isValid()) throw new Error("抽帧已过期");
+    await files.remove(target).catch(() => {});
+    if (!isValid()) throw new Error("抽帧已过期");
+    await files.rename(temporary, target);
   }
 
   async function extract(key: FrameKey, sourcePath: string, signal: AbortSignal, token: number) {
@@ -161,31 +196,27 @@ export function useFrameOutputs(options: FrameOutputOptions) {
     const temporary = `${directory}/${meta.fileName}.${crypto.randomUUID()}.tmp.jpg`;
     const factory = await createFfmpeg(signal, { silentRequired: true });
     signal.throwIfAborted();
-    const { input, output } = frameOutputOptions(key);
     const instance = factory(sourcePath).noAudio();
-    const task = input.length
-      ? instance.inputOptions(...input).outputOptions(...output).output(temporary)
-      : instance.outputOptions(...output).output(temporary);
     try {
-      await runFfmpeg(task, signal);
-      // ACT: rename 之前再确认代次——过期结果连文件都不能落，否则会覆盖新视频刚抽好的同名帧。
-      if (token !== epochs[key]) throw new Error("抽帧已过期");
-      const temporaryName = splitPath(temporary).name;
-      const listed = await files.list(directory).catch(() => undefined);
-      if (!listed?.entries.some((entry) => entry.type === "file" && entry.name === temporaryName)) throw new Error(`${meta.label}抽取失败：未生成文件`);
-      // ACT: 工作区的 rename 是「不覆盖」语义（目标已存在直接 409 EEXIST），重抽时必须先删旧帧。
-      // ACT: remove 是破坏性动作，必须先确认代次仍然有效，不能删掉新一次刚写好的帧。
-      signal.throwIfAborted();
-      if (token !== epochs[key]) throw new Error("抽帧已过期");
-      await files.remove(target).catch(() => {});
-      // ACT: remove/rename 之间还隔着 await；过期结果连目标文件都不能碰。
-      if (token !== epochs[key]) throw new Error("抽帧已过期");
-      await files.rename(temporary, target);
+      // ACT: 宫格必须先探测时长与画面尺寸才能拼 fps/tile；首/尾帧不需要 probe。
+      const task = key === "grid"
+        ? instance.outputOptions(...gridOutputOptions(await probeVideoMeta(factory, sourcePath, signal), GRID_OUTPUT_COUNT)).output(temporary)
+        : buildCaptureTask(instance, key, temporary);
+      await runFfmpeg(task, signal, key);
+      // ACT: 调用方中途取消时 epoch 不一定变（apply 的外部 signal 只 abort 自己的 controller），必须连 signal 一起判。
+      await commitTemporary(files, temporary, target, () => token === epochs[key] && !signal.aborted, meta.label);
     } catch (cause) {
       await files.remove(temporary).catch(() => {});
       throw cause;
     }
     return target;
+  }
+
+  function buildCaptureTask(instance: BrowserFfmpegCommand, key: FrameCaptureKey, temporary: string) {
+    const { input, output } = frameOutputOptions(key);
+    return input.length
+      ? instance.inputOptions(...input).outputOptions(...output).output(temporary)
+      : instance.outputOptions(...output).output(temporary);
   }
 
   /**
@@ -241,8 +272,8 @@ export function useFrameOutputs(options: FrameOutputOptions) {
           if (controllers[item.key] === current) controllers[item.key] = undefined;
         }
       }
-      // ACT: 只在整轮没有被作废且本路无失败时收尾，不能把 apply 写入的失败原因清掉。
-      if (!failed && ticket.round === round && !errors.first && !errors.last) error.value = undefined;
+      // ACT: 只在整轮没有被作废且三路都无失败时收尾，不能把 apply 写入的失败原因清掉。
+      if (!failed && ticket.round === round && !summarizeFrameErrors()) error.value = undefined;
     } finally {
       endOp();
     }
@@ -254,6 +285,14 @@ export function useFrameOutputs(options: FrameOutputOptions) {
    */
   function refresh(sourcePath?: string) {
     const source = sourcePath ?? currentVideoPath();
+    // ACT: 某路正在「开启」时（宫格要抽几十秒），video 变化会 abort 这次开启；先把开启意图落盘，
+    // 否则 clear() 之后 config 里没有它，新一轮不会补抽，用户的开关被静默回退。
+    if (pendingEnables.size) {
+      const next = { ...config.value };
+      for (const key of pendingEnables) next[key] = true;
+      writeConfig(next);
+      handles.value = buildFrameHandles(config.value, baseHandles);
+    }
     clear();
     const wanted = enabledFrameOutputs(config.value);
     if (!source || !wanted.length) return queue;
@@ -338,6 +377,7 @@ export function useFrameOutputs(options: FrameOutputOptions) {
     controllers[key] = current;
     const callSignal = signal ? AbortSignal.any([current.signal, signal]) : current.signal;
     beginOp();
+    pendingEnables.add(key);
     const token = ++epochs[key];
     try {
       const path = await extractFrame(key, source, callSignal, token);
@@ -356,10 +396,28 @@ export function useFrameOutputs(options: FrameOutputOptions) {
     } catch (cause) {
       if (cause instanceof FrameSupersededError) throw cause;
       if (signal?.aborted) throw cause instanceof Error ? cause : new Error("操作已取消");
-      if (callSignal.aborted || token !== epochs[key]) throw new FrameSupersededError(`抽帧结果已失效，请重新开启${meta.label}输出`);
+      if (callSignal.aborted || token !== epochs[key]) {
+        // ACT: 视频切换竞态：refresh 已把开启意图落盘并排了新一轮，这里按 pending 交回，
+        // 不能报「请重新开启」——用户会以为开关被回退，实际马上就会补上。
+        if (enabled.value[key]) {
+          const current = state(key);
+          return {
+            key,
+            enabled: true,
+            handleId: meta.handleId,
+            path: current.path,
+            pending: true,
+            ...(current.pendingReason ? { pendingReason: current.pendingReason } : {}),
+            ...(current.error ? { error: current.error } : {}),
+            removedEdges: 0,
+          };
+        }
+        throw new FrameSupersededError(`抽帧结果已失效，请重新开启${meta.label}输出`);
+      }
       setFrameError(key, cause);
       throw cause;
     } finally {
+      pendingEnables.delete(key);
       endOp();
       if (controllers[key] === current) controllers[key] = undefined;
     }
@@ -415,5 +473,6 @@ export function useFrameOutputs(options: FrameOutputOptions) {
     abortAll();
   });
 
-  return { config, enabled, values, busy, error, clear, refresh, toggle, apply, state };
+  // ACT: `cancel` 只中止在途抽帧、保留输出值——删除节点时用它；`clear` 是「视频变了」，会清值。
+  return { config, enabled, values, busy, error, clear, cancel: abortAll, refresh, toggle, apply, state };
 }

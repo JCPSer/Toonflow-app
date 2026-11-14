@@ -40,8 +40,8 @@ export function isStaleOutput(name: string, pattern: RegExp, keep?: string) {
   return pattern.test(name) || temporaryFilePattern.test(name);
 }
 
-/** ACT: 复用首尾帧输出的 JPEG 策略（q2 约等于 95 质量、4:4:4 不降采样色度）。 */
-export const inspectJpegOptions = ["-c:v", "mjpeg", "-q:v", "2", "-pix_fmt", "yuvj444p", "-update", "1", "-y"] as const;
+/** ACT: 与首/尾帧、宫格输出共用同一份 JPEG 参数，避免调质量时两处漂移。 */
+export { JPEG_OUTPUT_OPTIONS as inspectJpegOptions } from "./jpegOptions";
 
 export function isGridCount(value: unknown): value is GridCount {
   return value === 4 || value === 9 || value === 16;

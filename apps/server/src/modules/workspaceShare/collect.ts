@@ -124,6 +124,10 @@ export function sanitizeCanvas(canvas: unknown): { canvas: any; dropped: string[
       dropOwn(data.scale, "previous", `${prefix}.scale.previous`, dropped);
       dropOwn(data.scale, "appliedUrl", `${prefix}.scale.appliedUrl`, dropped);
     }
+    if (isRecord(data.adjust)) {
+      dropOwn(data.adjust, "previous", `${prefix}.adjust.previous`, dropped);
+      dropOwn(data.adjust, "appliedUrl", `${prefix}.adjust.appliedUrl`, dropped);
+    }
 
     // ACT: 不逐字段删 inpaint，越删越坏。
     dropOwn(data, "inpaint", `${prefix}.inpaint`, dropped);

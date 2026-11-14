@@ -31,11 +31,27 @@ export const defaultCanvasShortcuts = {
   undo: `${primaryModifier}+KeyZ`,
   redo: isMac ? "Shift+Meta+KeyZ" : "Ctrl+Shift+KeyZ",
   toggleDisabled: `${primaryModifier}+Shift+KeyD`,
+  // ACT: 空格默认同时是「按住平移」。两者靠手势区分：轻点（未拖动）预览，按住/拖动才平移。
+  preview: "Space",
   zoomIn: isMac ? "Meta+Equal / Shift+Meta+Equal" : "Ctrl+Equal / Ctrl+Shift+Equal",
   zoomOut: `${primaryModifier}+Minus`,
   fitView: `${primaryModifier}+Digit0`,
 };
 export type CanvasShortcutAction = keyof typeof defaultCanvasShortcuts;
+
+/**
+ * ACT: 允许共用同一按键的动作对。空格既是「按住平移」又是「轻点预览」，两者靠手势区分，
+ * 所以彼此的重复不算冲突；其余动作之间仍按原规则严格校验。
+ */
+const sharedKeyPairs: Partial<Record<CanvasShortcutAction, CanvasShortcutAction>> = {
+  preview: "pan",
+  pan: "preview",
+};
+
+/** 两个动作是否可以共用同一个按键绑定（当前只有预览 ↔ 平移）。 */
+export function shortcutsMayShareBinding(action: CanvasShortcutAction, other: CanvasShortcutAction) {
+  return sharedKeyPairs[action] === other;
+}
 export type CanvasShortcuts = Record<CanvasShortcutAction, string>;
 
 export const canvasShortcutFields: {
@@ -65,6 +81,7 @@ export const canvasShortcutFields: {
   { id: "redo", label: "重做" },
   { id: "toggleDisabled", label: "禁用/解除禁用节点" },
   { id: "search", label: "画布节点搜索" },
+  { id: "preview", label: "预览选中节点", allowNone: true },
   { id: "projectPicker", label: "项目下拉" },
   { id: "canvasPicker", label: "画布下拉" },
   { id: "assetLibrary", label: "素材库面板" },

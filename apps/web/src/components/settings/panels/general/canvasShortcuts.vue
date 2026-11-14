@@ -51,7 +51,7 @@ import { ref } from "vue";
 import { translate } from "@toonflow/i18n/vue";
 import { IconRestore, IconChevronDown, IconChevronUp, IconKeyboard, IconEdit, IconHandTwoFingers, IconMouse } from "@tabler/icons-vue";
 import { generalSettings, updateGeneralSettings } from "@/stores/settings";
-import { canvasShortcutFields, defaultCanvasShortcuts, isShortcutAllowed, normalizeShortcut, shortcutConflicts, type CanvasShortcutAction } from "@/lib/canvasShortcuts";
+import { canvasShortcutFields, defaultCanvasShortcuts, isShortcutAllowed, normalizeShortcut, shortcutConflicts, shortcutsMayShareBinding, type CanvasShortcutAction } from "@/lib/canvasShortcuts";
 import keyInput from "./keyInput.vue";
 
 const bindMode = ref<"listen" | "input">("listen");
@@ -82,7 +82,8 @@ function setShortcut(action: CanvasShortcutAction, value: string) {
     return;
   }
   // ACT: None 对普通按键表示「关闭」，不参与冲突；对两个按住类手势才表示「都无需按键」的冲突。
-  const conflict = canvasShortcutFields.find(other => other.id !== action && other.gesture === field.gesture
+  const conflict = canvasShortcutFields.find(other => other.id !== action && !shortcutsMayShareBinding(action, other.id)
+    && other.gesture === field.gesture
     && shortcutConflicts(binding, [{ binding: generalSettings.value.canvasShortcuts[other.id], hold: other.hold }], field.hold));
   if (conflict) {
     issues.value[action] = `与「${conflict.label}」重复，请换一个快捷键。`;

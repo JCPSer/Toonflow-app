@@ -44,9 +44,10 @@ export async function copyNodesToClipboard(nodes: Node[], edges: Edge[], directo
   const command = `toonflow:paste-node:${crypto.randomUUID()}`;
   const ids = new Set(nodes.map(node => node.id));
   // ACT: 与画布序列化一样移除运行态字段，保留分组、尺寸及节点自定义持久配置。
+  // zIndex 是禁用态的派生值（画布按 data.disabled 重算），粘贴时由目标画布重新赋值，不能带走。
   const snapshot = JSON.parse(JSON.stringify({
     nodes: nodes.map(node => {
-      const { computedPosition, handleBounds, selected, dimensions, isParent, resizing, dragging, events, initialized, ...saved } = node as GraphNode & { initialized?: boolean };
+      const { computedPosition, handleBounds, selected, dimensions, isParent, resizing, dragging, events, initialized, zIndex, ...saved } = node as GraphNode & { initialized?: boolean };
       // ACT: 剪贴板可能不经节点 copy 事件（节点菜单、旧版节点包），入库前统一把 Agent 会话拆成待克隆指针。
       return detachAgentSession({ ...saved, data: saved.data ?? {} });
     }),
@@ -133,11 +134,14 @@ async function transferNodeFiles(nodes: Node[], sourceDirectory: string | undefi
   }
   const mapping = new Map(result.files.filter(file => file.action === "copied").map(file => [file.source, file.target]));
   for (const node of nodes) forEachOutput(node, value => { if (isWorkspaceUrl(value.url)) value.url = mapping.get(value.url) ?? value.url; });
-  // ACT: 裁剪/翻转的「恢复上一张」记录指向源项目的文件路径，跨项目后一律作废；
+  // ACT: 裁剪/翻转、缩放、颜色调整的「恢复上一张」记录都指向源项目的文件路径，跨项目后一律作废；
   // 否则点「恢复」会把节点指到一个在目标项目里不存在的图。
   for (const node of nodes) {
-    const data = (node as unknown as { data?: { crop?: unknown } }).data;
-    if (data && "crop" in data) delete data.crop;
+    const data = (node as unknown as { data?: { crop?: unknown; scale?: unknown; adjust?: unknown } }).data;
+    if (!data) continue;
+    if ("crop" in data) delete data.crop;
+    if ("scale" in data) delete data.scale;
+    if ("adjust" in data) delete data.adjust;
   }
   // ACT: 素材库等应用管理目录不参与搬运，与"源文件已删除/复制失败"一样只能保留原引用，一起提示。
   const unavailable = result.missing.length + result.skipped.length + result.failed.length;

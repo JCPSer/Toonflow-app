@@ -11,6 +11,7 @@
     "./imageEditor": "./src/components/imageEditor.vue",
     "./imageGridSplit": "./src/components/imageGridSplit.vue",
     "./imageCrop": "./src/components/imageCrop.vue",
+    "./imageAdjust": "./src/components/imageAdjust.vue",
     "./imageInpaintPrompt": "./src/components/imageInpaintPrompt.vue"
   },
   "scripts": {

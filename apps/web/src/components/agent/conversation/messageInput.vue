@@ -313,10 +313,35 @@ const editorMentionIds = ref<Set<string>>(new Set());
 
 function draftEmpty() {
   // 程序化填充期间标签还没落进编辑器，不能据此判定"空"，否则 ↑ 会在填充中途把草稿重置掉。
-  if (insertingMentions || historyFilling) return false;
+  if (insertingMentions || historyFillingActive()) return false;
   if ((sender?.getText().trim() ?? "") !== "" || draftAttachments.value.length > 0) return false;
   const ids = editorMentionIds.value;
   return !draftMentions.value.some(item => ids.has(item.id));
+}
+
+/**
+ * ACT: 还原依赖 x-sender 的 reset/nextTick；面板隐藏或窗口失焦时它们可能永远不结算。
+ * 一旦挂住，历史队列和 historyFilling 会永久卡死（↑ 彻底失效，面板重开也一样），所以每一步都设上限。
+ */
+const HISTORY_STEP_TIMEOUT_MS = 1500;
+/** historyFilling 允许的最长时长；超过就按卡死处理，判空/翻历史不再被它拦住。 */
+const HISTORY_FILL_TIMEOUT_MS = 3000;
+let historyFillingSince = 0;
+
+function settleHistoryStep(promise: Promise<unknown>) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<void>(resolve => { timer = setTimeout(() => resolve(), HISTORY_STEP_TIMEOUT_MS); }),
+  ]).finally(() => { if (timer !== undefined) clearTimeout(timer); });
+}
+
+// ACT: 卡死时直接复位标记，让下一次 ↑ 能重新开始；正常还原通常几十毫秒就结束。
+function historyFillingActive() {
+  if (!historyFilling) return false;
+  if (performance.now() - historyFillingSince <= HISTORY_FILL_TIMEOUT_MS) return true;
+  historyFilling = false;
+  return false;
 }
 
 // ACT: 历史还原不能复用 fillRewind——它会清 editingId，和“编辑消息”互相打断。
@@ -333,13 +358,14 @@ async function restoreHistory(item?: AgentMessage) {
   const model: AnyTagProps[][] = content.split("\n").map(line => mentionParts(line, mentions).map(part => part.mention
     ? { type: "Mention", id: part.mention.id, name: mentionName(part.mention) } : { type: "Write", text: part.text }));
   historyFilling = true;
+  historyFillingSince = performance.now();
   try {
     // 排队期间面板已经收起：这次还原直接作废，不能把旧消息写进（可能已重开的）输入框。
     if (epoch !== historyEpoch) return;
-    await instance.reset({ clearHistory: false, chatNode: model });
+    await settleHistoryStep(instance.reset({ clearHistory: false, chatNode: model }));
     if (epoch !== historyEpoch) return;
     // ACT: reset 之后还可能有排队到下一 tick 的 change 回调，多等一帧再放开标记，避免被当成用户编辑。
-    await new Promise<void>(resolve => instance.nextTick(() => resolve()));
+    await settleHistoryStep(new Promise<void>(resolve => instance.nextTick(() => resolve())));
   } finally { historyFilling = false; }
   if (epoch === historyEpoch && sender === instance) instance.focus("last");
 }
@@ -385,7 +411,7 @@ function handleHistoryKey(event: KeyboardEvent) {
   // ACT: 输入法组合期间方向键用于候选词，不能拿来翻历史。
   if (event.isComposing || event.keyCode === 229) return false;
   if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
-  if (props.disabled || props.busy || props.deletingId !== undefined || restoringAttachment.value || voiceActive.value || editingId.value !== undefined || insertingMentions || historyFilling) return false;
+  if (props.disabled || props.busy || props.deletingId !== undefined || restoringAttachment.value || voiceActive.value || editingId.value !== undefined || insertingMentions || historyFillingActive()) return false;
   if (historyIndex === null) {
     if (event.key !== "ArrowUp" || !draftEmpty() || !props.history?.length) return false;
     event.preventDefault();
@@ -717,7 +743,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   instance.bus.on("agentConversation", xSender.EventSet.EVENT_COMMON_SEND, () => { historyIndex = null; emit("submit"); });
   instance.bus.on("agentConversation", xSender.EventSet.EVENT_COMMON_CHANGE, () => {
     // ACT: 程序填充历史同样会触发 change，用 historyFilling 区分；用户真正编辑后退出历史模式。
-    if (!historyFilling && historyIndex !== null) historyIndex = null;
+    if (!historyFillingActive() && historyIndex !== null) historyIndex = null;
     senderText.value = instance.getText();
     const token = /^\/([^\s/]*)$/.exec(instance.getText())?.[1];
     skillQuery.value = token !== undefined && commandMatches(token) ? undefined : token;
@@ -816,7 +842,7 @@ async function clearDraft() {
 /** ACT: 面板关闭时会问"还有没有没发出去的内容"，有就保留实例，避免草稿被卸载带走。 */
 function hasDraft() {
   // 程序化插入提及/历史还原的中途标签还没落盘，此时必须当作有草稿，否则面板会把正在写入的实例卸载掉。
-  if (insertingMentions || historyFilling) return true;
+  if (insertingMentions || historyFillingActive()) return true;
   const ids = editorMentionIds.value;
   return !!sender?.getText().trim() || draftAttachments.value.length > 0
     || draftMentions.value.some(item => ids.has(item.id)) || editingId.value !== undefined;

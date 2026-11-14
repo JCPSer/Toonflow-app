@@ -6,7 +6,7 @@
     :bottomWidth="660"
     topWidth="max-content"
     :downloadUrl="previewUrl"
-    :busy="cropping || uploading || scaling || !!editor?.busy || !!lighting?.generating || !!multiAngle?.generating || !!panorama?.busy || !!gridSplit?.splitting || !!inpaintPrompt?.creating"
+    :busy="cropping || adjusting || uploading || scaling || !!editor?.busy || !!lighting?.generating || !!multiAngle?.generating || !!panorama?.busy || !!gridSplit?.splitting || !!inpaintPrompt?.creating"
     :downloadName="outputFile?.url.split(/[\\/]/).at(-1)"
     @fullscreen="previewVisible = true"
     :style="{ width: (previewUrl || thumbUrl) && imageWidth ? `${imageWidth + 18}px` : undefined }">
@@ -18,6 +18,7 @@
       <el-button :icon="IconCameraRotate" :disabled="cropping || scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="多角度" aria-label="多角度" @click.stop="openMultiAngle">多角度</el-button>
       <el-button :icon="IconLayoutGrid" :disabled="cropping || scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl" :loading="gridSplit?.splitting" text title="宫格切分" aria-label="宫格切分" @click.stop="gridSplit?.open($event)">宫格切分</el-button>
       <el-button :icon="IconCrop" :disabled="cropping || scaling || uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || inpaintPrompt?.creating || !previewUrl" :loading="cropping" text title="裁剪" aria-label="裁剪" @click.stop="crop?.open()">裁剪</el-button>
+      <el-button :icon="IconAdjustments" :loading="adjusting" :disabled="cropping || scaling || uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || inpaintPrompt?.creating || !previewUrl" text title="调整" aria-label="调整" @click.stop="adjust?.open()">调整</el-button>
       <el-button :icon="IconResize" :disabled="cropping || uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || inpaintPrompt?.creating || !previewUrl" :aria-expanded="scale?.visible ?? false" text title="缩放" aria-label="缩放" @click.stop="scale?.open($event)">缩放</el-button>
       <el-button
         :icon="IconTransfer"
@@ -68,6 +69,7 @@
   <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="nodeDisabled || cropping || scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
   <imageScale ref="scale" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || cropping || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleScaleApplied" @restore="handleScaleRestore" />
   <imageCrop ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || uploading || scaling || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
+  <imageAdjust ref="adjust" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || uploading || scaling || cropping || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleAdjustApplied" @restore="handleAdjustRestore" />
   <el-image-viewer
     v-if="previewVisible && previewUrl"
     :urlList="[previewUrl]"
@@ -77,11 +79,12 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { IconPhoto, IconUpload, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconChevronDown, IconResize, IconCrop } from "@tabler/icons-vue";
+import { IconPhoto, IconUpload, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconChevronDown, IconResize, IconCrop, IconAdjustments } from "@tabler/icons-vue";
 import { ElButton, ElImageViewer, ElMessage } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
 import imageGridSplit from "./components/imageGridSplit.vue";
 import imageCrop from "./components/imageCrop.vue";
+import imageAdjust from "./components/imageAdjust.vue";
 import imageScale from "./components/imageScale.vue";
 import imageEditor from "./components/imageEditor.vue";
 import imageInpaintPrompt from "./components/imageInpaintPrompt.vue";
@@ -93,8 +96,10 @@ import type { InpaintDraftInput } from "./imageInpaint";
 type ScalePrevious = { url: string; mimeType: string };
 type ScaleState = { factor?: number; maxEdge?: number; previous?: ScalePrevious; appliedUrl?: string };
 type ScaleApplied = { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number };
-type CropState = { last?: { url: string; x: number; y: number; width: number; height: number }; previous?: ScalePrevious; appliedUrl?: string };
-type CropApplied = { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number; flipped: boolean; cropped: boolean };
+type CropState = { last?: { url: string; x: number; y: number; width: number; height: number; flipped?: boolean; flippedV?: boolean }; previous?: ScalePrevious; appliedUrl?: string };
+type CropApplied = { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number; flipped: boolean; flippedV: boolean; cropped: boolean };
+type AdjustState = { previous?: ScalePrevious; appliedUrl?: string };
+type AdjustApplied = { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number };
 
 defineOptions({
   inheritAttrs: false,
@@ -110,6 +115,7 @@ const { node, nodeProps, outputs, nodeEvent, files, updateNodeInternals } = useN
 const fileInput = ref<HTMLInputElement>();
 const gridSplit = ref<InstanceType<typeof imageGridSplit>>();
 const crop = ref<InstanceType<typeof imageCrop>>();
+const adjust = ref<InstanceType<typeof imageAdjust>>();
 const scale = ref<InstanceType<typeof imageScale>>();
 const editor = ref<InstanceType<typeof imageEditor>>();
 const paintToolbar = ref<HTMLElement>();
@@ -127,7 +133,7 @@ const previewVisible = ref(false);
 const imageWidth = ref(0);
 const nodeDisabled = computed(() => node.data?.disabled === true);
 // ACT: 禁用后必须关掉本节点 teleport 出去的编辑器 / 全屏预览 / 弹层；画布层拿不到这些内部 ref，
-// 只能在节点自己的 index.vue 里收口。crop / gridSplit / scale 会随 props.disabled 自行关闭。
+// 只能在节点自己的 index.vue 里收口。crop / adjust / gridSplit / scale 会随 props.disabled 自行关闭。
 watch(nodeDisabled, (disabled) => {
   if (!disabled) return;
   previewVisible.value = false;
@@ -152,6 +158,7 @@ watch(thumbUrl, url => {
 });
 const scaling = computed(() => !!scale.value?.applying);
 const cropping = computed(() => !!crop.value?.applying);
+const adjusting = computed(() => !!adjust.value?.applying);
 
 nodeEvent.on("save", (reason) => {
   // ACT: 删除节点会先触发一次无 reason 的 save；缩放中放行，让 delete 回调先取消任务再清理。
@@ -159,12 +166,13 @@ nodeEvent.on("save", (reason) => {
     if (reason === "reload") throw new Error("图片处理中，请完成后再刷新节点");
     return;
   }
-  if (cropping.value || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy) throw new Error("图片处理中，请完成后再切换或刷新节点");
+  if (cropping.value || adjusting.value || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy) throw new Error("图片处理中，请完成后再切换或刷新节点");
 });
 nodeEvent.on("delete", async () => {
   // ACT: 缩放会写盘，删除前先中止并等任务收尾，避免半成品文件与节点目录清理竞争。
   await scale.value?.cancel();
   await crop.value?.cancelApply();
+  await adjust.value?.cancelApply();
   if (cropping.value || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy) throw new Error("图片处理中，请稍后删除节点");
   uploading.value = true;
   await files.removeNodeFiles().finally(() => {
@@ -181,7 +189,7 @@ nodeTools.register({
   }),
   async execute({ path, mimeType }, { signal }) {
     signal?.throwIfAborted();
-    if (cropping.value || scaling.value || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy) throw new Error("图片处理中，请稍后重试");
+    if (cropping.value || adjusting.value || scaling.value || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy) throw new Error("图片处理中，请稍后重试");
     uploading.value = true;
     try {
       const content = await files.getWorkspaceFiles().read(path);
@@ -190,6 +198,7 @@ nodeTools.register({
       outputs.value.image = { dataType: "IMAGE", value: { url: path, mimeType } };
       clearScaleHistory();
       clearCropHistory();
+      clearAdjustHistory();
       return outputs.value.image;
     } finally {
       uploading.value = false;
@@ -244,7 +253,7 @@ async function uploadImage(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = "";
-  if (!file || scaling.value || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy) return;
+  if (!file || scaling.value || adjusting.value || uploading.value || editor.value?.busy || inpaintPrompt.value?.creating || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy) return;
   if (!file.type.startsWith("image/")) return void ElMessage.error("请选择图片文件");
   if (!file.size || file.size > 100 * 1024 * 1024) return void ElMessage.error("图片不能为空且不能超过 100 MB");
   uploading.value = true;
@@ -254,6 +263,7 @@ async function uploadImage(event: Event) {
     outputs.value.image = { dataType: "IMAGE", value: { url, mimeType: file.type } };
     clearScaleHistory();
     clearCropHistory();
+    clearAdjustHistory();
   } catch (error) {
     showError(error, "图片替换失败");
   } finally {
@@ -328,7 +338,9 @@ function handleCropApplied(result: CropApplied) {
   state.previous = { url: current.url, mimeType: current.mimeType };
   state.appliedUrl = result.path;
   outputs.value.image = { dataType: "IMAGE", value: { url: result.path, mimeType: result.mimeType } };
-  const action = result.cropped ? (result.flipped ? "已裁剪并左右翻转" : "已裁剪") : "已左右翻转";
+  // ACT: 两个轴独立可选，文案要覆盖「左右 / 上下 / 双向」三种组合，不能只写左右。
+  const flipLabel = result.flipped && result.flippedV ? "左右、上下翻转" : result.flipped ? "左右翻转" : result.flippedV ? "上下翻转" : "";
+  const action = result.cropped ? (flipLabel ? `已裁剪并${flipLabel}` : "已裁剪") : `已${flipLabel}`;
   ElMessage.success(`${action}为 ${result.width} × ${result.height}${result.formatChanged ? "，已转为 PNG" : ""}`);
 }
 
@@ -341,6 +353,46 @@ function handleCropRestore() {
   delete state.previous;
   delete state.appliedUrl;
   ElMessage.success("已恢复裁剪前的图片");
+}
+
+function adjustState(): AdjustState {
+  const data = node.data as typeof node.data & { adjust?: AdjustState };
+  if (!data.adjust || typeof data.adjust !== "object" || Array.isArray(data.adjust)) data.adjust = {};
+  return data.adjust;
+}
+
+// ACT: 与裁剪同源——输出被上传或 AI 改写后，颜色调整记录已无法恢复，必须一并清掉。
+function clearAdjustHistory() {
+  const data = node.data as typeof node.data & { adjust?: AdjustState };
+  if (!data.adjust || typeof data.adjust !== "object" || Array.isArray(data.adjust)) return;
+  delete data.adjust.previous;
+  delete data.adjust.appliedUrl;
+}
+
+function handleAdjustApplied(result: AdjustApplied) {
+  const current = outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined;
+  if (!current || current.url !== result.fromUrl) {
+    // ACT: 调整期间输出可能被 AI 或上传改写；放弃本次结果并尽力删除新文件。
+    void files.getWorkspaceFiles().remove(result.path).catch(() => {});
+    ElMessage.warning("图片已变化，已取消本次调整");
+    return;
+  }
+  const state = adjustState();
+  state.previous = { url: current.url, mimeType: current.mimeType };
+  state.appliedUrl = result.path;
+  outputs.value.image = { dataType: "IMAGE", value: { url: result.path, mimeType: result.mimeType } };
+  ElMessage.success(`已调整颜色为 ${result.width} × ${result.height}${result.formatChanged ? "，已转为 PNG" : ""}`);
+}
+
+function handleAdjustRestore() {
+  const current = outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined;
+  const state = adjustState();
+  const previous = state.previous;
+  if (!current || !previous || current.url !== state.appliedUrl) return;
+  outputs.value.image = { dataType: "IMAGE", value: { url: previous.url, mimeType: previous.mimeType } };
+  delete state.previous;
+  delete state.appliedUrl;
+  ElMessage.success("已恢复调整前的图片");
 }
 
 function showError(error: unknown, fallback: string) {

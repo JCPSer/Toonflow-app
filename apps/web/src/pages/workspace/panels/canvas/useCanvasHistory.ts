@@ -18,7 +18,9 @@ export function useCanvasHistory(flow: ReturnType<typeof useVueFlow>, binding: (
   const grouping = ref(0);
   const nodeReferences = new Map<string, Node>();
   const edgeReferences = new Map<string, Edge>();
-  const nodeRuntimeFields = new Set(["data", "computedPosition", "handleBounds", "selected", "dimensions", "isParent", "resizing", "dragging", "events", "initialized"]);
+  // ACT: zIndex 是禁用态的派生值（由画布按禁用集合重算），不进快照也不随撤销恢复，
+  // 否则撤销一次移动会把禁用节点重新顶到启用节点上面。
+  const nodeRuntimeFields = new Set(["data", "computedPosition", "handleBounds", "selected", "dimensions", "isParent", "resizing", "dragging", "events", "initialized", "zIndex"]);
   const edgeRuntimeFields = new Set(["data", "selected", "sourceNode", "targetNode", "sourceX", "sourceY", "targetX", "targetY", "events", "initialized"]);
   let revision = 0;
   let dragging = false;
