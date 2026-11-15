@@ -1,5 +1,4 @@
 import { reactive, type Ref } from "vue";
-import { throttle } from "lodash-es";
 import type { AgentEvent } from "@toonflow/server/agent/types";
 import type { AgentMessage, AgentMessagePart } from "./types";
 
@@ -41,18 +40,44 @@ export function createReplyStream(reply: AgentMessage) {
   let thinkingStartedAt = 0;
   let thinkingDuration = 0;
   const pendingContent = new Map<Exclude<AgentMessagePart, { type: "tool" }>, string>();
-  // ACT: 合并 50 ms 内的文本增量，避免 Markdown 每个 token 都重新解析全文；结束时立即补齐。
-  const flushContent = throttle(() => {
-    for (const [part, content] of pendingContent) part.content = content;
+  // ACT: 合并文本增量，避免 Markdown 每个 token 都重新解析全文；结束时立即补齐。
+  // ACT: 内容越长解析越贵（86 KB 约 127 ms/次），延迟随时间增长到 100/250 ms，防止流式把主线程打满。
+  // ACT: 思考块超过 32 KB 自动折叠，折叠后不再渲染 Markdown；用户仍可手动展开。
+  const THINKING_COLLAPSE_CHARS = 32 * 1024;
+  // ACT: 每个 part 只自动折叠一次；用户手动展开后，后续 flush / 思考结束都不能再强行折回。
+  const autoCollapsedParts = new WeakSet<Exclude<AgentMessagePart, { type: "tool" }>>();
+  let flushTimer: ReturnType<typeof setTimeout> | undefined;
+  const flushNow = () => {
+    flushTimer = undefined;
+    for (const [part, content] of pendingContent) {
+      part.content = content;
+      if (part.type === "thinking" && content.length > THINKING_COLLAPSE_CHARS && !autoCollapsedParts.has(part)) {
+        autoCollapsedParts.add(part);
+        part.collapsed = true;
+      }
+    }
     pendingContent.clear();
     if (thinkingPart) thinkingPart.duration = thinkingDuration + (performance.now() - thinkingStartedAt) / 1000;
-  }, 50);
+  };
+  const schedule = () => {
+    if (flushTimer !== undefined) return;
+    // ACT: 一次 flush 会写回所有 pending part，成本按 pending 总字符数估算，而不是单个 part 的最大长度。
+    let total = 0;
+    for (const content of pendingContent.values()) total += content.length;
+    const delay = total > 64 * 1024 ? 250 : total > 16 * 1024 ? 100 : 50;
+    flushTimer = setTimeout(flushNow, delay);
+  };
+  const flushContent = Object.assign(schedule, {
+    flush: () => { if (flushTimer !== undefined) clearTimeout(flushTimer); flushNow(); },
+    cancel: () => { if (flushTimer !== undefined) clearTimeout(flushTimer); flushTimer = undefined; },
+  });
 
   function finishThinking() {
     if (!thinkingPart) return;
     flushContent.flush();
     thinkingPart.duration = thinkingDuration + (performance.now() - thinkingStartedAt) / 1000;
-    thinkingPart.collapsed = true;
+    // ACT: 流式中已自动折叠过的块尊重用户手动展开，结束时不再强制折回。
+    if (!autoCollapsedParts.has(thinkingPart)) thinkingPart.collapsed = true;
     thinkingPart = undefined;
   }
 

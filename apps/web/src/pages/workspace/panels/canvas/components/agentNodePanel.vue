@@ -18,6 +18,7 @@
       <span class="agentNodePanelTitle">
         <icon-robot :size="14" aria-hidden="true" />
         {{ entry.label }}
+        <span v-if="roleNameOf(entry.nodeId)" class="agentRoleTag">{{ roleNameOf(entry.nodeId) }}</span>
       </span>
       <span class="agentNodePanelActions">
         <el-button
@@ -31,6 +32,9 @@
           :loading="entry.compact?.loading"
           @click="compact(entry.nodeId)">
           <icon-arrows-minimize :size="14" />
+        </el-button>
+        <el-button text circle size="small" aria-label="Agent 角色" title="Agent 角色" @click="rolesDialogVisible = true">
+          <icon-user-cog :size="14" />
         </el-button>
         <el-button text circle size="small" aria-label="关闭对话" title="关闭对话" @click="close()">
           <icon-x :size="14" />
@@ -52,6 +56,10 @@
       :accept-pending="false"
       :auto-focus="false"
       :node-binding="{ canvasId, nodeId: entry.nodeId }"
+      :show-role="true"
+      :node-role="roleOf(entry.nodeId)"
+      @roleChange="role => onRoleChange(entry.nodeId, role)"
+      @manageRoles="rolesDialogVisible = true"
       @session="file => onSession(entry.nodeId, file)"
       @status="phase => onStatus(entry.nodeId, phase)"
       @promptStart="prompt => onPromptStart(entry.nodeId, prompt)"
@@ -64,20 +72,23 @@
       @turnEnd="outcome => onTurnEnd(entry.nodeId, outcome)"
       @forked="payload => onForked(entry.nodeId, payload)" />
   </div>
+  <!-- ACT: 角色管理是全局共用的一个弹窗，不能挂在每个节点面板的循环里。 -->
+  <agentRolesDialog v-model="rolesDialogVisible" :referenced="referencedRoles" @saved="onRolesSaved" />
 </template>
 
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import axios from "axios";
 import { useVueFlow } from "@vue-flow/core";
-import { IconArrowsMinimize, IconLoader2, IconRobot, IconX } from "@tabler/icons-vue";
+import { IconArrowsMinimize, IconLoader2, IconRobot, IconUserCog, IconX } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
 import { getTargetSources, type AgentNodeStatus } from "@toonflow/nodes-scaffold/runtime";
+import agentRolesDialog from "./agentRolesDialog.vue";
 import { markNodeOutcome } from "@toonflow/nodes-scaffold/nodeBusy";
 import type { AgentMention } from "@toonflow/server/agent/types";
 import type { AgentConversation, AgentQuestionNotice } from "@/components/agent/types";
 import { useWorkspaceStore } from "@/stores/workspace";
-import { generalSettings } from "@/stores/settings";
+import { agentRoles, generalSettings } from "@/stores/settings";
 import { playQuestionChime } from "@/lib/questionChime";
 import { gridSize, snapOffset, snapPoint } from "../snapNodes";
 import conversation from "@/components/agent/conversation.vue";
@@ -97,7 +108,7 @@ const emit = defineEmits<{
   pendingQuestions: [nodeIds: string[]];
 }>();
 
-type AgentNodeData = { label?: string; agentSessionFile?: string; agentSessionCloneFrom?: string; agentLastPrompt?: string };
+type AgentNodeData = { label?: string; agentSessionFile?: string; agentSessionCloneFrom?: string; agentLastPrompt?: string; agentRoleId?: string };
 type PanelEntry = {
   nodeId: string;
   label: string;
@@ -145,6 +156,39 @@ watch(() => pendingQuestionIds.value.join("|"), () => emit("pendingQuestions", p
 
 function nodeData(nodeId: string) {
   return (findNode(nodeId)?.data ?? {}) as AgentNodeData;
+}
+
+// ACT: 角色是节点上的持久身份：选择写入 node.data，派发与面板请求都从这里取。
+const rolesDialogVisible = ref(false);
+function roleNameOf(nodeId: string) {
+  const id = (nodeData(nodeId) as { agentRoleId?: unknown }).agentRoleId;
+  return typeof id === "string" ? agentRoles.value.find(role => role.id === id)?.name ?? "" : "";
+}
+function roleOf(nodeId: string) {
+  // ACT: 角色被删/来自其他项目分享时选择器显示「通用」，不把裸 UUID 摆给用户看。
+  const value = (nodeData(nodeId) as { agentRoleId?: unknown }).agentRoleId;
+  return typeof value === "string" && agentRoles.value.some(role => role.id === value) ? value : "";
+}
+function onRoleChange(nodeId: string, roleId: string | undefined) {
+  updateNodeData(nodeId, { agentRoleId: roleId });
+}
+const referencedRoles = computed(() => getNodes.value
+  .filter(node => node.type === "remote-agentNode")
+  .map(node => (node.data as { agentRoleId?: unknown } | undefined)?.agentRoleId)
+  .filter((id): id is string => typeof id === "string" && !!id));
+function onRolesSaved() {
+  // ACT: 角色被删掉后，引用它的节点回退通用——否则下一轮会因为找不到角色而悄悄用默认提示。
+  const ids = new Set(agentRoles.value.map(role => role.id));
+  let cleared = 0;
+  for (const node of getNodes.value) {
+    if (node.type !== "remote-agentNode") continue;
+    const roleId = (node.data as { agentRoleId?: unknown } | undefined)?.agentRoleId;
+    if (typeof roleId === "string" && roleId && !ids.has(roleId)) {
+      updateNodeData(node.id, { agentRoleId: undefined });
+      cleared++;
+    }
+  }
+  if (cleared) ElMessage.info(`${cleared} 个节点的角色已删除，已回退通用`);
 }
 
 function setPanelElement(nodeId: string, element: unknown) {
@@ -434,7 +478,7 @@ async function onForked(nodeId: string, payload: { file: string; name: string })
     type: "remote-agentNode",
     // ACT: 分支节点要落在网格上——节点宽度带小数时直接加 80 会得到非网格坐标。
     position: snapPoint({ x: node.computedPosition.x + snapOffset(width + 80, gridSize(flow)), y: node.computedPosition.y + 80 }, gridSize(flow)),
-    data: { label: `${nodeData(nodeId).label ?? "Agent"} · 分支`, agentSessionFile: payload.file },
+    data: { label: `${nodeData(nodeId).label ?? "Agent"} · 分支`, agentSessionFile: payload.file, agentRoleId: roleOf(nodeId) || undefined },
   });
   ElMessage.success("已复制出新的 Agent 节点");
 }
@@ -489,7 +533,17 @@ onBeforeUnmount(() => {
   currentNodeId.value = undefined;
 });
 
-defineExpose({ open, close, isOpen: () => !!currentNodeId.value });
+// ACT: 画布调度器派发的后台任务不在本面板的请求流里；把事件镜像给已挂载的对话实例，
+// 让用户打开该节点时能看到实时文本、工具与提问。会话不一致时忽略，避免串会话。
+function applyExternalEvent(nodeId: string, sessionFile: string, event: unknown) {
+  const entry = entries[nodeId];
+  if (!entry) return;
+  if (entry.sessionFile && sessionFile && entry.sessionFile !== sessionFile) return;
+  try { conversationElements.get(nodeId)?.receiveEvent(event as never); }
+  catch { /* 外部事件与当前会话形状不一致时忽略，不打断面板 */ }
+}
+
+defineExpose({ open, close, isOpen: () => !!currentNodeId.value, applyExternalEvent });
 </script>
 
 <style lang="scss" scoped>
@@ -517,6 +571,16 @@ defineExpose({ open, close, isOpen: () => !!currentNodeId.value });
     &::-webkit-scrollbar {
       display: none;
     }
+  }
+
+  .agentRoleTag {
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 8px;
+    background: var(--el-color-primary-light-9);
+    color: var(--el-color-primary);
+    font-size: 11px;
+    line-height: 18px;
   }
 
   .agentNodePanelHeader {

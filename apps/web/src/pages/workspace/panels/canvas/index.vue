@@ -138,6 +138,9 @@
         :getSignal="() => canvasController.signal"
         :disabled="!canvasId || !project?.directory" />
       <nodeSearch ref="nodeSearchRef" :disabled="!active || settingsVisible || !canvasId || !project?.directory" />
+      <!-- ACT: Agent 派发/回传关系层；只存在于任务期间，不写入画布 JSON。
+           放在 vue-flow 插槽里，z-index 低于对话面板（10），线不会盖住面板。 -->
+      <agentLinkLayer :links="agentLinks" :nodes="flow.getNodes.value" :viewport="viewport" :pointer-source="canvasElement" />
       <agentNodePanel
         ref="agentNodePanelRef"
         :runtime-key="runtimeKey"
@@ -239,6 +242,7 @@ import {
 } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { useCanvasTools } from "./useCanvasTools";
+import { AGENT_DISPATCHER_KEY, createAgentDispatcher } from "./agentDispatcher";
 import type { CanvasContext } from "@toonflow/tool-canvas/runtime";
 import { loadNodeComponent } from "./loadNodeComponent";
 import { pauseMediaIn } from "@/lib/mediaPlayback";
@@ -260,6 +264,8 @@ import nodeSearch from "./components/nodeSearch.vue";
 import nodePreview from "./components/nodePreview.vue";
 import { pickNodePreview, type NodePreviewTarget } from "./nodePreview";
 import agentNodePanel from "./components/agentNodePanel.vue";
+import agentLinkLayer from "./components/agentLinkLayer.vue";
+import type { AgentLink } from "./agentLinks";
 import taskAlertBanner from "./components/taskAlertBanner.vue";
 import { useTaskAlertsStore } from "@/stores/taskAlerts";
 import { useAgentQuestionsStore, type CanvasAgentQuestion } from "@/stores/agentQuestions";
@@ -769,6 +775,30 @@ watch([canvasReady, canvasId], async ([ready, id]) => {
 const agentNodeStatuses = reactive<Record<string, AgentNodeStatus>>({});
 provide(AGENT_NODE_STATUS_KEY, agentNodeStatuses);
 const agentNodePanelRef = ref<InstanceType<typeof agentNodePanel>>();
+// ACT: 关系箭头由 dispatcher 写入，画布宿主负责响应式渲染与销毁。
+const agentLinks = reactive<AgentLink[]>([]);
+
+// ACT: 同画布 Agent 派发调度器。服务端只下发 agentDispatch；排队、画布调用、结果回传都在这里，
+// 复用现有 /api/agent 流与画布上下文，页面关闭即中断。
+const agentDispatcher = createAgentDispatcher({
+  canvasId: () => canvasId.value,
+  directory: () => project.value?.directory,
+  findNode: nodeId => flow.findNode(nodeId) as { id: string; type?: string; data?: Record<string, unknown> } | undefined,
+  updateNodeData: (nodeId, data) => flow.updateNodeData(nodeId, data as never),
+  getCanvasContext,
+  statuses: agentNodeStatuses,
+  links: agentLinks,
+  panel: () => agentNodePanelRef.value,
+  onQuestions: (nodeId, event) => {
+    const label = (flow.findNode(nodeId)?.data as { label?: string } | undefined)?.label ?? nodeId;
+    agentQuestionsStore.add(questionCanvasKey.value, canvasId.value, {
+      nodeId, label, title: event.title, question: event.question,
+    });
+  },
+  onQuestionDone: nodeId => agentQuestionsStore.removeQuestion(questionCanvasKey.value, nodeId),
+});
+provide(AGENT_DISPATCHER_KEY, agentDispatcher);
+onScopeDispose(() => agentDispatcher.dispose());
 /** 禁用态的唯一口径：node.data.disabled === true。 */
 function isNodeDisabled(node?: { data?: unknown } | null) {
   return (node?.data as { disabled?: boolean } | undefined)?.disabled === true;
@@ -981,7 +1011,10 @@ function focusQuestionNode(nodeId: string) {
   if (!node || isNodeDisabled(node)) return false;
   // 面板按节点坐标定位，节点在视野外会开在一个看不见的地方，先把视图带过去。
   void flow.fitView({ nodes: [node.id], duration: 260, maxZoom: 1, padding: 0.4 });
-  void agentNodePanelRef.value?.open(nodeId);
+  void agentNodePanelRef.value?.open(nodeId)?.then(() => {
+    // ACT: 后台任务的提问不在面板的历史快照里，打开后再回放一次工具块与提问卡片。
+    nextTick(() => agentDispatcher.replayQuestions(nodeId));
+  });
   return true;
 }
 async function openAgentQuestion(item: CanvasAgentQuestion) {

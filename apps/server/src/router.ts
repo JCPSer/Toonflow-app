@@ -15,6 +15,7 @@ import route12 from "./routes/agent/rename";
 import route13 from "./routes/agent/rewind";
 import route14 from "./routes/agent/session";
 import route15 from "./routes/agent/skills";
+import noteRoute from "./routes/agent/note";
 import route16 from "./routes/agents/a2a/get";
 import route17 from "./routes/agents/a2a/save";
 import route18 from "./routes/agents/connect";
@@ -190,6 +191,7 @@ export default (app: Express) => {
   app.use("/api/agent/rewind", route13);
   app.use("/api/agent/session", route14);
   app.use("/api/agent/skills", route15);
+  app.use("/api/agent/note", noteRoute);
   // pluginMarket · /api/agents
   app.use("/api/agents/a2a/get", route16);
   app.use("/api/agents/a2a/save", route17);

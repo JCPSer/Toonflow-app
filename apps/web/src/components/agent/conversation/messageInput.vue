@@ -34,7 +34,7 @@
       <span class="queueTitle">待发送 {{ props.queue.length }}</span>
       <div v-for="(item, index) in props.queue" :key="item.id" class="queueItem">
         <span class="queueText" :title="item.preview">{{ item.preview }}</span>
-        <el-button text size="small" :disabled="props.disabled" title="打断当前生成并立即发送" @click="emit('sendQueued', index)">立即发送</el-button>
+        <el-button text size="small" :disabled="props.disabled || remoteRunning" title="打断当前生成并立即发送" @click="emit('sendQueued', index)">立即发送</el-button>
         <el-button text size="small" :icon="IconX" :disabled="props.disabled" aria-label="移除待发送消息" title="移除" @click="emit('removeQueued', index)" />
       </div>
     </div>
@@ -51,7 +51,7 @@
     <teleport v-for="target in draftMentionTargets" :key="target.key" :to="target.element"><mentionThumbnail v-bind="mentionThumbnailProps(target.mention)" :directory="directory"><icon-photo :size="14" /></mentionThumbnail></teleport>
     <mentionContent ref="draftMentionPreview" :mentions="draftMentions" :directory="directory" removable @remove="removeDraftMention" />
     <div ref="actionsElement" class="senderActions">
-      <modelPopover v-if="showModel !== false" v-model="selectedModel" v-model:reasoningEffort="reasoningEffort" :active="active" :disabled="disabled || voiceActive" />
+      <modelPopover v-if="showModel !== false" v-model="selectedModel" v-model:reasoningEffort="reasoningEffort" v-model:roleId="roleId" :active="active" :disabled="disabled || voiceActive" :showRole="showRole" @manageRoles="emit('manageRoles')" />
       <input ref="attachmentInput" type="file" :accept="attachmentAccept" multiple hidden :disabled="locked" @change="selectAttachments" />
       <el-button text circle :disabled="locked" aria-label="添加附件" title="添加附件" @click="attachmentInput?.click()"><icon-paperclip :size="16" /></el-button>
       <mentionMenu ref="mentionMenuRef" :directory="directory" :active="active" :disabled="locked || !directory" :query="mentionQuery" :editor="senderElement" :currentCanvasId="createCanvasContext?.()?.id" @open="captureMentionPosition" @select="insertMentions" @dismiss="mentionQuery = undefined" />
@@ -78,10 +78,12 @@
         <el-button class="interruptButton" type="primary" circle :disabled="props.disabled || !composable" aria-label="打断并立即发送" title="打断当前生成并立即发送" @click="emit('submit')">
           <icon-bolt :size="15" />
         </el-button>
-        <el-button class="stopButton" text circle aria-label="停止生成" title="停止生成" @click="emit('stop')">
-          <icon-player-stop-filled :size="14" />
-        </el-button>
       </template>
+      <!-- ACT: 后台（dispatcher）驱动时 busy 为假、remoteRunning 为真；停止按钮必须跟这个状态走，
+           否则界面上只有发送按钮，用户无处中断。 -->
+      <el-button v-if="busy || remoteRunning" class="stopButton" text circle :aria-label="remoteRunning && !busy ? '停止运行' : '停止生成'" :title="remoteRunning && !busy ? '停止运行' : '停止生成'" @click="emit('stop')">
+        <icon-player-stop-filled :size="14" />
+      </el-button>
       <el-button v-else class="sendButton" type="primary" circle :disabled="locked" :aria-label="editingId ? '重发消息' : '发送消息'" :title="editingId ? '重发消息' : '发送消息'" @click="emit('submit')">
         <icon-arrow-up :size="16" />
       </el-button>
@@ -113,10 +115,12 @@ import useVoiceInput from "./useVoiceInput";
 import xSender, { type AnyTagProps } from "x-sender";
 import "x-sender/lib/XSender.css";
 
-const props = defineProps<{ active: boolean; disabled: boolean; busy: boolean; remoteRunning: boolean; deletingId?: string; directory?: string; contextUsage?: AgentContext; stats?: AgentStats; contextWindow: number; history?: AgentMessage[]; acceptPending?: boolean; showModel?: boolean; autoFocus?: boolean; queue?: { id: string; preview: string }[] }>();
-const emit = defineEmits<{ submit: []; stop: []; enqueue: []; sendQueued: [index: number]; removeQueued: [index: number] }>();
+const props = defineProps<{ active: boolean; disabled: boolean; busy: boolean; remoteRunning: boolean; deletingId?: string; directory?: string; contextUsage?: AgentContext; stats?: AgentStats; contextWindow: number; history?: AgentMessage[]; acceptPending?: boolean; showModel?: boolean; autoFocus?: boolean; queue?: { id: string; preview: string }[]; showRole?: boolean }>();
+const emit = defineEmits<{ submit: []; stop: []; enqueue: []; sendQueued: [index: number]; removeQueued: [index: number]; manageRoles: [] }>();
 const selectedModel = defineModel<string>("selectedModel", { required: true });
 const reasoningEffort = defineModel<string>("reasoningEffort", { required: true });
+// ACT: 角色只由画布 Agent 节点面板传入；右侧全局面板不绑定。
+const roleId = defineModel<string>("roleId", { default: "" });
 const editingId = defineModel<string>("editingId");
 const recording = defineModel<boolean>("voiceActive", { default: false });
 const restoringAttachment = defineModel<boolean>("restoringAttachment", { default: false });

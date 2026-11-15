@@ -115,6 +115,8 @@ export function sanitizeCanvas(canvas: unknown): { canvas: any; dropped: string[
 
     dropOwn(data, "agentSessionFile", `${prefix}.agentSessionFile`, dropped);
     dropOwn(data, "agentSessionCloneFrom", `${prefix}.agentSessionCloneFrom`, dropped);
+    // ACT: 角色库是接收方本地的全局设置，不随工作区导出；悬空 id 会让接收方选到不存在的角色。
+    dropOwn(data, "agentRoleId", `${prefix}.agentRoleId`, dropped);
 
     if (isRecord(data.crop)) {
       dropOwn(data.crop, "previous", `${prefix}.crop.previous`, dropped);

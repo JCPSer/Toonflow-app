@@ -7965,5 +7965,7 @@
   ],
   "追加选择只绑定修饰键，例如 Ctrl 或 Meta。": [
     "apps/web/src/components/settings/panels/general/canvasShortcuts.vue"
-  ]
+  ],
+  "模型输出陷入循环，已自动停止": ["apps/server/src/agent/runtime/index.ts", "apps/server/src/modules/agentAccess/singleAgent/index.ts"],
+  "模型输出超过 15 万字符，疑似陷入循环，已自动停止": ["apps/server/src/agent/runtime/index.ts", "apps/server/src/modules/agentAccess/singleAgent/index.ts"]
 }

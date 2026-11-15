@@ -125,6 +125,22 @@ export async function reportToParent(cwd: string, parentFile: string, file: stri
   return details.id;
 }
 
+/**
+ * ACT: 只往会话里追加一条用户可见消息，不触发模型运行。
+ * 用于「派发任务被用户取消」这类通知：父 Agent 应该看到结果，但不应被自动拉起。
+ */
+export async function appendAgentNote(cwd: string, file: string, content: string) {
+  if (!/^[\w-]+\.jsonl$/.test(file)) throw Object.assign(new Error("会话文件无效"), { status: 400 });
+  let id = "";
+  await updateAgentSession(cwd, file, (history, active) => {
+    history.appendMessage({ role: "user", content, timestamp: Date.now() });
+    const entry = history.getBranch().findLast(item => item.type === "message" && item.message.role === "user");
+    id = entry?.id ?? "";
+    if (id) active?.send({ type: "note", id, content });
+  });
+  return { id };
+}
+
 // ACT: 回退/复制/删除都要重写或复制 JSONL 树，必须拒绝损坏行，不能沿用 SDK 会跳过坏行的读取器。
 const sessionEntrySchema = z.object({ type: z.string(), id: z.string().min(1), parentId: z.string().nullable(), timestamp: z.string() });
 const maxSessionFileBytes = 32 * 1024 * 1024;

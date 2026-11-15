@@ -5,7 +5,8 @@ import { createAgentSession, DefaultResourceLoader, SessionManager, SettingsMana
 import type { AgentSession, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { QuestionContext } from "@toonflow/tools-scaffold/runtime";
 import {
-  agentLog, configureAgentRequests, createAgentModel, createAgentToolContext, getToolResultText, question,
+  agentLog, configureAgentRequests, createAgentModel, createAgentToolContext, getToolResultText, OutputLoopGuard, question,
+  type OutputLoopReason,
 } from "@/agentRuntime";
 import { listTools, loadTool, validateToolConfig } from "@/modules/pluginMarket/plugins/tools";
 import { browserRuntime } from "@/modules/agentAccess/browser";
@@ -210,6 +211,13 @@ export async function run(options: {
   }, { once: true });
   const toolResults: SingleAgentResult["toolResults"] = [];
   const imageToolResults = new Map<string, SingleAgentToolResult>();
+  // ACT: 临时对话（设置里的媒体模型配置助手）同样会把思考/正文增量实时推给前端，必须共用同一套循环检测。
+  // 声明在 try 外，catch 才能用命中原因覆盖 SDK 的 AbortError。
+  const loopGuard = new OutputLoopGuard();
+  let loopError: OutputLoopReason | undefined;
+  const loopMessage = (reason: OutputLoopReason) => reason === "too-large"
+    ? t`模型输出超过 15 万字符，疑似陷入循环，已自动停止`
+    : t`模型输出陷入循环，已自动停止`;
   try {
     onStart?.();
     setStatus(active, "running");
@@ -277,8 +285,22 @@ export async function run(options: {
         if ("contentIndex" in update) {
           const blockId = `${messageIndex}:${update.contentIndex}`;
           if (update.type === "text_start" || update.type === "thinking_start") send({ type: update.type === "text_start" ? "text" : "thinking", blockId, content: "" });
-          if (update.type === "text_delta" || update.type === "thinking_delta") send({ type: update.type === "text_delta" ? "text" : "thinking", blockId, delta: update.delta });
-          if (update.type === "text_end" || update.type === "thinking_end") send({ type: update.type === "text_end" ? "text" : "thinking", blockId, content: update.content, done: true });
+          if (update.type === "text_delta" || update.type === "thinking_delta") {
+            // ACT: 命中后停止转发并中止会话；已收到的内容仍由 SDK 落盘。
+            const loopReason = loopGuard.push(blockId, update.delta ?? "");
+            if (loopReason) {
+              loopError ??= loopReason;
+              void session.abort();
+            } else if (!loopError) {
+              send({ type: update.type === "text_delta" ? "text" : "thinking", blockId, delta: update.delta });
+            }
+          }
+          if (update.type === "text_end" || update.type === "thinking_end") {
+            // ACT: 命中循环后不再回传完整大块内容；done 只结束流式状态，前端保留已收到的增量。
+            send(loopError
+              ? { type: update.type === "text_end" ? "text" : "thinking", blockId, done: true }
+              : { type: update.type === "text_end" ? "text" : "thinking", blockId, content: update.content, done: true });
+          }
           if (update.type === "toolcall_start" || update.type === "toolcall_end") {
             const part = update.type === "toolcall_end" ? update.toolCall : update.partial.content[update.contentIndex];
             if (part?.type === "toolCall") {
@@ -290,7 +312,10 @@ export async function run(options: {
       }
       if (event.type === "message_end" && event.message.role === "assistant") event.message.content.forEach((part, index) => {
         const blockId = `${messageIndex}:${index}`;
-        if (part.type === "text" || part.type === "thinking") send({ type: part.type, blockId, content: part.type === "text" ? part.text : part.thinking, done: true });
+        // ACT: 命中循环后 message_end 不再重发全文，避免把已经停止转发的超大内容一次性推给前端。
+        if (part.type === "text" || part.type === "thinking") {
+          if (!loopError) send({ type: part.type, blockId, content: part.type === "text" ? part.text : part.thinking, done: true });
+        }
         if (part.type === "toolCall") {
           toolBlocks.set(part.id, blockId);
           send({ type: "tool", blockId, tool: { id: part.id, name: part.name, args: part.arguments, status: "running" } });
@@ -311,6 +336,7 @@ export async function run(options: {
       }
     });
     await session.prompt(options.prompt, { expandPromptTemplates: false });
+    if (loopError) throw new Error(loopMessage(loopError));
     active.controller.signal.throwIfAborted();
     const reply = session.messages.findLast(message => message.role === "assistant");
     if (!reply || reply.role !== "assistant") throw new Error("模型未返回回复");
@@ -318,9 +344,12 @@ export async function run(options: {
     if (reply.stopReason === "length") throw new Error("模型回复因长度限制被截断，未能完整生成回答。");
     send({ type: "complete", text: reply.content.filter(part => part.type === "text").map(part => part.text).join("\n"), toolResults });
   } catch (error) {
+    // ACT: 循环检测会主动 abort SDK 会话，抛出的 AbortError 必须换成可读原因，不能误报成用户取消。
+    const failure = loopError ? new Error(loopMessage(loopError)) : error;
     agentLog("run.failed", { session: state.id, run: active.id, ms: Date.now() - startedAt, aborted: active.controller.signal.aborted,
-      reason: active.controller.signal.reason, error: error instanceof Error ? error : "临时对话执行失败" });
-    send({ type: "error", message: active.controller.signal.aborted ? "本次回复已停止" : error instanceof Error ? error.message : "临时对话执行失败" });
+      reason: active.controller.signal.reason, error: failure instanceof Error ? failure : "临时对话执行失败" });
+    send({ type: "error", message: loopError ? loopMessage(loopError)
+      : active.controller.signal.aborted ? "本次回复已停止" : failure instanceof Error ? failure.message : "临时对话执行失败" });
   } finally {
     agentLog("run.end", { session: state.id, run: active.id, ms: Date.now() - startedAt });
     active.controller.signal.removeEventListener("abort", stopSdk);

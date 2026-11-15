@@ -2740,5 +2740,7 @@
   "从 JSON 导入": "Import from JSON",
   "导入 DXT 包": "Import DXT package",
   "取消语音输入": "Cancel voice input",
-  "长按输入框语音输入，也可点击开始": "Hold the input box for voice input, or click to start"
+  "长按输入框语音输入，也可点击开始": "Hold the input box for voice input, or click to start",
+  "模型输出陷入循环，已自动停止": "The model output fell into a loop and was stopped automatically",
+  "模型输出超过 15 万字符，疑似陷入循环，已自动停止": "The model output exceeded 150,000 characters and may be looping; it was stopped automatically"
 }

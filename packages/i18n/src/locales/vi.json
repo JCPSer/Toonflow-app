@@ -2740,5 +2740,7 @@
   "从 JSON 导入": "Nhập từ JSON",
   "导入 DXT 包": "Nhập gói DXT",
   "取消语音输入": "Hủy nhập giọng nói",
-  "长按输入框语音输入，也可点击开始": "Nhấn giữ ô nhập để nhập bằng giọng nói hoặc nhấp để bắt đầu"
+  "长按输入框语音输入，也可点击开始": "Nhấn giữ ô nhập để nhập bằng giọng nói hoặc nhấp để bắt đầu",
+  "模型输出陷入循环，已自动停止": "Đầu ra của mô hình bị lặp vô hạn nên đã tự động dừng",
+  "模型输出超过 15 万字符，疑似陷入循环，已自动停止": "Đầu ra của mô hình vượt quá 150.000 ký tự và có dấu hiệu lặp vô hạn nên đã tự động dừng"
 }

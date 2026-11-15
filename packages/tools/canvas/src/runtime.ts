@@ -53,7 +53,12 @@ export const canvasSchemas = {
   addCanvas: z.strictObject({ name: z.string().trim().min(1).max(120).optional() }),
   switchCanvas: z.strictObject({ canvasId: z.string().min(1).max(256) }),
   renameCanvas: z.strictObject({ canvasId: z.string().min(1).max(256).optional(), name: z.string().trim().min(1).max(120) }),
-  addNode: z.strictObject({ type: z.string().min(1), position, label: z.string().trim().min(1).max(200).optional() }),
+  addNode: z.strictObject({
+    type: z.string().min(1), position, label: z.string().trim().min(1).max(200).optional(),
+    // ACT: 仅 Agent 节点支持；id 来自 getAgentRoles，无效时节点仍按通用创建并在回执里说明。
+    roleId: z.string().min(1).max(64).optional(),
+  }),
+  getAgentRoles: z.strictObject({}),
   deleteNodes: z.strictObject({ nodeIds: z.array(nodeId).min(1).max(64) }),
   moveNodes: z.strictObject({ moves: z.array(z.strictObject({ nodeId, position })).min(1).max(64) }),
   renameNodes: z.strictObject({ renames: z.array(z.strictObject({ nodeId, label: z.string().trim().min(1).max(200) })).min(1).max(64) }),
@@ -81,7 +86,8 @@ export const canvasOperations = [
   { name: "addCanvas", label: "新增画布", description: "在当前工作区创建空白画布 JSON 并切换到新画布。name 可选且不含 .json 扩展名；省略时自动使用未占用的画布N，同名文件不会被覆盖。返回新画布状态，本轮后续调用可继续新增节点。", parameters: canvasSchemas.addCanvas },
   { name: "switchCanvas", label: "切换画布", description: "先从 getCanvas({include:['canvases']}) 分页获取 canvasId，再切换激活画布。等待当前修改保存，返回新画布概览，本轮后续操作继续作用于新画布。", parameters: canvasSchemas.switchCanvas },
   { name: "renameCanvas", label: "重命名画布", description: "重命名当前工作区画布，同时修改对应 JSON 文件名。省略 canvasId 时重命名激活画布；name 不含 .json 扩展名。不会覆盖已有文件，返回操作后的激活画布概览。", parameters: canvasSchemas.renameCanvas },
-  { name: "addNode", label: "新增节点", description: "在激活画布新增节点，type 必须来自 getCanvas({include:['nodeTypes']}) 的 availableNodeTypes。由画布 Agent 节点发起时 position 会被忽略，节点固定放在发起节点右侧一列并自动避让已有节点；没有 Agent 绑定时才按 position 的画布坐标放置（position 仍需传入）。返回新增节点信息；节点函数通过 getNodeTools 按需查询。", parameters: canvasSchemas.addNode },
+  { name: "addNode", label: "新增节点", description: "在激活画布新增节点，type 必须来自 getCanvas({include:['nodeTypes']}) 的 availableNodeTypes。由画布 Agent 节点发起时 position 会被忽略，节点固定放在发起节点右侧一列并自动避让已有节点；没有 Agent 绑定时才按 position 的画布坐标放置（position 仍需传入）。新增 Agent 节点时可传 roleId 指定全局角色，roleId 必须先通过 getAgentRoles 获取；角色不存在时节点仍按通用创建，回执里 roleApplied=false 并说明。返回新增节点信息；节点函数通过 getNodeTools 按需查询。", parameters: canvasSchemas.addNode },
+  { name: "getAgentRoles", label: "读取 Agent 角色", description: "读取全局 Agent 角色库，返回 id、名称与描述，供 addNode 的 roleId 使用。只返回元信息，不返回系统提示词正文；未配置角色时返回空列表。", parameters: canvasSchemas.getAgentRoles },
   { name: "deleteNodes", label: "删除节点", description: "从激活画布批量删除指定 nodeIds 的节点及其连接边；同一批次内的父子节点可以一起删除，任一节点校验失败则整体不执行。返回 removedEdgeCount、最多 100 项 removedEdgeIds 及 truncated；截断只影响删除回执，不代表仅删除了部分连线。", parameters: canvasSchemas.deleteNodes },
   { name: "moveNodes", label: "移动节点", description: "将激活画布指定节点批量移动到各自的画布坐标 position，一次可传入多个节点，任一项校验失败则整体不执行。", parameters: canvasSchemas.moveNodes },
   { name: "renameNodes", label: "重命名节点", description: "批量修改激活画布指定节点的显示名称，一次可传入多个节点，任一项校验失败则整体不执行。", parameters: canvasSchemas.renameNodes },

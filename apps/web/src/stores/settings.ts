@@ -233,6 +233,20 @@ export async function forgetProviderHidden(kind: HiddenKind, providerId: string)
 
 type ResolvedAiModel = { providerId: string; modelId: string; reasoningLevels: ThinkingLevel[] };
 const resolvedModelReasoning = ref<Partial<Record<string, ThinkingLevel[]>>>({});
+export type AgentRoleOption = { id: string; name: string; description?: string; prompt: string };
+
+/** ACT: 全局 Agent 角色库；坏项跳过，选择器与派发都以此为唯一来源。 */
+export const agentRoles = computed<AgentRoleOption[]>(() => {
+  const raw = (settings.value as { agentRoles?: unknown }).agentRoles;
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap(item => {
+    if (!item || typeof item !== "object") return [];
+    const { id, name, prompt, description } = item as Record<string, unknown>;
+    if (typeof id !== "string" || !id || typeof name !== "string" || !name.trim() || typeof prompt !== "string" || !prompt.trim()) return [];
+    return [{ id, name: name.trim(), prompt, ...(typeof description === "string" && description.trim() ? { description: description.trim() } : {}) }];
+  });
+});
+
 export const modelChoices = computed(() => customProviders.value.flatMap(provider => {
   const providerHidden = isProviderHidden("language", provider.id);
   return provider.models.map(model => ({

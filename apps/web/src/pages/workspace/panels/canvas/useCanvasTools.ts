@@ -5,6 +5,7 @@ import { canvasSchemas, type CanvasCallOrigin, type CanvasContext, type CanvasTo
 import { asrRequestSchema } from "@toonflow/tools-scaffold/runtime";
 import { isBrowserAudioAsrSupported, transcribeBrowserAudio } from "@toonflow/asr";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
+import { agentRoles } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { arrangeCanvas } from "./arrangeCanvas";
 import { canvasEdgeSummary, canvasNodeSummary, createCanvasQueries, isCanvasRead } from "./canvasQueries";
@@ -220,15 +221,26 @@ export function useCanvasTools(options: {
         await options.menu().renameCanvas(targetId, nextName, signal);
         return targetId === canvasId ? renamedId : canvasId;
       }
+      case "getAgentRoles": {
+        canvasSchemas.getAgentRoles.parse(request.args);
+        const roles = agentRoles.value.map(role => ({
+          id: role.id, name: role.name, ...(role.description ? { description: role.description } : {}),
+        }));
+        return { roles, total: roles.length };
+      }
       case "addNode": {
         const args = canvasSchemas.addNode.parse(request.args);
         const type = options.availableNodes.value.find(node => node.type === args.type);
         if (!type) throw new Error("节点类型未启用或尚未加载，请先查询 getCanvas");
+        if (args.roleId && type.type !== "remote-agentNode") throw new Error("只有 Agent 节点可以指定角色");
+        // ACT: 角色无效时不拦住建节点，按通用创建并在回执里说明，避免模型因为一个过期 id 整个任务失败。
+        const role = args.roleId ? agentRoles.value.find(item => item.id === args.roleId) : undefined;
+        const roleNote = args.roleId && !role ? `角色 ${args.roleId} 不存在或已删除，节点已按通用创建` : undefined;
         const id = crypto.randomUUID();
         // 由画布 Agent 节点发起时忽略模型坐标，固定在发起节点右侧一列；无绑定或计算失败时保持原行为。
         let spawn: XYPosition | undefined;
         try { spawn = spawnBesideAgent(origin, canvasId); } catch { spawn = undefined; }
-        flow.addNodes({ id, type: type.type, position: nodePosition(spawn ?? args.position), data: { label: args.label ?? type.label } });
+        flow.addNodes({ id, type: type.type, position: nodePosition(spawn ?? args.position), data: { label: args.label ?? type.label, ...(role ? { agentRoleId: role.id } : {}) } });
         await nextTick();
         signal.throwIfAborted();
         flow.updateNodeInternals([id]);
@@ -243,7 +255,7 @@ export function useCanvasTools(options: {
           signal.throwIfAborted();
         }
         scheduleReveal(id);
-        return nodeInfo(id);
+        return { ...nodeInfo(id), roleApplied: !!role, ...(roleNote ? { roleNote } : {}) };
       }
       case "deleteNodes": {
         const { nodeIds } = canvasSchemas.deleteNodes.parse(request.args);

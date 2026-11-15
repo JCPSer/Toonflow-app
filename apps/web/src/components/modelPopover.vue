@@ -45,6 +45,16 @@
             <div :id="`${reasoningId}Hint`" class="reasoningHint">默认由模型决定</div>
           </div>
         </el-form-item>
+        <!-- ACT: 角色只在画布 Agent 节点出现；「通用」表示不附加角色提示词。 -->
+        <el-form-item v-if="showRole" label="角色">
+          <div class="roleRow">
+            <el-select v-model="roleId" :disabled="disabled" :teleported="false" aria-label="选择角色" placeholder="通用" noDataText="还没有角色，先去管理里新增">
+              <el-option label="通用（默认提示词）" value="" />
+              <el-option v-for="role in roleList" :key="role.id" :label="role.name" :value="role.id" />
+            </el-select>
+            <el-button text size="small" :disabled="disabled" @click="emit('manageRoles')">管理角色</el-button>
+          </div>
+        </el-form-item>
       </el-form>
     </el-popover>
   </div>
@@ -55,12 +65,20 @@ import { computed, ref, useId, watch } from "vue";
 import { IconChevronDown, IconChevronUp } from "@tabler/icons-vue";
 import { modelIcon } from "@toonflow/model-icons";
 import type { ThinkingLevel } from "@toonflow/server/modelReasoning";
-import { customProviders, isModelHidden, isProviderHidden, modelChoices, modelsHidden } from "@/stores/settings";
+import { agentRoles, customProviders, isModelHidden, isProviderHidden, modelChoices, modelsHidden } from "@/stores/settings";
 import { visibleLanguageProviders } from "@/lib/modelVisibility";
 
 const selectedModel = defineModel<string>({ default: "" });
 const reasoningEffort = defineModel<string>("reasoningEffort", { default: "" });
-const props = withDefaults(defineProps<{ active?: boolean; disabled?: boolean }>(), { active: true, disabled: false });
+const roleId = defineModel<string>("roleId", { default: "" });
+const props = withDefaults(defineProps<{
+  active?: boolean; disabled?: boolean;
+  /** 只在画布 Agent 节点面板显示角色选择。 */
+  showRole?: boolean;
+}>(), { active: true, disabled: false, showRole: false });
+// ACT: 角色库是全局设置，直接在弹层里读，避免经过 conversation/messageInput 层层透传。
+const roleList = computed(() => agentRoles.value.map(role => ({ id: role.id, name: role.name })));
+const emit = defineEmits<{ manageRoles: [] }>();
 const visible = ref(false);
 const reasoningId = useId();
 const reasoningLabels: Record<ThinkingLevel, string> = { off: "关闭", minimal: "最小", low: "低", medium: "中", high: "高", xhigh: "极高", max: "最高" };
@@ -144,6 +162,17 @@ watch(() => !props.active || props.disabled, close => { if (close) visible.value
       }
       .el-select {
         width: 100%;
+      }
+      .roleRow {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        width: 100%;
+
+        .el-select {
+          flex: 1;
+          min-width: 0;
+        }
       }
       .reasoningSettings {
         width: 100%;

@@ -11,6 +11,7 @@ import type { AgentEvent, AgentMention, AgentToolCall } from "@/agent/runtime/ty
 import { agentMentionsSchema, mentionPrompt, snapshotMentions, validateMentionTokens } from "@/agent/runtime/mentions";
 import { createAgentTools } from "@/agent/tools";
 import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
+import { findAgentRole } from "@/agent/runtime/roles";
 import { createAgentModel, getAgentModelConfiguration } from "@/agent/runtime/model";
 import { configureAgentRequests } from "@/agent/runtime/requests";
 import { getAgentImageReference, getOffloadedImageText, readAgentImage } from "@/agent/runtime/imageAttachments";
@@ -19,6 +20,7 @@ import { createMemoryTool } from "@/agent/tools/memory";
 import { createReportTool } from "@/agent/tools/report";
 import { runDelegatedAgent } from "@/agent/runtime/delegation";
 import { forgetMicrocompactState, wasMicrocompacted } from "@/agent/runtime/requests";
+import { OutputLoopGuard, type OutputLoopReason } from "@/agent/runtime/outputLoopGuard";
 import {
   agentAttachmentsSchema, agentNodeBindingSchema, appendAgentNodeMarker, getActiveAgentSession, getAgentContext, getAgentStats,
   getParentSessionFile, getSubAgentInfo, getToolResultText, hasPendingAgentQuestion, pruneAgentSessionFile, registerAgentSession, updateSubAgent,
@@ -37,6 +39,10 @@ type AgentOptions = {
   sessionFile?: string;
   resendFrom?: string;
   nodeBinding?: AgentNodeBinding;
+  /** 当前因果链深度：面板发起为 0，dispatcher 派发为父任务 +1。 */
+  dispatchDepth?: number;
+  /** 全局角色库里的角色 id；只在顶层会话生效，子 Agent 不继承。 */
+  roleId?: string;
   canvas?: CanvasContext;
   question?: QuestionContext;
   signal?: AbortSignal;
@@ -55,6 +61,8 @@ export async function run(
     sessionFile,
     resendFrom,
     nodeBinding,
+    dispatchDepth,
+    roleId,
     canvas,
     question,
     signal,
@@ -147,7 +155,18 @@ export async function run(
       abort: () => { controller.abort(); onCancel?.(); return finished.promise; },
     };
     unregister = registerAgentSession(history.getSessionFile()!, active);
-    const tools = await createAgentTools(cwd, canvas, question);
+    // ACT: 派发工具只注入顶层、已绑定画布节点的会话；深度由调用方（面板=0，dispatcher=父任务+1）传入。
+    const dispatchContext = canvas && nodeBinding && !parentFile
+      ? {
+          sessionFile: file,
+          nodeId: nodeBinding.nodeId,
+          canvasId: nodeBinding.canvasId,
+          providerId, modelId, thinkingLevel,
+          depth: dispatchDepth ?? 0,
+          send,
+        }
+      : undefined;
+    const tools = await createAgentTools(cwd, canvas, question, true, true, dispatchContext);
     if (host.personalization.isMemoryEnabled()) {
       const memoryTool = createMemoryTool();
       if (tools.some(tool => tool.name === memoryTool.name)) throw new Error("工具名称 memory 已被内置全局记忆工具占用");
@@ -164,9 +183,11 @@ export async function run(
       }),
     }));
     // ACT: 压缩阈值依赖模型窗口，必须先把模型配置带到设置里。
+    // ACT: 角色只作用于顶层会话；子 Agent 执行的是被委派的具体任务，不继承父角色。
+    const role = child ? undefined : findAgentRole(roleId);
     const resources = await createAgentResources(cwd, tools, createAgentSettings(configuredModel.contextWindow, { maxOutputTokens: configuredModel.maxOutputTokens }), child
       ? `## 子 Agent 职责\n你正在执行委派任务：${JSON.stringify({ name: child.name, task: child.task })}。遵守当前工作区规则与授权，用户可以进入此子会话补充要求。重要进展与最终结论使用 report 上报父 Agent。`
-      : "");
+      : "", { rolePrompt: role?.prompt });
     const resendEntry = resendFrom ? history.getBranch().find((item) => item.id === resendFrom) : undefined;
     if (resendFrom && (resendEntry?.type !== "message" || resendEntry.message.role !== "user")) {
       throw Object.assign(new Error("重发消息不在当前对话中，请重新打开对话"), { status: 400 });
@@ -300,6 +321,13 @@ export async function run(
     let modelError: string | undefined;
     let limited = false;
     let compactionError: string | undefined;
+    // ACT: 模型思考/正文陷入重复时，增量会持续灌给前端；检测到就中止本轮，避免界面被无限增长的 Markdown 拖死。
+    const loopGuard = new OutputLoopGuard();
+    let loopError: OutputLoopReason | undefined;
+    // ACT: guard 只返回稳定 reason code，展示文案在这里按请求语言翻译。
+    const loopMessage = (reason: OutputLoopReason) => reason === "too-large"
+      ? host.i18n.t`模型输出超过 15 万字符，疑似陷入循环，已自动停止`
+      : host.i18n.t`模型输出陷入循环，已自动停止`;
     let messageIndex = 0;
     const toolBlocks = new Map<string, string>();
     const timing = { outputTokens: 0, decodeMs: 0 };
@@ -335,10 +363,20 @@ export async function run(
             });
           }
           if (update.type === "text_delta" || update.type === "thinking_delta") {
-            send({ type: update.type === "text_delta" ? "text" : "thinking", blockId, delta: update.delta });
+            // ACT: 只检测增量本身，命中后停止转发并中止会话；已收到的内容仍由 SDK 落盘。
+            const loopReason = loopGuard.push(blockId, update.delta ?? "");
+            if (loopReason) {
+              loopError ??= loopReason;
+              void session.abort();
+            } else if (!loopError) {
+              send({ type: update.type === "text_delta" ? "text" : "thinking", blockId, delta: update.delta });
+            }
           }
           if (update.type === "text_end" || update.type === "thinking_end") {
-            send({ type: update.type === "text_end" ? "text" : "thinking", blockId, content: update.content, done: true });
+            // ACT: 命中循环后不再回传完整大块内容；done 只结束流式状态，前端保留已收到的增量。
+            send(loopError
+              ? { type: update.type === "text_end" ? "text" : "thinking", blockId, done: true }
+              : { type: update.type === "text_end" ? "text" : "thinking", blockId, content: update.content, done: true });
           }
           if (update.type === "toolcall_start" || update.type === "toolcall_end") {
             const part = update.type === "toolcall_end" ? update.toolCall : update.partial.content[update.contentIndex];
@@ -371,7 +409,8 @@ export async function run(
         event.message.content.forEach((part, index) => {
           const blockId = `${messageIndex}:${index}`;
           if (part.type === "text" || part.type === "thinking") {
-            send({ type: part.type, blockId, content: part.type === "text" ? part.text : part.thinking, done: true });
+            // ACT: 命中循环后 message_end 不再重发全文，避免把已经停止转发的超大内容一次性推给前端。
+            if (!loopError) send({ type: part.type, blockId, content: part.type === "text" ? part.text : part.thinking, done: true });
           } else if (part.type === "toolCall") {
             toolBlocks.set(part.id, blockId);
             send({ type: "tool", blockId, tool: { id: part.id, name: part.name, args: part.arguments, status: "running" } });
@@ -433,11 +472,13 @@ export async function run(
         : mentionPrompt(prompt, mentions);
       // SDK 仅以空格分隔技能名；兼容换行输入与追加的附件说明。
       await session.prompt(content.replace(/^(\/skill:\S+)\s+/, "$1 "));
+      if (loopError) throw new Error(loopMessage(loopError));
       if (compactionError) throw new Error(compactionError);
       if (modelError) throw Object.assign(new Error(modelError), limited ? { code: "AGENT_LENGTH" } : {});
     } catch (error) {
-      failure = error;
-      throw error;
+      // ACT: 循环检测会主动 abort，SDK 抛出的 AbortError 必须换成可读原因，不能当成用户停止。
+      failure = loopError ? new Error(loopMessage(loopError)) : error;
+      throw failure;
     } finally {
       signal?.removeEventListener("abort", abort);
       try {

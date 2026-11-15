@@ -3,6 +3,7 @@ import { readFile } from "@toonflow/file";
 import { join } from "node:path";
 import { DefaultResourceLoader, SettingsManager, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { buildSystemPrompt } from "@/agent/runtime/prompt";
+import { composeRolePrompt } from "@/agent/runtime/roles";
 import { autoCompactStrategy, getAgentPreferences } from "@/agent/runtime/preferences";
 import { loadAgentSkills } from "@/agent/skills";
 
@@ -24,7 +25,7 @@ export function createAgentSettings(contextWindow?: number, options: { retry?: b
   });
 }
 
-export async function createAgentResources(cwd: string, tools: ToolDefinition[], settings = createAgentSettings(), instructions = "") {
+export async function createAgentResources(cwd: string, tools: ToolDefinition[], settings = createAgentSettings(), instructions = "", options: { rolePrompt?: string } = {}) {
   const host = getAgentHost();
   const savedPrompt = host.settings.get("settings", {}).agentSystemPrompt;
   const systemPrompt = typeof savedPrompt === "string" ? savedPrompt : undefined;
@@ -53,7 +54,8 @@ export async function createAgentResources(cwd: string, tools: ToolDefinition[],
     // ACT: 技能正文按需读取；每个会话独立创建 loader，避免 SDK 的会话绑定互相覆盖。
     skillsOverride: () => sdkSkills,
     systemPrompt: "",
-    systemPromptOverride: () => [buildSystemPrompt({ systemPrompt, tools, skills: skills.skills, platform: host.platform.getRuntimePlatform().os }), instructions].filter(Boolean).join("\n\n"),
+    // ACT: 角色提示词排在系统提示最前，默认/自定义提示退居补充；冲突以角色为准。
+    systemPromptOverride: () => [composeRolePrompt(options.rolePrompt, buildSystemPrompt({ systemPrompt, tools, skills: skills.skills, platform: host.platform.getRuntimePlatform().os })), instructions].filter(Boolean).join("\n\n"),
     appendSystemPrompt: [
       globalAgents.content.trim() ? `## 全局协作规范（AGENTS.md）\n${globalAgents.content}` : "",
       memory.content.trim() ? `## 全局长期记忆\n以下是跨对话保存的偏好与事实，使用前核对适用项目，以用户本轮要求为准。\n<global_memory>\n${memory.content}\n</global_memory>` : "",

@@ -11,6 +11,7 @@ import { createSkillContext } from "@/agent/skills";
 import { createAssetContext } from "@/agent/assets";
 import { z } from "zod";
 import { isAgentFullAccess, resolveAgentReadPath } from "@/agent/runtime/permissions";
+import { createSendToAgentTool, type AgentDispatchContext } from "@/agent/tools/sendToAgent";
 
 const RUN_COMMAND_DEFAULT_TIMEOUT_MS = 120_000;
 const RUN_COMMAND_MAX_TIMEOUT_MS = 600_000;
@@ -99,7 +100,22 @@ async function runProjectCommand(cwd: string, command: string, timeoutMs: number
     let child: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined;
     let timedOut = false;
     let aborted = false;
-    const stop = () => child?.kill("SIGKILL");
+    let terminated = false;
+    // ACT: 只杀 bash 会留下 `sleep 300` 这类孤儿；detached 后 bash 是进程组组长，
+    // 向负 pid 发信号才能连带 `bash -c` 拉起的孙进程一起结束（同 routes/exec）。
+    const stop = () => {
+      if (terminated) return;
+      terminated = true;
+      const target = child;
+      if (!target) return;
+      if (process.platform === "win32") {
+        Bun.spawn(["taskkill", "/pid", String(target.pid), "/T", "/F"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" })
+          .exited.then(code => { if (code !== 0) target.kill("SIGKILL"); }).catch(() => { try { target.kill("SIGKILL"); } catch { /* 已退出 */ } });
+        return;
+      }
+      try { process.kill(-target.pid, "SIGKILL"); }
+      catch { try { target.kill("SIGKILL"); } catch { /* 已退出 */ } }
+    };
     const timer = setTimeout(() => { timedOut = true; stop(); }, timeoutMs);
     const onAbort = () => { aborted = true; stop(); };
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -111,6 +127,7 @@ async function runProjectCommand(cwd: string, command: string, timeoutMs: number
         stdin: "ignore",
         stdout: "pipe",
         stderr: "pipe",
+        detached: true,
       });
       const output: CommandOutput = { text: "", bytes: 0, truncated: false };
       const streams = Promise.all([collectCommandStream(child.stdout, output), collectCommandStream(child.stderr, output)]);
@@ -275,7 +292,7 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
 }
 
 // ACT: origin 为 mcp/a2a 时不注册命令工具，避免外部客户端借全权限开关拿到本机 shell。
-export async function createAgentTools(cwd: string, canvas?: CanvasContext, question?: QuestionContext, includeMcp = true, allowCommand = true): Promise<ToolDefinition[]> {
+export async function createAgentTools(cwd: string, canvas?: CanvasContext, question?: QuestionContext, includeMcp = true, allowCommand = true, dispatch?: AgentDispatchContext): Promise<ToolDefinition[]> {
   const host = getAgentHost();
   const tools: ToolDefinition[] = [];
   const names = new Set<string>();
@@ -307,6 +324,15 @@ export async function createAgentTools(cwd: string, canvas?: CanvasContext, ques
     else {
       names.add(runCommand.name);
       tools.push(runCommand);
+    }
+  }
+  // ACT: 只有顶层、已绑定画布节点的会话才拿到派发工具；子 Agent 与 A2A 不继承，避免以父节点身份派活。
+  if (dispatch) {
+    const sendToAgent = createSendToAgentTool(dispatch);
+    if (names.has(sendToAgent.name)) console.warn("内置工具名与插件冲突，已跳过：sendToAgent");
+    else {
+      names.add(sendToAgent.name);
+      tools.push(sendToAgent);
     }
   }
   if (includeMcp) tools.push(...await host.mcp.createMcpAgentTools() as ToolDefinition[]);

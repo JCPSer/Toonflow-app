@@ -2,7 +2,7 @@
   <nodeSkeleton
     v-bind="nodeProps"
     :run="runFromShortcut"
-    :busy="generating || cropping || adjusting || uploading || !!editor?.busy || !!lighting?.generating || !!multiAngle?.generating || !!panorama?.busy || !!gridSplit?.splitting"
+    :busy="generating || cropping || adjusting || scaling || uploading || !!editor?.busy || !!lighting?.generating || !!multiAngle?.generating || !!panorama?.busy || !!gridSplit?.splitting"
     v-model:bottomVisible="node.selected"
     :topVisible="node.selected"
     topWidth="max-content"
@@ -13,19 +13,20 @@
     :style="{ width: (previewUrl || thumbUrl || inpaintGuideUrl) && imageWidth ? `${imageWidth + 18}px` : undefined }">
     <template v-if="editor?.mode" #top><div ref="paintToolbar" /></template>
     <template #topActions>
-      <el-button class="panoramaButton" :icon="IconPanoramaHorizontal" :disabled="cropping || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy || !previewUrl" text title="全景图" aria-label="全景图" @click.stop="panorama?.open($event)">全景图<icon-chevron-down class="menuChevron" :size="14" /></el-button>
-      <el-button :icon="IconBrush" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="局部重绘" aria-label="局部重绘" @click.stop="startEditor('inpaint')">局部重绘</el-button>
-      <el-button :icon="IconSun" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="打光" aria-label="打光" @click.stop="openLighting">打光</el-button>
-      <el-button :icon="IconCameraRotate" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="多角度" aria-label="多角度" @click.stop="openMultiAngle">多角度</el-button>
-      <el-button :icon="IconLayoutGrid" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl" :loading="gridSplit?.splitting" text title="宫格切分" aria-label="宫格切分" @click.stop="gridSplit?.open($event)">宫格切分</el-button>
-      <el-button :icon="IconCrop" :disabled="cropping || generating || deleting || uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || !previewUrl" :loading="cropping" text title="裁剪" aria-label="裁剪" @click.stop="crop?.open()">裁剪</el-button>
-      <el-button :icon="IconAdjustments" :loading="adjusting" :disabled="cropping || generating || deleting || uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || !previewUrl" text title="调整" aria-label="调整" @click.stop="adjust?.open()">调整</el-button>
-      <mediaHistory mediaType="image" :current="outputFile" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @select="selectHistory" @clear="selectHistory(undefined)" />
-      <el-button :icon="IconTransfer" :loading="uploading" :disabled="cropping || generating || deleting || lighting?.generating || multiAngle?.generating || panorama?.busy" text title="替换图片" aria-label="替换图片" @click.stop="fileInput?.click()">替换图片</el-button>
-      <input ref="fileInput" type="file" accept="image/*" hidden aria-label="选择替换图片" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @change="replaceOutput" />
+      <el-button class="panoramaButton" :icon="IconPanoramaHorizontal" :disabled="cropping || scaling || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy || !previewUrl" text title="全景图" aria-label="全景图" @click.stop="panorama?.open($event)">全景图<icon-chevron-down class="menuChevron" :size="14" /></el-button>
+      <el-button :icon="IconBrush" :disabled="cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="局部重绘" aria-label="局部重绘" @click.stop="startEditor('inpaint')">局部重绘</el-button>
+      <el-button :icon="IconSun" :disabled="cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="打光" aria-label="打光" @click.stop="openLighting">打光</el-button>
+      <el-button :icon="IconCameraRotate" :disabled="cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="多角度" aria-label="多角度" @click.stop="openMultiAngle">多角度</el-button>
+      <el-button :icon="IconLayoutGrid" :disabled="cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl" :loading="gridSplit?.splitting" text title="宫格切分" aria-label="宫格切分" @click.stop="gridSplit?.open($event)">宫格切分</el-button>
+      <el-button :icon="IconCrop" :disabled="cropping || scaling || generating || deleting || uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || !previewUrl" :loading="cropping" text title="裁剪" aria-label="裁剪" @click.stop="crop?.open()">裁剪</el-button>
+      <el-button :icon="IconAdjustments" :loading="adjusting" :disabled="cropping || scaling || generating || deleting || uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || !previewUrl" text title="调整" aria-label="调整" @click.stop="adjust?.open()">调整</el-button>
+      <el-button :icon="IconResize" :disabled="cropping || generating || deleting || uploading || editor?.busy || !!editor?.mode || lighting?.generating || multiAngle?.generating || panorama?.busy || gridSplit?.splitting || !previewUrl" :aria-expanded="scale?.visible ?? false" text title="缩放" aria-label="缩放" @click.stop="scale?.open($event)">缩放</el-button>
+      <mediaHistory mediaType="image" :current="outputFile" :disabled="cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @select="selectHistory" @clear="selectHistory(undefined)" />
+      <el-button :icon="IconTransfer" :loading="uploading" :disabled="cropping || scaling || generating || deleting || lighting?.generating || multiAngle?.generating || panorama?.busy" text title="替换图片" aria-label="替换图片" @click.stop="fileInput?.click()">替换图片</el-button>
+      <input ref="fileInput" type="file" accept="image/*" hidden aria-label="选择替换图片" :disabled="cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" @change="replaceOutput" />
     </template>
     <template #topRightActions>
-      <el-button :icon="IconPencil" :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="标记" aria-label="标记" @click.stop="startEditor('mark')" />
+      <el-button :icon="IconPencil" :disabled="cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy || !previewUrl || gridSplit?.splitting" text title="标记" aria-label="标记" @click.stop="startEditor('mark')" />
     </template>
     <div v-loading="generating || uploading" class="imageContent nopan" :aria-busy="generating || uploading">
       <imageEditor
@@ -34,7 +35,7 @@
         :src="previewUrl"
         :previewSrc="thumbUrl"
         :toolbarTarget="paintToolbar"
-        :disabled="cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy"
+        :disabled="cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy"
         alt="生成图片"
         @load="resizeImage"
         @error="showNodeError('无法预览该图片', '图片预览失败')" />
@@ -94,7 +95,7 @@
             <el-button
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
-              :disabled="deleting || uploading || (!generating && (editor?.busy || !generationPrompt || !selectedModel || disabledUpstreams.length > 0))"
+              :disabled="deleting || scaling || uploading || (!generating && (editor?.busy || !generationPrompt || !selectedModel || disabledUpstreams.length > 0))"
               :title="generating ? '停止生成' : disabledUpstreamsHint || '生成图片'"
               :aria-label="generating ? '停止生成' : disabledUpstreamsHint || '生成图片'"
               @click="generating ? generationController?.abort() : startGeneration().catch((error) => showNodeError(error, '图片生成失败'))" />
@@ -103,12 +104,13 @@
       </el-card>
     </template>
   </nodeSkeleton>
-  <imageLighting v-if="lightingVisible" ref="lighting" :src="previewUrl" :source="outputFile" :target="lightingTarget" :disabled="nodeDisabled || cropping || generating || deleting || uploading || gridSplit?.splitting" @close="lightingVisible = false" />
-  <imageMultiAngle v-if="multiAngleVisible" ref="multiAngle" :src="previewUrl" :source="outputFile" :target="multiAngleTarget" :disabled="nodeDisabled || cropping || generating || deleting || uploading || gridSplit?.splitting" @close="multiAngleVisible = false" />
-  <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="nodeDisabled || cropping || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting" @open="openPanorama" />
-  <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="nodeDisabled || cropping || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
-  <imageCrop ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
-  <imageAdjust ref="adjust" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || generating || deleting || uploading || cropping || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleAdjustApplied" @restore="handleAdjustRestore" />
+  <imageLighting v-if="lightingVisible" ref="lighting" :src="previewUrl" :source="outputFile" :target="lightingTarget" :disabled="nodeDisabled || cropping || scaling || generating || deleting || uploading || gridSplit?.splitting" @close="lightingVisible = false" />
+  <imageMultiAngle v-if="multiAngleVisible" ref="multiAngle" :src="previewUrl" :source="outputFile" :target="multiAngleTarget" :disabled="nodeDisabled || cropping || scaling || generating || deleting || uploading || gridSplit?.splitting" @close="multiAngleVisible = false" />
+  <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="nodeDisabled || cropping || scaling || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting" @open="openPanorama" />
+  <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="nodeDisabled || cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
+  <imageCrop ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || scaling || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
+  <imageAdjust ref="adjust" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || scaling || generating || deleting || uploading || cropping || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleAdjustApplied" @restore="handleAdjustRestore" />
+  <imageScale ref="scale" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || cropping || adjusting || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleScaleApplied" @restore="handleScaleRestore" />
   <el-image-viewer v-if="inpaintPreviewVisible && inpaintGuideUrl" :urlList="[inpaintGuideUrl]" teleported @close="inpaintPreviewVisible = false" />
   <el-image-viewer
     v-if="previewVisible && previewUrl"
@@ -120,7 +122,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer, ElMessage } from "element-plus";
-import { IconCheck, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconChevronDown, IconCrop, IconAdjustments } from "@tabler/icons-vue";
+import { IconCheck, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconChevronDown, IconCrop, IconAdjustments, IconResize } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNode, z, type NodeMediaModel, type NodeImageRequest, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
 import { markNodeOutcome } from "@toonflow/nodes-scaffold/nodeBusy";
 import { groupNodeModels } from "@toonflow/node-shared/groupNodeModels";
@@ -134,6 +136,7 @@ import mediaPrice from "@toonflow/node-shared/mediaPrice";
 import imageGridSplit from "@toonflow/node-image/imageGridSplit";
 import imageCrop from "@toonflow/node-image/imageCrop";
 import imageAdjust from "@toonflow/node-image/imageAdjust";
+import imageScale from "@toonflow/node-image/imageScale";
 import imageEditor from "@toonflow/node-image/imageEditor";
 import { buildInpaintRequest, useImageInpaint, type ImageInpaint } from "@toonflow/node-image/imageInpaint";
 import imageLighting from "@toonflow/node-image/imageLighting";
@@ -157,6 +160,8 @@ type CropState = { last?: { url: string; x: number; y: number; width: number; he
 type CropApplied = { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number; flipped: boolean; flippedV: boolean; cropped: boolean };
 type AdjustState = { previous?: { url: string; mimeType: string }; appliedUrl?: string };
 type AdjustApplied = { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number };
+type ScaleState = { previous?: { url: string; mimeType: string }; appliedUrl?: string };
+type ScaleApplied = { path: string; mimeType: string; fromUrl: string; formatChanged: boolean; width: number; height: number };
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
 const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; inpaint?: ImageInpaint });
 data.value.prompt ??= "";
@@ -177,6 +182,7 @@ const fileInput = ref<HTMLInputElement>();
 const gridSplit = ref<InstanceType<typeof imageGridSplit>>();
 const crop = ref<InstanceType<typeof imageCrop>>();
 const adjust = ref<InstanceType<typeof imageAdjust>>();
+const scale = ref<InstanceType<typeof imageScale>>();
 const editor = ref<InstanceType<typeof imageEditor>>();
 const generateInpaint = useImageInpaint();
 const paintToolbar = ref<HTMLElement>();
@@ -263,6 +269,7 @@ const priceInput = computed(() => {
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
 const cropping = computed(() => !!crop.value?.applying);
 const adjusting = computed(() => !!adjust.value?.applying);
+const scaling = computed(() => !!scale.value?.applying);
 const inpaintGuideUrl = files.useFileUrl(
   () => data.value.inpaint?.guide ? { url: data.value.inpaint.guide, mimeType: "image/png" } : undefined,
   error => showNodeError(error, "重绘标注读取失败")
@@ -306,7 +313,7 @@ async function replaceOutput(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = "";
-  if (!file || generating.value || deleting.value || uploading.value || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || disposed) return;
+  if (!file || cropping.value || adjusting.value || scaling.value || generating.value || deleting.value || uploading.value || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || disposed) return;
   if (!file.type.startsWith("image/")) return void showNodeError("请选择图片文件", "图片替换失败");
   if (!file.size || file.size > 100 * 1024 * 1024) return void showNodeError("图片不能为空且不能超过 100 MB", "图片替换失败");
   uploading.value = true;
@@ -321,6 +328,7 @@ async function replaceOutput(event: Event) {
     outputs.value.image = { dataType: "IMAGE", value: { url, mimeType: file.type } };
     clearCropHistory();
     clearAdjustHistory();
+    clearScaleHistory();
   } catch (error) {
     showNodeError(error, "图片替换失败");
   } finally {
@@ -333,6 +341,7 @@ function selectHistory(value?: { url: string; mimeType: string }) {
   outputs.value.image = value ? { dataType: "IMAGE", value } : undefined;
   clearCropHistory();
   clearAdjustHistory();
+  clearScaleHistory();
 }
 
 function cropState(): CropState {
@@ -392,6 +401,49 @@ function handleAdjustRestore() {
   delete state.previous;
   delete state.appliedUrl;
   ElMessage.success("已恢复调整前的图片");
+}
+
+function scaleState(): ScaleState {
+  const value = (node.data as { scale?: unknown }).scale;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    (node.data as { scale?: ScaleState }).scale = {};
+  }
+  return (node.data as { scale?: ScaleState }).scale as ScaleState;
+}
+
+// ACT: 与图片节点同源——生成新图、替换或改选历史后，缩放记录已无法恢复，必须一并清掉。
+function clearScaleHistory() {
+  const value = (node.data as { scale?: unknown }).scale;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const state = value as ScaleState;
+  delete state.previous;
+  delete state.appliedUrl;
+}
+
+function handleScaleApplied(result: ScaleApplied) {
+  const current = outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined;
+  if (!current || current.url !== result.fromUrl) {
+    // ACT: 缩放期间输出可能被重新生成或替换；放弃本次结果并尽力删除新文件。
+    void files.getWorkspaceFiles().remove(result.path).catch(() => {});
+    ElMessage.warning("图片已变化，已取消本次缩放");
+    return;
+  }
+  const state = scaleState();
+  state.previous = { url: current.url, mimeType: current.mimeType };
+  state.appliedUrl = result.path;
+  outputs.value.image = { dataType: "IMAGE", value: { url: result.path, mimeType: result.mimeType } };
+  ElMessage.success(`已缩放为 ${result.width} × ${result.height}${result.formatChanged ? "，已转为 PNG" : ""}`);
+}
+
+function handleScaleRestore() {
+  const current = outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined;
+  const state = scaleState();
+  const previous = state.previous;
+  if (!current || !previous || current.url !== state.appliedUrl) return;
+  outputs.value.image = { dataType: "IMAGE", value: { url: previous.url, mimeType: previous.mimeType } };
+  delete state.previous;
+  delete state.appliedUrl;
+  ElMessage.success("已恢复缩放前的图片");
 }
 
 function handleCropApplied(result: CropApplied) {
@@ -463,7 +515,7 @@ function runFromShortcut() {
 
 async function startGeneration() {
   if (disabledUpstreams.value.length) throw new Error(`上游 ${disabledUpstreams.value.length} 个节点已禁用，请先解除禁用`);
-  if (cropping.value || adjusting.value) return void ElMessage.warning("正在处理图片，请稍候");
+  if (cropping.value || adjusting.value || scaling.value) return void ElMessage.warning("正在处理图片，请稍候");
   const input = generationInput.value;
   if (generating.value) throw new Error("图片正在生成，请等待完成");
   if (panorama.value?.visible) throw new Error("请先关闭全景图，再启动图片生成");
@@ -493,6 +545,8 @@ async function startGeneration() {
       controller.signal.throwIfAborted();
       if (!result) throw new Error("供应商未返回图片");
       outputs.value.image = { dataType: "IMAGE", value: { url: result.path, mimeType: result.mimeType } };
+      // ACT: 新图与上一张图没有任何缩放关系，旧记录必须清掉；裁剪/调整用 url 校验兜底，这里只管缩放。
+      clearScaleHistory();
     }),
     // ACT: 失败/取消要在 busy 下降沿之前写进全局任务表，宿主才知道该报成功还是失败。
     (outcome, reason) => markNodeOutcome(id, outcome, reason))
@@ -504,12 +558,13 @@ async function startGeneration() {
 }
 
 nodeEvent.on("save", (reason) => {
-  if (reason === "reload" && (cropping.value || adjusting.value || generating.value || uploading.value || deleting.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy)) throw new Error("图片处理中，请完成后再刷新节点");
+  if (reason === "reload" && (cropping.value || adjusting.value || scaling.value || generating.value || uploading.value || deleting.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy)) throw new Error("图片处理中，请完成后再刷新节点");
 });
 nodeEvent.on("delete", async () => {
+  await scale.value?.cancel();
   await crop.value?.cancelApply();
   await adjust.value?.cancelApply();
-  if (cropping.value || adjusting.value || uploading.value || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || (editor.value?.busy && !generating.value)) throw new Error("图片处理中，请稍后删除节点");
+  if (cropping.value || adjusting.value || scaling.value || uploading.value || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || (editor.value?.busy && !generating.value)) throw new Error("图片处理中，请稍后删除节点");
   deleting.value = true;
   generationController?.abort();
   try {
@@ -536,7 +591,7 @@ function openPanorama() {
 
 function openLighting() {
   if (nodeDisabled.value) return;
-  if (generating.value || deleting.value || uploading.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting || !previewUrl.value) return;
+  if (scaling.value || generating.value || deleting.value || uploading.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting || !previewUrl.value) return;
   editor.value?.cancel();
   multiAngleVisible.value = false;
   lightingVisible.value = true;
@@ -544,7 +599,7 @@ function openLighting() {
 
 function openMultiAngle() {
   if (nodeDisabled.value) return;
-  if (generating.value || deleting.value || uploading.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting || !previewUrl.value) return;
+  if (scaling.value || generating.value || deleting.value || uploading.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting || !previewUrl.value) return;
   editor.value?.cancel();
   lightingVisible.value = false;
   multiAngleVisible.value = true;
@@ -552,7 +607,7 @@ function openMultiAngle() {
 
 function startEditor(mode: "inpaint" | "mark") {
   if (nodeDisabled.value) return;
-  if (generating.value || deleting.value || uploading.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting) return;
+  if (scaling.value || generating.value || deleting.value || uploading.value || editor.value?.busy || lighting.value?.generating || multiAngle.value?.generating || panorama.value?.busy || gridSplit.value?.splitting) return;
   lightingVisible.value = false;
   multiAngleVisible.value = false;
   editor.value?.start(mode);

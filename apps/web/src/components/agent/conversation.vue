@@ -64,6 +64,7 @@
     <messageInput
       ref="input"
       v-model:selectedModel="selectedModel"
+      v-model:roleId="selectedRole"
       v-model:reasoningEffort="reasoningEffort"
       v-model:editingId="editingId"
       v-model:voiceActive="voiceActive"
@@ -80,13 +81,15 @@
       :contextWindow="contextWindow"
       :acceptPending="acceptPending !== false"
       :showModel="showModelPicker !== false"
+      :showRole="showRole === true"
       :autoFocus="autoFocus !== false"
       :queue="queuePreview"
       @submit="submitMessage"
       @stop="stopMessage"
       @enqueue="enqueueMessage"
       @sendQueued="sendQueuedNow"
-      @removeQueued="removeQueued" />
+      @removeQueued="removeQueued"
+      @manageRoles="emit('manageRoles')" />
   </div>
 </template>
 
@@ -128,6 +131,10 @@ const props = withDefaults(defineProps<{
   autoFocus?: boolean;
   /** 画布 Agent 节点绑定；服务端据此给会话打 toonflowAgentNode 标记并从历史里隐藏。 */
   nodeBinding?: { canvasId: string; nodeId: string };
+  /** 是否显示角色选择（仅画布 Agent 节点）。 */
+  showRole?: boolean;
+  /** 当前节点选中的角色 id；空表示通用。 */
+  nodeRole?: string;
 }>(), {
   // ACT: Boolean 类型 prop 缺省会被 Vue 强制转成 false，这三个开关的默认语义必须是开，
   // 否则模型下拉、待发消息接收、打开即聚焦会全部静默失效。
@@ -155,6 +162,9 @@ const emit = defineEmits<{
   compactState: [state: { disabled: boolean; loading: boolean }];
   /** 压缩上下文的进行状态（含服务端自动压缩）。面板据此保活实例、把角标写成「压缩中」。 */
   compacting: [value: boolean];
+  /** 节点切换角色；外层负责持久化到节点数据。 */
+  roleChange: [roleId: string | undefined];
+  manageRoles: [];
 }>();
 const workspaceStore = useWorkspaceStore();
 const directory = workspaceStore.project?.directory;
@@ -179,6 +189,8 @@ const historyMessages = computed(() => {
   return list;
 });
 const stream = createConversationStream(messages);
+// ACT: 画布调度器由 canvas 实例 provide；没有画布时报错/忽略，不影响普通会话。
+const dispatcher = inject<{ enqueueFromEvent(event: Extract<AgentEvent, { type: "agentDispatch" }>): void; notePanelRun(nodeId: string, running: boolean): void; stop(nodeId: string): boolean } | undefined>(Symbol.for("toonflow.agentDispatcher"), undefined);
 const remoteRunning = ref(props.initialSession?.running ?? false);
 const stats = ref(props.initialSession?.stats);
 const contextUsage = ref(props.initialSession?.contextUsage);
@@ -227,6 +239,11 @@ function syncPhase() {
   if (busy.value || remoteRunning.value) return;
   phase.value = messages.value.some(message => message.role === "user") ? "waiting" : "idle";
 }
+// ACT: 角色只随节点走：取值来自节点数据，改动回抛给外层写回，不在会话里复制一份。
+const selectedRole = computed({
+  get: () => props.nodeRole ?? "",
+  set: value => emit("roleChange", value || undefined),
+});
 const selectedModel = ref(pendingMessage?.model ?? (props.initialSession?.providerId && props.initialSession.modelId
   ? JSON.stringify([props.initialSession.providerId, props.initialSession.modelId]) : ""));
 const reasoningEffort = ref(pendingMessage?.reasoningEffort ?? props.initialSession?.thinkingLevel ?? "");
@@ -261,7 +278,15 @@ function applyEvent(event: AgentEvent) {
       });
       break;
     case "compaction": compacting.value = event.active; break;
+    // ACT: 同画布派发意图交给画布调度器；本组件只负责把事件从流里转交，不自己执行目标 Agent。
+    case "agentDispatch": dispatcher?.enqueueFromEvent(event); break;
     case "session": emit("session", event.file); break;
+    // ACT: 只写会话不跑模型的提示（如派发任务被取消）；按普通用户消息展示，不产生流式占位。
+    case "note":
+      if (!messages.value.some(message => message.id === event.id)) {
+        messages.value.push({ id: event.id, entryId: event.id, role: "user", content: event.content, parts: [{ id: event.id, type: "text", content: event.content }] });
+      }
+      break;
     case "stats": stats.value = event.stats; contextUsage.value = event.contextUsage; break;
     // ACT: 服务端看门狗触发自动重试时，告诉用户还在推进，而不是只有转圈。
     case "retry":
@@ -285,7 +310,8 @@ function receiveEvent(event: AgentEvent) {
     remoteRunning.value = false;
     compacting.value = false;
     phase.value = "waiting";
-  } else if (["userMessage", "text", "thinking", "tool"].includes(event.type)) remoteRunning.value = true;
+    // ACT: 停止后 dispatcher 会补发 done；同步解除「后台运行中」对发送的拦截。
+  } else if (["userMessage", "text", "thinking", "tool", "session"].includes(event.type)) remoteRunning.value = true;
   lastEventAt = performance.now();
   applyEvent(event);
 }
@@ -529,6 +555,12 @@ function submitMessage() {
     void handleCommand(commandText).catch(error => ElMessage.error(error instanceof Error ? error.message : "指令执行失败"));
     return;
   }
+  // ACT: 后台（dispatcher）运行期间服务端会拒绝新请求；这里提前拦住，保留草稿、不插入本地消息。
+  // 放在内置指令之后：/goal stop、/compact 仍可用。
+  if (remoteRunning.value) {
+    if (input.value?.hasDraft?.()) ElMessage.warning("后台任务运行中，请先点击停止");
+    return;
+  }
   // ACT: 生成中直接点发送 = 打断当前轮并立即发这条，不静默进队列（那会让人以为没发出去）。
   if (busy.value) {
     const draft = takeDraft();
@@ -554,6 +586,8 @@ function removeQueued(index: number) {
 }
 
 function sendQueuedNow(index: number) {
+  // ACT: 先判断再 splice；后台运行期间直接发会被服务端拒绝，不能把队列项白白取走。
+  if (remoteRunning.value) { ElMessage.warning("后台任务运行中，请先点击停止"); return; }
   const [draft] = sendQueue.value.splice(index, 1);
   if (!draft) return;
   if (!busy.value) { void sendMessage(undefined, draft); return; }
@@ -689,9 +723,22 @@ async function forkMessage(item: AgentMessage) {
 }
 
 function stopMessage() {
-  // ACT: 用户主动停止时队列保留但不自动续发，避免"点了停止却还在发"。
-  stoppedByUser = true;
-  controller?.abort();
+  // ACT: 面板可能同时有本地请求和 dispatcher 后台任务；停止要覆盖两者。
+  // dispatcher.stop 返回是否命中，未命中且没有本地请求时说明任务不在本实例，复位界面避免按钮卡死。
+  const hit = props.nodeBinding ? dispatcher?.stop(props.nodeBinding.nodeId) ?? false : false;
+  if (controller) {
+    // ACT: 用户主动停止时队列保留但不自动续发，避免"点了停止却还在发"。
+    // 只有本地请求才置这个标记——纯后台停止没有本地 finally 来复位，置真会吞掉下一轮的续发。
+    stoppedByUser = true;
+    controller.abort();
+    return;
+  }
+  if (hit) return;
+  if (remoteRunning.value) {
+    remoteRunning.value = false;
+    phase.value = "waiting";
+    ElMessage.warning("任务可能在其他窗口运行，无法在此停止");
+  }
 }
 
 async function uploadAttachments(attachments: AgentAttachment[], directory: string, signal: AbortSignal) {
@@ -760,6 +807,12 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedDraft) {
   if (fromSource && (source.role !== "user" || resendIndex < 0)) return;
   const resendFrom = fromSource ? source.entryId ?? messages.value.slice(resendIndex + 1).find(item => item.role === "user" && item.entryId)?.entryId : undefined;
   if (locked.value || !instance || (!typed && !attachments.length)) return;
+  // ACT: 唯一发送出口的兜底——后台任务运行时，队列里的消息放回队首，其余提示后保留草稿。
+  if (remoteRunning.value) {
+    if (queued) sendQueue.value.unshift(queued);
+    else ElMessage.warning("后台任务运行中，请先点击停止");
+    return;
+  }
   const model = selectedModelChoice.value;
   if (!directory) return ElMessage.warning("请先打开项目");
   if (!model) return ElMessage.warning("请先选择模型");
@@ -768,6 +821,7 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedDraft) {
   const canvasContext = createCanvasContext?.();
   controller = requestController;
   busy.value = true;
+  if (props.nodeBinding) dispatcher?.notePanelRun(props.nodeBinding.nodeId, true);
   resuming.value = false;
   compacting.value = false;
   startSilenceWatch();
@@ -815,7 +869,7 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedDraft) {
       response = await fetch("/api/agent", {
         method: "POST",
         headers: { "Accept-Language": locale.value, "Content-Type": "application/json", "x-toonflow-workspace": "1" },
-        body: JSON.stringify({ prompt, mentions, attachments: attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), directory, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined, sessionFile: props.sessionFile, resendFrom, nodeBinding: props.nodeBinding, canvas: canvasContext ? { id: canvasContext.id, tools: canvasContext.tools } : undefined }),
+        body: JSON.stringify({ prompt, mentions, attachments: attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), directory, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined, sessionFile: props.sessionFile, resendFrom, nodeBinding: props.nodeBinding, roleId: props.showRole ? selectedRole.value || undefined : undefined, canvas: canvasContext ? { id: canvasContext.id, tools: canvasContext.tools } : undefined }),
         signal: requestController.signal,
       });
       if (response.status !== 409 || attempt === 3) break;
@@ -920,6 +974,7 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedDraft) {
     stopSilenceWatch();
     compacting.value = false;
     busy.value = false;
+    if (props.nodeBinding) dispatcher?.notePanelRun(props.nodeBinding.nodeId, false);
     controller = undefined;
     const interrupted = resumeAfterStop;
     resumeAfterStop = undefined;

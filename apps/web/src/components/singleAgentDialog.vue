@@ -15,9 +15,9 @@
             <div v-if="message.role === 'user'" class="userContent">{{ message.content }}</div>
             <messageMarkdown v-else-if="!message.parts?.length && message.content" :content="message.content" :streaming="!!message.streaming" :directory="sessionDirectory" />
             <template v-for="part in message.parts" :key="part.id">
-              <details v-if="part.type === 'thinking' && part.content" class="thinkingContent">
+              <details v-if="part.type === 'thinking' && part.content" class="thinkingContent" :open="part.collapsed === false" @toggle="toggleThinking(part, $event)">
                 <summary><icon-chevron-right class="thinkingChevron" :size="14" aria-hidden="true" />思考<span v-if="part.duration !== undefined"> · {{ part.duration.toFixed(1) }} 秒</span></summary>
-                <messageMarkdown :content="part.content" :streaming="!!message.streaming" :directory="sessionDirectory" />
+                <messageMarkdown v-if="part.collapsed === false" :content="part.content" :streaming="!!message.streaming" :directory="sessionDirectory" />
               </details>
               <slot v-else-if="part.type === 'tool'" name="tool" :tool="part.tool" :sessionId="sessionId" :status="status" :pause="pause" :resume="resume">
                 <toolMessage v-model:collapsed="part.collapsed" :tool="part.tool" :directory="sessionDirectory" :toolSessionId="sessionId || undefined" @copy="copyMessage" />
@@ -55,7 +55,7 @@
 
 <script lang="ts">
 import type { SingleAgentToolDescriptor, SingleAgentToolReference, SingleAgentToolResult, SingleAgentResult } from "@toonflow/server/singleAgent/types";
-import type { AgentMessage } from "./agent/types";
+import type { AgentMessage, AgentMessagePart } from "./agent/types";
 
 export type SingleAgentTool = SingleAgentToolReference | (SingleAgentToolDescriptor & {
   execute(id: string, args: Record<string, unknown>, signal: AbortSignal, onUpdate: (result: SingleAgentToolResult) => void): SingleAgentToolResult | Promise<SingleAgentToolResult>;
@@ -275,6 +275,13 @@ function stop() {
   stopping = pending;
   controller?.abort();
   void pending.finally(() => { if (stopping === pending) stopping = undefined; });
+}
+
+// ACT: 原生 details 的展开状态写回 part.collapsed，与主面板一样，折叠时不再挂载 Markdown，
+// 32KB 自动折叠才真正省掉增量全文解析；用户手动展开后 replyStream 也不会再强制折回。
+function toggleThinking(part: AgentMessagePart, event: Event) {
+  if (part.type !== "thinking" || !(event.target instanceof HTMLDetailsElement)) return;
+  part.collapsed = !event.target.open;
 }
 
 async function copyMessage(content: string) {

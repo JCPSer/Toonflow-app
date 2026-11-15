@@ -2740,5 +2740,7 @@
   "从 JSON 导入": "Import daripada JSON",
   "导入 DXT 包": "Import pakej DXT",
   "取消语音输入": "Batalkan input suara",
-  "长按输入框语音输入，也可点击开始": "Tekan lama medan input untuk input suara, atau klik untuk bermula"
+  "长按输入框语音输入，也可点击开始": "Tekan lama medan input untuk input suara, atau klik untuk bermula",
+  "模型输出陷入循环，已自动停止": "Output model memasuki gelung dan dihentikan secara automatik",
+  "模型输出超过 15 万字符，疑似陷入循环，已自动停止": "Output model melebihi 150,000 aksara dan mungkin memasuki gelung, jadi dihentikan secara automatik"
 }

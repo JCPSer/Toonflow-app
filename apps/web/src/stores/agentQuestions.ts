@@ -4,7 +4,7 @@ import type { AgentQuestionNotice } from "@/components/agent/types";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 /** 横幅里的一条提问；canvasKey 是画布实例键，canvasId 在画布改名后会变，点击时以 key 定位实例。 */
-export type CanvasAgentQuestion = AgentQuestionNotice & { canvasId?: string; canvasKey: string };
+export type CanvasAgentQuestion = AgentQuestionNotice & { canvasId?: string; canvasKey: string; source?: "panel" | "dispatcher" };
 
 /** 跨画布跳转请求：目标实例在 active && canvasReady 时消费一次。 */
 export type AgentQuestionFocus = { nodeId: string; canvasKey: string };
@@ -20,9 +20,18 @@ export const useAgentQuestionsStore = defineStore("agentQuestions", () => {
 
   /** 面板每次上报的是本画布全量未回答提问，按 canvasKey 整组替换，避免增量对不上。 */
   function sync(canvasKey: string, canvasId: string, list: AgentQuestionNotice[]) {
+    // ACT: 面板只上报自己知道的提问；dispatcher 派发的后台提问必须保留，否则任何一次面板上报都会把横幅覆盖掉。
     notices.value = [
-      ...list.map(item => ({ ...item, canvasId, canvasKey })),
-      ...notices.value.filter(item => item.canvasKey !== canvasKey),
+      ...list.map(item => ({ ...item, canvasId, canvasKey, source: "panel" as const })),
+      ...notices.value.filter(item => item.canvasKey !== canvasKey || item.source === "dispatcher"),
+    ];
+  }
+
+  /** dispatcher 派发的后台任务提问：同一画布同一节点只保留一条。 */
+  function add(canvasKey: string, canvasId: string, item: AgentQuestionNotice) {
+    notices.value = [
+      ...notices.value.filter(notice => notice.canvasKey !== canvasKey || notice.nodeId !== item.nodeId),
+      { ...item, canvasId, canvasKey, source: "dispatcher" as const },
     ];
   }
 
@@ -59,5 +68,5 @@ export const useAgentQuestionsStore = defineStore("agentQuestions", () => {
     pendingFocus.value = null;
   });
 
-  return { notices, pendingFocus, sync, setCanvasId, removeCanvas, removeQuestion, requestFocus, clearPendingFocus };
+  return { notices, pendingFocus, sync, add, setCanvasId, removeCanvas, removeQuestion, requestFocus, clearPendingFocus };
 });

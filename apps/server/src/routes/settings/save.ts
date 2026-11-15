@@ -11,6 +11,9 @@ const router = Router();
 
 export default router.put("/", validateFields({ settings: z.record(z.string(), z.json()).and(z.object({
   agentSystemPrompt: z.string().max(u.agentRuntime.maxSystemPromptLength, { error: () => t`系统提示词不能超过 ${u.agentRuntime.maxSystemPromptLength} 个字符` }).optional(),
+  // ACT: 全局 Agent 角色库；这里只兜住“必须是数组”，逐项清洗在 handler 里做，
+  // 避免一条坏角色让主题、模型等无关设置一起保存失败。
+  agentRoles: z.array(z.unknown()).max(200).optional(),
   customProviders: z.array(providerSchema.extend({ id: z.string().min(1), label: z.string() })).optional(),
   desktopUpdateSource: z.enum(["official", "github", "custom"]).optional(),
   desktopUpdateCustomUrl: z.string().max(2048).refine(value => !value || u.desktop.isValidUpdateUrl(value),
@@ -23,6 +26,7 @@ export default router.put("/", validateFields({ settings: z.record(z.string(), z
   const { settings } = req.body;
   u.removeLegacySettings(settings);
   u.cleanNodeMenuSettings(settings);
+  if (Array.isArray(settings.agentRoles)) settings.agentRoles = u.agentRuntime.sanitizeAgentRoles(settings.agentRoles);
   const previousSettings = u.conf.get("settings", {});
   u.conf.set("settings", settings);
   const [models] = await Promise.all([u.ai.refreshProviderModels(previousSettings), u.mcpRuntime.reloadMcpRuntime()]);

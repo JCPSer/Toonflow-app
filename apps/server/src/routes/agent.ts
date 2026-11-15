@@ -16,6 +16,10 @@ const inputSchema = z.object({
   sessionFile: z.string().regex(/^[\w-]+\.jsonl$/).optional(),
   resendFrom: z.string().min(1).max(128).optional(),
   nodeBinding: u.agent.agentNodeBindingSchema.optional(),
+  // ACT: 画布 dispatcher 派发时为父任务深度 +1；面板直接发送为 0。上限在 sendToAgent 工具里再判。
+  dispatchDepth: z.number().int().min(0).max(8).optional(),
+  // ACT: 全局角色库 id；服务端按 id 解析提示词，不接受前端拼好的整段系统提示。
+  roleId: z.string().min(1).max(64).optional(),
   canvas: z.strictObject({
     id: z.string().min(1).max(256),
     tools: z.array(z.strictObject({

@@ -2740,5 +2740,7 @@
   "从 JSON 导入": "Mag-import mula sa JSON",
   "导入 DXT 包": "Mag-import ng DXT package",
   "取消语音输入": "Kanselahin ang voice input",
-  "长按输入框语音输入，也可点击开始": "Pindutin nang matagal ang input field para magsalita, o i-click upang magsimula"
+  "长按输入框语音输入，也可点击开始": "Pindutin nang matagal ang input field para magsalita, o i-click upang magsimula",
+  "模型输出陷入循环，已自动停止": "Nahulog sa loop ang output ng modelo at awtomatikong itinigil",
+  "模型输出超过 15 万字符，疑似陷入循环，已自动停止": "Lumampas sa 150,000 character ang output ng modelo at malamang na nahulog sa loop, kaya awtomatikong itinigil"
 }
