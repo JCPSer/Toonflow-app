@@ -50,4 +50,22 @@ describe("autoCompactStrategy", () => {
     expect(compactReserveTokens(200_000, 80, 100_000)).toBe(100_000);
     expect(compactReserveTokens(32_000, 80, 100_000)).toBe(16_000);
   });
+
+  it("512k 窗口 + 393k 输出上限：reserve 封顶一半，压缩在 50% 触发", () => {
+    for (const percent of [50, 80, 95]) {
+      const strategy = autoCompactStrategy(512_000, 393_216, percent);
+      expect(strategy.reserveTokens).toBe(256_000);
+      expect(512_000 - strategy.reserveTokens).toBe(256_000);
+    }
+  });
+
+  it("输出上限特殊大时，保留量 + 预留 + 摘要预算仍不超过窗口", () => {
+    for (const window of [64_000, 200_000, 512_000, 1_000_000]) {
+      for (const percent of [50, 80]) {
+        const strategy = autoCompactStrategy(window, 393_216, percent);
+        const summaryBudget = Math.floor(0.8 * strategy.reserveTokens);
+        expect(strategy.keepRecentTokens + strategy.reserveTokens + summaryBudget).toBeLessThan(window);
+      }
+    }
+  });
 });

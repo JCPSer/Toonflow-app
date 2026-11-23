@@ -1,6 +1,7 @@
 import type { Edge, Node, ViewportTransform } from "@vue-flow/core";
 import axios from "axios";
 import type useWorkspaceFiles from "@/lib/workspaceFiles";
+import { CANVAS_WRITE_RETRY } from "@/lib/workspaceFiles";
 import { isCanvasFile } from "@/pages/workspace/canvasFile";
 
 type Files = ReturnType<typeof useWorkspaceFiles>;
@@ -73,7 +74,7 @@ export async function copyCanvasFiles(files: Files, path: string, target: string
 
 async function copyCanvasFilesInternal(files: Files, path: string, target: string) {
   const canvases = await readCanvasFiles(files, path);
-  if (!canvases.length) { await files.copy(path, target); return []; }
+  if (!canvases.length) { await files.copy(path, target, CANVAS_WRITE_RETRY); return []; }
   const temporary = `.toonflowCopy${crypto.randomUUID()}`;
   const root = canvases.length ? (await files.list()).entries : [];
   const assets = root.some(entry => entry.type === "directory" && entry.path === "assets") ? (await files.list("assets")).entries : [];
@@ -82,7 +83,7 @@ async function copyCanvasFilesInternal(files: Files, path: string, target: strin
   let createdAssets = false;
   let copied = false;
   try {
-    await files.copy(path, temporary);
+    await files.copy(path, temporary, CANVAS_WRITE_RETRY);
     copied = true;
     for (const canvas of canvases) {
       const ids = new Map(canvas.data.nodes.map(node => [node.id, crypto.randomUUID()]));
@@ -143,7 +144,7 @@ async function copyCanvasFilesInternal(files: Files, path: string, target: strin
               await files.mkdir(`assets/${node.id}`);
               copiedAssets.push(`assets/${node.id}`);
             }
-            await files.copy(textPath, destination);
+            await files.copy(textPath, destination, CANVAS_WRITE_RETRY);
           }
           node.data.textPath = destination;
         }
@@ -161,7 +162,7 @@ async function copyCanvasFilesInternal(files: Files, path: string, target: strin
       }
       for (const edge of canvas.data.edges) Object.assign(edge, { id: crypto.randomUUID(), source: ids.get(edge.source)!, target: ids.get(edge.target)!, selected: false });
       const suffix = canvas.id.slice(path.length);
-      await files.writeJson(temporary + suffix, canvas.data);
+      await files.writeJson(temporary + suffix, canvas.data, false, CANVAS_WRITE_RETRY);
       canvas.id = target + suffix;
       canvas.name = canvas.id.split("/").at(-1)!.slice(0, -5);
     }

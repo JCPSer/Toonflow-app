@@ -76,6 +76,48 @@
           <el-button type="primary" :loading="savingContext" :disabled="!contextDirty" aria-label="保存上下文设置" @click="saveAgentContext">保存上下文设置</el-button>
         </div>
       </section>
+      <section class="contextSection" aria-labelledby="agentDispatchTitle">
+        <div class="toolDescription">
+          <h3 id="agentDispatchTitle">派发</h3>
+          <p>控制 Agent 之间的任务链深度，保存后下一条消息生效。</p>
+        </div>
+        <div class="contextRow">
+          <div class="toolDescription">
+            <h4>任务链上限</h4>
+            <p>一条派发链最多经过多少个 Agent；结果回传不计入。越大越难追踪，超过后 sendToAgent 直接报错。</p>
+          </div>
+          <div class="contextControls">
+            <el-input-number v-model="dispatchMaxDepth" class="thresholdInput" :min="MIN_DISPATCH_MAX_DEPTH" :max="MAX_DISPATCH_MAX_DEPTH" :step="1" :disabled="dispatchUnlimited" controlsPosition="right" aria-label="Agent 任务链上限" />
+            <span class="unit" aria-hidden="true">跳</span>
+          </div>
+        </div>
+        <div class="contextRow">
+          <div class="toolDescription">
+            <h4>不限制任务链深度</h4>
+            <p>关闭跳数限制（内部仍有 1000 跳绝对兜底）。互相派活的 Agent 可能一直循环，只能手动停止，且会持续消耗模型调用。</p>
+          </div>
+          <el-switch v-model="dispatchUnlimited" aria-label="不限制任务链深度" title="不限制任务链深度" />
+        </div>
+        <el-alert
+          v-if="dispatchUnlimited"
+          class="fullAccessAlert"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="任务链已不限制"
+          description="A 派 B、B 又派回 A 时不会自动停下，请盯住运行状态并准备随时停止；需要恢复时关闭此开关并保存。" />
+        <div class="contextFooter">
+          <el-text v-if="dispatchDirty" type="info">有未保存的修改</el-text>
+          <el-button type="primary" :loading="savingDispatch" :disabled="!dispatchDirty" aria-label="保存派发设置" @click="saveDispatchDepth">保存派发设置</el-button>
+        </div>
+      </section>
+      <div class="developerRow">
+        <div class="toolDescription">
+          <h3>画布性能诊断浮层</h3>
+          <p>在画布左上角显示帧耗时、卡顿帧数量与节点/连线元素数量；用于定位平移缩放卡顿，平时保持关闭。</p>
+        </div>
+        <el-switch :modelValue="developerSettings.canvasPerfHud" :loading="savingPerfHud" aria-label="画布性能诊断浮层" title="画布性能诊断浮层" @change="toggleCanvasPerfHud" />
+      </div>
       <div class="developerRow">
         <div class="toolDescription">
           <h3>开放 Agent 全部权限</h3>
@@ -180,6 +222,7 @@ import { useRouter } from "vue-router";
 import { useDeveloperStore } from "@/stores/developer";
 import { useHelloStore } from "@/stores/hello";
 import { agentSettings, developerSettings, saveSettings, settings } from "@/stores/settings";
+import { MAX_DISPATCH_MAX_DEPTH, MIN_DISPATCH_MAX_DEPTH, normalizeDispatchMaxDepth } from "@toonflow/server/agent/dispatchLimits";
 import { desktopUpdateSnapshot } from "@/stores/desktopUpdate";
 import type { updateSnapshot } from "@toonflow/server/desktop";
 import saveFile from "@/lib/saveFile";
@@ -209,7 +252,13 @@ const autoCompact = ref(agentSettings.value.autoCompact);
 const compactPercent = ref(agentSettings.value.compactPercent);
 const toolOutputMaxKb = ref(Math.round(agentSettings.value.toolOutputMaxBytes / 1024));
 const savingContext = ref(false);
+const dispatchMaxDepth = ref(developerSettings.value.dispatchMaxDepth);
+const dispatchUnlimited = ref(developerSettings.value.dispatchUnlimited);
+const savingDispatch = ref(false);
+const dispatchDirty = computed(() => dispatchMaxDepth.value !== developerSettings.value.dispatchMaxDepth
+  || dispatchUnlimited.value !== developerSettings.value.dispatchUnlimited);
 const savingFullAccess = ref(false);
+const savingPerfHud = ref(false);
 const contextDirty = computed(() => autoCompact.value !== agentSettings.value.autoCompact
   || compactPercent.value !== agentSettings.value.compactPercent
   || toolOutputMaxKb.value !== Math.round(agentSettings.value.toolOutputMaxBytes / 1024));
@@ -239,6 +288,40 @@ async function saveAgentContext() {
     ElMessage.error(saveErrorMessage(error, "保存上下文设置失败"));
   } finally {
     savingContext.value = false;
+  }
+}
+
+async function saveDispatchDepth() {
+  if (savingDispatch.value) return;
+  // ACT: 显式走统一钳制：0 → 1、空值/非数字 → 8，不能依赖 `||`（它会吞掉 0 并回退到上次值）。
+  const depth = normalizeDispatchMaxDepth(dispatchMaxDepth.value);
+  savingDispatch.value = true;
+  try {
+    await saveSettings(current => ({
+      developer: { ...objectRecord(current.developer), dispatchMaxDepth: depth, dispatchUnlimited: dispatchUnlimited.value },
+    }));
+    dispatchMaxDepth.value = depth;
+    ElMessage.success("派发设置已保存");
+  } catch (error) {
+    ElMessage.error(saveErrorMessage(error, "保存派发设置失败"));
+  } finally {
+    savingDispatch.value = false;
+  }
+}
+
+async function toggleCanvasPerfHud(value: string | number | boolean) {
+  if (savingPerfHud.value) return;
+  const enabled = value === true;
+  savingPerfHud.value = true;
+  try {
+    await saveSettings(current => ({
+      developer: { ...objectRecord(current.developer), canvasPerfHud: enabled },
+    }));
+    ElMessage.success(enabled ? "已显示画布性能诊断浮层" : "已关闭画布性能诊断浮层");
+  } catch (error) {
+    ElMessage.error(saveErrorMessage(error, enabled ? "显示诊断浮层失败" : "关闭诊断浮层失败"));
+  } finally {
+    savingPerfHud.value = false;
   }
 }
 
@@ -519,6 +602,10 @@ async function openDevTools() {
     display: flex;
     flex-direction: column;
     gap: 16px;
+
+    // ACT: 列方向 flex 默认允许子项收缩；内容超过面板高度时 el-alert 会被压成一条，
+    // 文字只剩半行（截图里的「Agent 全部权限已开启」）。统一禁止收缩，交给 overflow-y 滚动。
+    > * { flex-shrink: 0; }
 
     .toolDescription {
       h3 { margin: 0 0 8px; font-size: 14px; color: var(--el-text-color-primary); }

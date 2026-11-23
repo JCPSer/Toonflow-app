@@ -52,10 +52,10 @@
       :initial-session="entry.initial"
       :session-file="entry.sessionFile"
       :disabled="false"
-      :load-extra-mentions="() => buildMentions(entry.nodeId)"
+      :load-extra-mentions="mentionsFor(entry.nodeId)"
       :accept-pending="false"
       :auto-focus="false"
-      :node-binding="{ canvasId, nodeId: entry.nodeId }"
+      :node-binding="bindingFor(entry.nodeId)"
       :show-role="true"
       :node-role="roleOf(entry.nodeId)"
       @roleChange="role => onRoleChange(entry.nodeId, role)"
@@ -142,6 +142,24 @@ const loadingNodeIds = new Set<string>();
 const currentNodeId = ref<string>();
 const panelActive = computed(() => props.active);
 const mountedEntries = computed(() => Object.values(entries));
+// ACT: 对话组件的 props 必须是稳定引用。以前在模板里写内联对象/箭头函数，
+// 面板每次随画布平移重渲染都会生成新引用，整棵对话树跟着重渲染一次。
+const bindings = new Map<string, { canvasId: string; nodeId: string }>();
+function bindingFor(nodeId: string) {
+  const cached = bindings.get(nodeId);
+  if (cached && cached.canvasId === props.canvasId) return cached;
+  const next = { canvasId: props.canvasId, nodeId };
+  bindings.set(nodeId, next);
+  return next;
+}
+const mentionsLoaders = new Map<string, () => Promise<AgentMention[]>>();
+function mentionsFor(nodeId: string) {
+  const cached = mentionsLoaders.get(nodeId);
+  if (cached) return cached;
+  const loader = () => buildMentions(nodeId);
+  mentionsLoaders.set(nodeId, loader);
+  return loader;
+}
 // ACT: 只有「用户没在看这个对话」的提问才算未读；面板正开着时提问卡片就在眼前，不该再弹横幅。
 const questionNotices = computed<AgentQuestionNotice[]>(() => Object.values(entries)
   .filter(entry => entry.question)
@@ -543,7 +561,14 @@ function applyExternalEvent(nodeId: string, sessionFile: string, event: unknown)
   catch { /* 外部事件与当前会话形状不一致时忽略，不打断面板 */ }
 }
 
-defineExpose({ open, close, isOpen: () => !!currentNodeId.value, applyExternalEvent });
+// ACT: 画布派活需要硬打断用户在面板里的手动运行：只转发给已挂载的对话实例，
+// 没有实例（面板未打开）时由 dispatcher 走服务端 abort。
+function interruptRun(nodeId: string, reason: string) {
+  return conversationElements.get(nodeId)?.interruptRun?.(reason) ?? false;
+}
+
+// ACT: nodeId 供画布判断「这个节点正被对话面板引用」，视口外节点内容降级时要跳过它。
+defineExpose({ open, close, isOpen: () => !!currentNodeId.value, nodeId: () => currentNodeId.value, applyExternalEvent, interruptRun });
 </script>
 
 <style lang="scss" scoped>

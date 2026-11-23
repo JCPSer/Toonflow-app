@@ -404,11 +404,12 @@ async function saveMark() {
   } catch (error) {
     if (!controller.signal.aborted) showNodeError(error, "标记保存失败");
   } finally {
+    // ACT: 先复位忙碌与操作句柄，再做失败清理；清理请求挂起时节点也必须回到空闲。
+    operation = undefined;
+    busy.value = false;
     if (!committed && workspace) await workspace.remove(`assets/${id}`, true).catch(error => {
       if (error?.response?.data?.data?.code !== "ENOENT") showNodeError(error, "标记临时文件清理失败");
     });
-    operation = undefined;
-    busy.value = false;
   }
 }
 
@@ -460,11 +461,12 @@ async function createInpaint(input: InpaintDraftInput, signal: AbortSignal) {
     return result;
   } finally {
     if (canvas) canvas.width = canvas.height = 0;
+    // ACT: 同标记保存：先复位忙碌，再做失败清理，避免清理挂起让节点一直运行中。
+    operation = undefined;
+    busy.value = false;
     if (!committed) await workspace.remove(`assets/${nodeId}`, true).catch(error => {
       if (error?.response?.data?.data?.code !== "ENOENT") showNodeError(error, "重绘临时文件清理失败");
     });
-    operation = undefined;
-    busy.value = false;
   }
 }
 

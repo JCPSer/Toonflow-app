@@ -16,6 +16,9 @@ import route13 from "./routes/agent/rewind";
 import route14 from "./routes/agent/session";
 import route15 from "./routes/agent/skills";
 import noteRoute from "./routes/agent/note";
+import abortRoute from "./routes/agent/abort";
+import abortRunRoute from "./routes/agent/abortRun";
+import busRoute from "./routes/agent/bus";
 import route16 from "./routes/agents/a2a/get";
 import route17 from "./routes/agents/a2a/save";
 import route18 from "./routes/agents/connect";
@@ -176,6 +179,9 @@ import route171 from "./routes/workspaces/share/upload";
 
 export default (app: Express) => {
   // agentAccess · /api/agent
+  // ACT: 总线与 abortRun 必须排在主路由前，避免被 /api/agent 的流式路由先匹配。
+  app.use("/api/agent/bus", busRoute);
+  app.use("/api/agent/abortRun", abortRunRoute);
   app.use("/api/agent", route1);
   app.use("/api/agent/answer", route2);
   app.use("/api/agent/canvasResult", route3);
@@ -192,6 +198,7 @@ export default (app: Express) => {
   app.use("/api/agent/session", route14);
   app.use("/api/agent/skills", route15);
   app.use("/api/agent/note", noteRoute);
+  app.use("/api/agent/abort", abortRoute);
   // pluginMarket · /api/agents
   app.use("/api/agents/a2a/get", route16);
   app.use("/api/agents/a2a/save", route17);

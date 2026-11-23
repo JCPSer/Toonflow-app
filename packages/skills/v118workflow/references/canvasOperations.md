@@ -38,7 +38,7 @@
 | 同工作区图片引用 | 图片素材节点 `node:setImage`，传真实工作区 `path` 与匹配的 `mimeType` |
 | 图像/视频提示词 | 对应生成节点 `node:setPrompt` |
 | 配置与模型能力 | `node:getConfig`、`node:setConfig`；变更后再次核对配置 |
-| 发起并追踪生成 | 图片 `node:generateImage`、视频 `node:generateVideo`，状态 `node:getGenerationStatus`；只在该节点实际提供时调用 |
+| 发起并追踪生成 | 图片 `node:generateImage`、视频 `node:generateVideo`，等待 `node:waitForGeneration`、状态 `node:getGenerationStatus`；只在该节点实际提供时调用 |
 
 原生文本函数参数为 `{ text: "完整正文" }`，提示词函数为 `{ prompt: "专用提示词" }`。`node:setText` 回执不含文件路径；需定位正文文件时再读实际 `data.textPath`。可用的 `listMediaModels({})` 可在创建生成节点前查询模型能力；生成时仍须核对目标节点的实际配置。配置中的 `providerId/modelId` 成对设置，`mode`、时长和分辨率使用实时回执支持的值，不自己拼模式名称。
 
@@ -65,7 +65,7 @@
 
 ## 生成与验收
 
-生成前回读实际配置、提示词、参考路径与顺序，核对当前批次已获确认。`node:generateImage` / `node:generateVideo` 返回 `{ status: "generating" }` 仅表示启动；通过该节点的 `node:getGenerationStatus` 查询，其状态为 `idle/running/succeeded/failed`，同时返回 `outputs` 和可能的 `error`。完成后再读真实输出并查看媒体。没有状态函数时按真实可用输出或界面核验，不能猜接口。
+生成前回读实际配置、提示词、参考路径与顺序，核对当前批次已获确认。`node:generateImage` / `node:generateVideo` 返回 `{ status: "generating" }` 仅表示启动；随后用该节点的 `node:waitForGeneration` 阻塞到结束（先启动本轮所有独立生成再逐个等待，不要 sleep 或轮询），返回 `status`（`succeeded/failed`）、`cancelled`、`outputs` 和可能的 `error`；`node:getGenerationStatus` 只做即时查询。完成后再读真实输出并查看媒体。没有等待/状态函数时按真实可用输出或界面核验，不能猜接口。
 
 状态可能只属于本次打开节点后的会话。重载后 `idle` 不证明从未生成，历史输出存在也不证明本次任务成功；联合任务状态、开始/结束时间、输出路径、当前请求和选用记录判断。超时后先查状态，避免重复发起；失败保留先前采用版本，报告具体失败，不把旧图旧视频当新结果。
 

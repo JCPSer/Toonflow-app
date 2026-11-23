@@ -103,13 +103,13 @@ import { getReadableFileExtension, getReadableFileMimeType } from "@toonflow/ser
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { writeClipboardText } from "@/lib/clipboard";
 import anonymousData from "@/lib/anonymousData";
-import { trackStream } from "@/lib/netProbe";
 import { agentSettings, modelChoices } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type { AgentAttachment, AgentConversation, AgentMessage } from "./types";
 import type { AgentMention } from "@toonflow/server/agent/types";
 import type { AgentEvent } from "@toonflow/server/agent/types";
-import { createConversationStream, readAgentEvents } from "./replyStream";
+import { createConversationStream } from "./replyStream";
+import { streamAgentRun } from "./agentRun";
 import { mentionPlainText } from "./mentionText";
 import type { CanvasCallOrigin, CanvasContext } from "@toonflow/tool-canvas/runtime";
 import messageList from "./conversation/messageList.vue";
@@ -226,6 +226,8 @@ const sendQueue = ref<QueuedDraft[]>([]);
 const queuePreview = computed(() => sendQueue.value.map(item => ({ id: item.id, preview: item.preview })));
 let resumeAfterStop: QueuedDraft | undefined;
 let stoppedByUser = false;
+// ACT: 外部（画布 dispatcher 派活）打断时记录原因：catch 用它显示气泡，收尾事件据此静默。
+let externalInterrupt: string | undefined;
 const pendingMessage = props.initialSession?.parentFile || props.acceptPending === false ? undefined : workspaceStore.pendingAgentMessage;
 // ACT: 节点面板用它把「理解中 / 运行中」画到节点上。四态由发送与事件推进，不能从消息推断——
 // 已下发但还没有任何 assistant 活动时，消息列表和空闲状态没有区别。
@@ -263,8 +265,9 @@ const contextPercent = computed(() => {
   return usage.tokens != null && usage.contextWindow > 0 ? Math.min(100, Math.max(0, usage.tokens / usage.contextWindow * 100)) : 0;
 });
 const contextDisplayPercent = computed(() => Math.round(contextPercent.value));
-// ACT: 提示阈值跟随设置页，关闭自动压缩后不再提示「接近自动压缩」，避免文案与真实行为不一致。
-const compactThreshold = computed(() => agentSettings.value.compactPercent);
+// ACT: 提示阈值优先用服务端算出的有效值：maxOutput 会抬高 reserve，实际触发点可能低于设置百分比；
+// 关闭自动压缩后不再提示「接近自动压缩」，避免文案与真实行为不一致。
+const compactThreshold = computed(() => contextUsage.value?.compactPercent ?? agentSettings.value.compactPercent);
 const autoCompactEnabled = computed(() => agentSettings.value.autoCompact);
 function applyEvent(event: AgentEvent) {
   switch (event.type) {
@@ -306,6 +309,14 @@ function applyEvent(event: AgentEvent) {
 }
 
 function receiveEvent(event: AgentEvent) {
+  // ACT: 被外部打断后，服务端 run 收尾会再补一轮 error/done；这里只做状态复位，
+  // 不能再写进回复气泡，否则会覆盖「被其他 Agent 打断」的原因或凭空多出一个空错误气泡。
+  if (externalInterrupt && (event.type === "done" || event.type === "error")) {
+    remoteRunning.value = false;
+    compacting.value = false;
+    phase.value = "waiting";
+    return;
+  }
   if (event.type === "done" || event.type === "error") {
     remoteRunning.value = false;
     compacting.value = false;
@@ -342,7 +353,7 @@ function hasPendingWork() {
   return busy.value || resuming.value || sendQueue.value.length > 0 || !!resumeAfterStop;
 }
 
-defineExpose({ receiveEvent, compactContext, hasDraft, hasPendingWork });
+defineExpose({ receiveEvent, compactContext, hasDraft, hasPendingWork, interruptRun });
 
 // ACT: 目标存在项目里（.agent/goals/<会话>.json），打断/关面板/重启后重新打开还能接着跑。
 const goal = ref<GoalState | null>(null);
@@ -722,6 +733,19 @@ async function forkMessage(item: AgentMessage) {
   }
 }
 
+/**
+ * ACT: 画布 dispatcher 硬打断这个对话的本地运行（用户正在面板里手动对话）。
+ * 只处理本地请求：没有 controller 说明当前运行不属于本实例，交给服务端 abort。
+ * 置 stoppedByUser 复用「用户停止」语义：不自动续发队列/目标，避免打断后又被自己拉起。
+ */
+function interruptRun(reason: string) {
+  if (!controller) return false;
+  stoppedByUser = true;
+  externalInterrupt = reason;
+  controller.abort();
+  return true;
+}
+
 function stopMessage() {
   // ACT: 面板可能同时有本地请求和 dispatcher 后台任务；停止要覆盖两者。
   // dispatcher.stop 返回是否命中，未命中且没有本地请求时说明任务不在本实例，复位界面避免按钮卡死。
@@ -853,7 +877,6 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedDraft) {
   const handledCanvasCalls = new Set<string>();
   const pendingQuestions = new Map<string, string>();
   const activeChildFiles = new Set<string>();
-  let releaseAgentStream: (() => void) | undefined;
   const finishStats = anonymousData.startAgent();
   // ACT: 已下发即可算「理解中」；节点摘要也要在这时就更新，不能等整轮结束。
   phase.value = "thinking";
@@ -862,23 +885,16 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedDraft) {
     if (!fromSource) await instance.clearDraft();
     requestController.signal.throwIfAborted();
     await uploadAttachments(attachments, directory, requestController.signal);
-    // ACT: 打断后立刻重发时，服务端可能还没把旧请求从"正在运行"里摘掉；409 时短暂重试，
-    // 否则用户会觉得"点了打断发送却没发出去"。
-    let response!: Response;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      response = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Accept-Language": locale.value, "Content-Type": "application/json", "x-toonflow-workspace": "1" },
-        body: JSON.stringify({ prompt, mentions, attachments: attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), directory, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined, sessionFile: props.sessionFile, resendFrom, nodeBinding: props.nodeBinding, roleId: props.showRole ? selectedRole.value || undefined : undefined, canvas: canvasContext ? { id: canvasContext.id, tools: canvasContext.tools } : undefined }),
-        signal: requestController.signal,
-      });
-      if (response.status !== 409 || attempt === 3) break;
-      await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
-      requestController.signal.throwIfAborted();
-    }
-    // ACT: 这条 NDJSON 整轮占一条同源连接，登记到探针里，复现时能看出长连接是不是把 6 条塞满了。
-    releaseAgentStream = trackStream("/api/agent");
-    for await (const event of readAgentEvents(response, requestController.signal)) {
+    // ACT: 打断后立刻重发时，服务端可能还没把旧请求从"正在运行"里摘掉；共用入口在 EBUSY
+    // （HTTP 409 或流内 error code）时短暂重试，避免"点了发送没发出去"。
+    const payload = { prompt, mentions, attachments: attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), directory, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined, sessionFile: props.sessionFile, resendFrom, nodeBinding: props.nodeBinding, roleId: props.showRole ? selectedRole.value || undefined : undefined, canvas: canvasContext ? { id: canvasContext.id, tools: canvasContext.tools } : undefined };
+    for await (const event of streamAgentRun(payload, {
+      directory,
+      signal: requestController.signal,
+      headers: { "Accept-Language": locale.value },
+      busyRetries: 3,
+      busyDelayMs: 300,
+    })) {
       lastEventAt = performance.now();
       // 子任务复用发起委派时的画布与取消通道，界面切换不改变工具执行目标。
       let toolEvent: AgentEvent = event;
@@ -945,7 +961,7 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedDraft) {
     // ACT: 整轮结果要在 status 回落为 waiting 之前上报——节点收到 waiting 就会降 busy 并派发完成事件。
     emit("turnEnd", aborted ? "cancelled" : "failed");
     const responseMessage = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
-    const message = aborted ? "已停止生成" : responseMessage || (error instanceof Error ? error.message : "发送失败，请重试");
+    const message = aborted ? (externalInterrupt ?? "已停止生成") : responseMessage || (error instanceof Error ? error.message : "发送失败，请重试");
     if ((source && !accepted) || !ownsStream) { userMessage.error = message; ElMessage.error(message); }
     else reply.error = message;
     // ACT: 首轮在写入任何 assistant 条目之前就结束（比如立刻点停止），SDK 不会落盘，
@@ -955,8 +971,6 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedDraft) {
       emit("event", { type: "subAgentEvent", file: props.sessionFile, event: { type: "error", message } });
     }
   } finally {
-    releaseAgentStream?.();
-    releaseAgentStream = undefined;
     for (const file of activeChildFiles) emit("event", { type: "subAgentEvent", file, event: { type: "error", message: "委派连接已结束，请重新打开子会话查看结果" } });
     // ACT: Bun 的流断开事件可能不触发；主动结束仍在等待的提问，不依赖断开通知。
     for (const callId of pendingQuestions.values()) {
@@ -980,6 +994,7 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedDraft) {
     resumeAfterStop = undefined;
     const stopped = stoppedByUser;
     stoppedByUser = false;
+    externalInterrupt = undefined;
     const goalWillContinue = !!goal.value && !stopped && !requestController.signal.aborted && (accepted || !!reply.content.trim()) && goal.value.status === "active" && !donePattern().test(reply.content);
     const handOff = !!interrupted || (!stopped && sendQueue.value.length > 0) || goalWillContinue;
     // ACT: 续发/打断重发会在同一个同步任务里把 phase 又改回 thinking，pre-flush 的 watcher

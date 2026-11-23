@@ -232,3 +232,19 @@ export interface ToolPlugin {
   validateConfig(config: Record<string, unknown>): Record<string, unknown>;
   createTools(context: ToolContext): ToolDefinition[] | Promise<ToolDefinition[]>;
 }
+
+// ACT: 生成类长任务可能跑十几分钟，不能套画布调用的 120 秒总时限。
+// 三层（服务端画布桥、画布执行、节点工具注册表）共用同一份判定，避免只放宽其中一层。
+const LONG_RUNNING_NODE_TOOLS: ReadonlySet<string> = new Set(["waitForGeneration"]);
+
+export function isLongRunningNodeTool(name: string) {
+  // ACT: 画布 schema 与节点注册表里的函数名带 `node:` 前缀，豁免集合存的是裸名；
+  // 不归一化会让 waitForGeneration 套上 120 秒总时限，长视频必然超时。
+  return LONG_RUNNING_NODE_TOOLS.has(name.replace(/^node:/, ""));
+}
+
+/** 画布工具 `nodeTools` 转发到具体节点函数时，按节点函数名判断是否免时限。 */
+export function isLongRunningCanvasCall(request: { name: string; args?: unknown }) {
+  if (request.name !== "nodeTools" || !request.args || typeof request.args !== "object") return false;
+  return isLongRunningNodeTool(String((request.args as { name?: unknown }).name ?? ""));
+}

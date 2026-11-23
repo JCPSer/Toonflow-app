@@ -196,11 +196,12 @@ import { useShareFileDrop } from "@/components/projectShare/useShareDrop";
 import { selectShareSourceFile, shareErrorMessage, type ShareImportResult } from "@/lib/projectShare";
 import { filterVisibleProjects, isProjectHidden, lockHiddenProjects, refreshAuthSupport, unlockHiddenProjects, useProjectPrivacy, usesNativeAuth } from "@/lib/projectPrivacy";
 import { isDesktop, isRemoteConnection } from "@/lib/platform";
+import { hasVisibleOverlay } from "@/lib/overlays";
 import logoUrl from "@toonflow/assets/logo.svg";
 import { useWorkspaceStore, type Project } from "@/stores/workspace";
 import { hasDesktopUpdate } from "@/stores/desktopUpdate";
 import { deviceHubEnabled, mobileConnection, mobileConnectionLabel } from "@/lib/mobile";
-import useWorkspaceFiles from "@/lib/workspaceFiles";
+import useWorkspaceFiles, { CANVAS_WRITE_RETRY } from "@/lib/workspaceFiles";
 import { waitForControlValue } from "@/lib/mcpControl";
 import settings from "@/components/settings/index.vue";
 import { useSettingsShortcut } from "@/components/settings/useSettingsShortcut";
@@ -270,9 +271,7 @@ function onWindowKeydown(event: KeyboardEvent) {
     return;
   }
   if (event.key !== "Escape" || !assetsMode.value || event.defaultPrevented) return;
-  const overlayOpen = [...document.querySelectorAll<HTMLElement>(".el-overlay")]
-    .some(element => getComputedStyle(element).display !== "none");
-  if (overlayOpen) return;
+  if (hasVisibleOverlay()) return;
   leaveAssets();
 }
 
@@ -645,7 +644,7 @@ async function createProject(fromPrompt = true) {
   try {
     const { directory, empty } = await useWorkspaceFiles(path).list();
     if (fromPrompt && !empty) return ElMessage.warning("该文件夹不为空，请重新选择空文件夹；已有项目请使用“新建项目”入口或点击项目列表打开。");
-    if (empty) await useWorkspaceFiles(directory).writeJson("画布1.json", { toonflowCanvas: true, nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }, true);
+    if (empty) await useWorkspaceFiles(directory).writeJson("画布1.json", { toonflowCanvas: true, nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }, true, CANVAS_WRITE_RETRY);
     await workspaceStore.openProject(directory);
     if (fromPrompt && (prompt.value.trim() || promptAttachments.value.length)) {
       workspaceStore.pendingAgentMessage = { directory: workspaceStore.project!.directory, prompt: prompt.value, attachments: [...promptAttachments.value], model: selectedModel.value, reasoningEffort: reasoningEffort.value };

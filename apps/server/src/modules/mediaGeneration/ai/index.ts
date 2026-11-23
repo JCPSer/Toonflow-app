@@ -7,7 +7,7 @@ import { defaultThinkingLevels, thinkingLevels, type ThinkingLevel } from "@/lib
 import { z } from "zod";
 import conf from "@/modules/platformCore/conf";
 import { readReference } from "@/modules/mediaGeneration/media/generation";
-import modelContextLimits from "@/modules/mediaGeneration/ai/modelContextLimits";
+import { resolveModelLimits } from "@/modules/mediaGeneration/ai/modelLimits";
 import { createFileTransport, getUnsupportedFileText, type FileProvider } from "@/modules/mediaGeneration/ai/files";
 import { openCodeRequestHeaders } from "@/modules/mediaGeneration/ai/opencode";
 import { getRequestFiles } from "@/modules/mediaGeneration/ai/requestFiles";
@@ -75,22 +75,8 @@ export function getModelReasoning(providerId: string, model: z.infer<typeof prov
 }
 
 export function getModelLimits(providerId: string, model: z.infer<typeof providerSchema>["models"][number]) {
-  const limits = modelContextLimits.find(item => item.id === model.id)
-    ?? modelContextLimits.find(item => item.id instanceof RegExp && model.id.search(item.id) !== -1);
-  if (limits) return { contextWindow: limits.contextWindow, maxTokens: limits.maxTokens };
-  if (model.contextWindow != null && model.maxOutputTokens != null) {
-    return { contextWindow: model.contextWindow, maxTokens: model.maxOutputTokens };
-  }
-  const matches = builtinModels.filter(item => item.id === model.id);
-  const exact = matches.find(item => item.provider === providerId);
-  const candidates = exact ? [exact] : matches;
-  // ACT: 只精确匹配 ID；跨供应商同名参数逐项一致才采用，不猜别名。
-  const contextWindow = candidates.every(item => item.contextWindow === candidates[0]?.contextWindow) ? candidates[0]?.contextWindow : undefined;
-  const maxTokens = candidates.every(item => item.maxTokens === candidates[0]?.maxTokens) ? candidates[0]?.maxTokens : undefined;
-  return {
-    contextWindow: model.contextWindow ?? contextWindow ?? 262144,
-    maxTokens: model.maxOutputTokens ?? maxTokens ?? 32768,
-  };
+  // ACT: 纯逻辑在 modelLimits.ts，便于单测；用户显式填写的窗口/输出上限优先于内置表。
+  return resolveModelLimits(providerId, model, builtinModels);
 }
 
 export function getConfiguredModel(providerId: string, modelId: string) {

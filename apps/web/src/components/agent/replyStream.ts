@@ -2,10 +2,14 @@ import { reactive, type Ref } from "vue";
 import type { AgentEvent } from "@toonflow/server/agent/types";
 import type { AgentMessage, AgentMessagePart } from "./types";
 
-export async function* readAgentEvents<T extends { type: string; message?: string } = AgentEvent>(response: Response, signal: AbortSignal) {
+export async function* readAgentEvents<T extends { type: string; message?: string; code?: string } = AgentEvent>(response: Response, signal: AbortSignal) {
   if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.message || `请求失败（${response.status}）`);
+    const error = await response.json().catch(() => null) as { message?: string; code?: string } | null;
+    // ACT: 带上 HTTP 状态与机器码，调用方才能区分「会话忙、可重试」和其它失败。
+    throw Object.assign(new Error(error?.message || `请求失败（${response.status}）`), {
+      status: response.status,
+      ...(error?.code ? { code: error.code } : {}),
+    });
   }
   if (!response.body) throw new Error("未收到响应流");
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -21,7 +25,8 @@ export async function* readAgentEvents<T extends { type: string; message?: strin
       for (const line of lines) {
         if (!line.trim()) continue;
         const event = JSON.parse(line) as T;
-        if (event.type === "error") throw new Error(event.message);
+        // ACT: 带上 code（如 EBUSY=会话还在收尾），调用方才能按机器码决定是否退避重试。
+        if (event.type === "error") throw Object.assign(new Error(event.message), event.code ? { code: event.code } : {});
         if (event.type === "done") return;
         yield event;
         signal.throwIfAborted();

@@ -7,6 +7,7 @@
       ref="menu"
       trigger="contextmenu"
       virtualTriggering
+      :persistent="false"
       :virtualRef="menuAnchor"
       placement="bottom-start"
       :showArrow="false"
@@ -1079,15 +1080,23 @@ watch(
       }
     }
   }
-  /* R4: 生成/思考中给卡片加呼吸描边。只动 box-shadow，避免影响选中态 border-color 与节点尺寸。 */
-  &.running .contentCard {
+  /* ACT: 生成/思考中的呼吸描边。以前直接对 contentCard 动画 box-shadow —— 这是非合成属性，
+     每个运行中的节点每帧都要重绘卡片；批量生成时几十上百个节点会直接吃满主线程。
+     现在把描边放到 cardContainer 的伪元素上，只动 opacity：阴影只光栅化一次，之后由合成器插值。 */
+  &.running .cardContainer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: var(--el-border-radius-base);
+    box-shadow: 0 0 0 2px var(--el-color-primary-light-5);
+    pointer-events: none;
     animation: nodeRunning 1.6s ease-in-out infinite;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    &.running .contentCard {
+    &.running .cardContainer::after {
       animation: none;
-      box-shadow: 0 0 0 2px var(--el-color-primary-light-5);
+      opacity: 1;
     }
   }
 }
@@ -1099,10 +1108,10 @@ watch(
 @keyframes nodeRunning {
   0%,
   100% {
-    box-shadow: 0 0 0 2px var(--el-color-primary-light-5);
+    opacity: 0.35;
   }
   50% {
-    box-shadow: 0 0 0 6px transparent;
+    opacity: 1;
   }
 }
 </style>

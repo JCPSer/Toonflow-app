@@ -351,8 +351,9 @@ onBeforeUnmount(() => {
   max-height: 100dvh;
   border: 1px solid var(--el-border-color-light);
   border-radius: var(--ui-radius-large, 12px);
-  background: color-mix(in srgb, var(--el-bg-color-overlay) 70%, transparent);
-  backdrop-filter: blur(6px);
+  // ACT: 悬浮态原来用 70% 透明 + blur(6px)，面板压在实时画布上，平移/流式输出时每一帧都要重算模糊。
+  // 改成不透明底色：视觉差异很小，省掉的是整块面板大小的背景采样。
+  background: var(--el-bg-color-overlay);
   box-shadow: var(--el-box-shadow-light);
 
   &.docked {

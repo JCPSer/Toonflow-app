@@ -33,6 +33,12 @@ export async function revealNodeInViewport(flow: ViewportFlow, nodeId: string, o
     && node.computedPosition.y + nodeHeight <= (height - y) / zoom - margin;
   if (visible) return false;
   // ACT: 保持当前缩放只平移，手感更连贯；显式传 zoom 是必须的——setCenter 不传时默认会跳到 maxZoom。
-  await flow.setCenter(node.computedPosition.x + nodeWidth / 2, node.computedPosition.y + nodeHeight / 2, { zoom, duration: options.duration ?? 240 });
+  // ACT: Vue Flow 的 setCenter 由 d3 transition 驱动，只在 end 事件 resolve；节点尺寸落定打断动画时永远不返回。
+  // 视口聚焦只是视觉提示，加超时兜底，不能让调用方（标记保存等）的运行态被动画挂住。
+  const duration = options.duration ?? 240;
+  await Promise.race([
+    flow.setCenter(node.computedPosition.x + nodeWidth / 2, node.computedPosition.y + nodeHeight / 2, { zoom, duration }),
+    new Promise<void>(resolve => setTimeout(resolve, duration + 600)),
+  ]);
   return true;
 }

@@ -514,8 +514,9 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
   :deep(.canvasControlsCard),
   .panelSwitcher,
   .toolMenu {
-    background: color-mix(in srgb, var(--el-bg-color-overlay) 70%, transparent);
-    backdrop-filter: blur(6px);
+    // ACT: 这些卡片常驻在画布上方，70% 透明 + blur(6px) 会让画布每帧变化时都重算一次背景模糊。
+    // 视觉收益很小，换成不透明底色，直接去掉一组常驻合成开销。
+    background: var(--el-bg-color-overlay);
     border-color: var(--el-border-color-light);
     box-shadow: var(--el-box-shadow-light);
   }

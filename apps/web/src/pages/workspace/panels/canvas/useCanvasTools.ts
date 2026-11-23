@@ -2,7 +2,7 @@ import { nextTick, watch, type Ref } from "vue";
 import { useVueFlow, type XYPosition } from "@vue-flow/core";
 import { revealNodeInViewport, useNodeEvent, useNodeToolsContext, validateConnection } from "@toonflow/nodes-scaffold/runtime";
 import { canvasSchemas, type CanvasCallOrigin, type CanvasContext, type CanvasToolCall } from "@toonflow/tool-canvas/runtime";
-import { asrRequestSchema } from "@toonflow/tools-scaffold/runtime";
+import { asrRequestSchema, isLongRunningCanvasCall } from "@toonflow/tools-scaffold/runtime";
 import { isBrowserAudioAsrSupported, transcribeBrowserAudio } from "@toonflow/asr";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { agentRoles } from "@/stores/settings";
@@ -140,8 +140,9 @@ export function useCanvasTools(options: {
         canvasSignal.throwIfAborted();
         id = options.getCanvasBinding().id;
         const changesCanvas = request.name === "addCanvas" || request.name === "switchCanvas" || request.name === "renameCanvas";
-        // ACT: 转写按音频时长运行，复用 ASR 的停滞与收尾超时，不套用画布操作的总时限。
-        const callSignal = AbortSignal.any([workspaceSignal, ...(changesCanvas ? [] : [canvasSignal]), ...(request.name === "transcribeAudio" ? [] : [AbortSignal.timeout(120000)]), ...(signal ? [signal] : [])]);
+        // ACT: 转写按音频时长运行，复用 ASR 的停滞与收尾超时；等待生成本身是长任务，都不套画布总时限。
+        const exemptTimeout = request.name === "transcribeAudio" || isLongRunningCanvasCall(request);
+        const callSignal = AbortSignal.any([workspaceSignal, ...(changesCanvas ? [] : [canvasSignal]), ...(exemptTimeout ? [] : [AbortSignal.timeout(120000)]), ...(signal ? [signal] : [])]);
         callSignal.throwIfAborted();
         let cancel = () => {};
         try {

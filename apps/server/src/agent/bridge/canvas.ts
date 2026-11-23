@@ -1,6 +1,6 @@
 import { canvasOperations } from "@toonflow/tool-canvas/runtime";
 import type { CanvasInfo, CanvasContext } from "@toonflow/tools-scaffold/runtime";
-import { asrRequestSchema } from "@toonflow/tools-scaffold/runtime";
+import { asrRequestSchema, isLongRunningCanvasCall } from "@toonflow/tools-scaffold/runtime";
 import type { AgentEvent } from "@/agent/runtime/types";
 
 type CanvasResult = { result?: unknown; error?: string };
@@ -34,8 +34,10 @@ export function createCanvasContext(cwd: string, canvas: CanvasInfo, send: (even
             else resolve(result);
           };
           const abort = () => finish({ error: "画布调用已取消" });
-          // ACT: 音频按实际时长播放，转写由浏览器检测停滞与收尾超时，仍接受本轮取消。
-          const timer = request.name === "transcribeAudio" ? undefined : setTimeout(() => finish({ error: "画布调用超时，请确认画布仍然打开" }), 120000);
+          // ACT: 音频按实际时长播放，转写由浏览器检测停滞与收尾超时；等待生成同样不限总时长，仍接受本轮取消。
+          const timer = request.name === "transcribeAudio" || isLongRunningCanvasCall(request)
+            ? undefined
+            : setTimeout(() => finish({ error: "画布调用超时，请确认画布仍然打开" }), 120000);
           pendingCalls.set(callId, { cwd, finish });
           activeCalls.add(callId);
           signal?.addEventListener("abort", abort, { once: true });

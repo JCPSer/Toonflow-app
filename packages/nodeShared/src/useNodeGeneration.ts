@@ -1,22 +1,37 @@
 import { computed, ref, type Ref } from "vue";
 import { nodeTools, z } from "@toonflow/nodes-scaffold/nodeTools";
 import type { NodeOutputs } from "@toonflow/nodes-scaffold/values";
+import { waitForGenerationStatus, type NodeGenerationStatus } from "./generationStatus";
+
+export { waitForGenerationStatus, type NodeGenerationStatus } from "./generationStatus";
 
 export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: () => void) {
-  const status = ref<"idle" | "running" | "succeeded" | "failed">("idle");
+  const status = ref<NodeGenerationStatus>("idle");
   const error = ref("");
+  const cancelled = ref(false);
   const generating = computed(() => status.value === "running");
-  const getStatus = () => ({ status: status.value, outputs: outputs.value, ...(error.value ? { error: error.value } : {}) });
+  // ACT: outputs 可能是上一次成功留下的；succeeded 才代表本次生成有新结果，cancelled 区分用户取消与真实失败。
+  const getStatus = () => ({ status: status.value, cancelled: cancelled.value, outputs: outputs.value, ...(error.value ? { error: error.value } : {}) });
 
   nodeTools.register({
     name: "getGenerationStatus",
-    description: "查询本次打开节点后的生成状态（idle/running/succeeded/failed）、当前输出和最近一次生成错误。当前输出可能来自之前的生成；idle 不表示没有历史输出，只有 succeeded 表示本次生成成功",
+    description: "查询本次打开节点后的生成状态（idle/running/succeeded/failed）、是否取消、当前输出和最近一次生成错误。只做即时查询；需要等生成结束时用 waitForGeneration，不要 sleep 或反复轮询。当前输出可能来自之前的生成，只有 succeeded 表示本次生成成功",
     parameters: z.strictObject({}),
     execute: getStatus,
   });
   nodeTools.register({
+    name: "waitForGeneration",
+    // ACT: 阻塞到本次生成结束，返回终态与输出；调用时已结束则立即返回。
+    description: "等待本次生成结束（阻塞到 succeeded 或 failed），返回 status、cancelled、error 和 outputs；启动生成后直接调用它，不要用 sleep、bash 或反复 getGenerationStatus 轮询。取消/停止/打断会结束等待并报中断。outputs 可能来自之前的生成，只有 status=succeeded 表示本次成功",
+    parameters: z.strictObject({}),
+    async execute(_args, { signal }) {
+      await waitForGenerationStatus(status, signal);
+      return getStatus();
+    },
+  });
+  nodeTools.register({
     name: "cancelGeneration",
-    description: "请求停止当前后台生成；cancellationRequested 表示已发出停止请求，随后用 getGenerationStatus 查询终止状态。不会删除已有输出，不能保证供应商撤销任务或费用",
+    description: "请求停止当前后台生成；cancellationRequested 表示已发出停止请求，随后用 waitForGeneration 等它真正结束。不会删除已有输出，不能保证供应商撤销任务或费用",
     parameters: z.strictObject({}),
     execute() {
       const cancellationRequested = generating.value;
@@ -34,17 +49,19 @@ export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: (
     if (generating.value) throw new Error("节点正在生成，请等待完成");
     status.value = "running";
     error.value = "";
+    cancelled.value = false;
     try {
       const result = await task();
       status.value = "succeeded";
       return result;
     } catch (failure) {
-      const cancelled = failure instanceof Error && failure.name === "AbortError";
+      const aborted = failure instanceof Error && failure.name === "AbortError";
       const message = (failure as { response?: { data?: { message?: string } } })?.response?.data?.message;
       const reason = message || (failure instanceof Error ? failure.message : "生成失败");
-      report?.(cancelled ? "cancelled" : "failed", reason);
+      report?.(aborted ? "cancelled" : "failed", reason);
       status.value = "failed";
-      error.value = cancelled ? "生成已取消" : reason;
+      cancelled.value = aborted;
+      error.value = aborted ? "生成已取消" : reason;
       throw failure;
     }
   }

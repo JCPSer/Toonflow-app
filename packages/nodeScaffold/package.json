@@ -21,6 +21,7 @@
     "./nodeBusy": "./src/nodeBusy.ts",
     "./nodeRun": "./src/nodeRun.ts",
     "./nodeRename": "./src/nodeRename.ts",
+    "./nodeViewport": "./src/nodeViewport.ts",
     "./agentNode": "./src/agentNode.ts"
   },
   "scripts": {

@@ -312,8 +312,14 @@ onScopeDispose(() => {
   unregisterGridInspect?.();
   void videoInspect.dispose();
 });
-// ACT: 视频换了（含打开项目时的残留）就清掉旧查看产物，避免 Agent 还能 read 到上一版画面。
-watch(() => outputFile.value?.url, () => { void videoInspect.clear(); }, { immediate: true });
+// ACT: 只有从「有视频」换成另一段时才清旧查看产物。以前加了 immediate，打开项目时每个视频节点
+// 都会发一次 DELETE，200 个节点就是 200 个并发请求；首次挂载本来也没有旧产物可清。
+let previousVideoUrl: string | undefined;
+watch(() => outputFile.value?.url, url => {
+  const previous = previousVideoUrl;
+  previousVideoUrl = url;
+  if (previous && previous !== url) void videoInspect.clear();
+});
 
 function selectVideo(value: NodeMediaValue) {
   outputs.value.video = { dataType: "VIDEO", value };
@@ -577,7 +583,7 @@ nodeTools.register({
 
 nodeTools.register({
   name: "generateVideo",
-  description: "启动此节点的后台视频生成，使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；立即返回已开始，用 getGenerationStatus 查询完成结果，cancelGeneration 停止生成",
+  description: "启动此节点的后台视频生成，使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；立即返回已开始，随后用 waitForGeneration 阻塞等待结束（不要 sleep 或轮询），cancelGeneration 停止生成",
   parameters: z.strictObject({}),
   execute(_args, { signal }) {
     signal?.throwIfAborted();

@@ -1,7 +1,7 @@
 import { getCurrentScope, onScopeDispose } from "vue";
 import { z } from "zod";
 import { useNodeId, useVueFlow } from "@vue-flow/core";
-import type { NodeToolInfo, NodeToolsContext } from "@toonflow/tools-scaffold/runtime";
+import { isLongRunningNodeTool, type NodeToolInfo, type NodeToolsContext } from "@toonflow/tools-scaffold/runtime";
 
 export { z };
 export type { NodeToolCall, NodeToolInfo, NodeToolsContext } from "@toonflow/tools-scaffold/runtime";
@@ -140,8 +140,9 @@ export function useNodeToolsContext() {
     get version() { return index.version; },
     list,
     async call({ nodeId, name, args }, signal) {
-      const timeout = AbortSignal.timeout(120000);
-      const callSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+      // ACT: 等待生成的工具本身就是长任务，套 120 秒总时限会让它必然超时。
+      const timeout = isLongRunningNodeTool(name) ? undefined : AbortSignal.timeout(120000);
+      const callSignal = signal ? (timeout ? AbortSignal.any([signal, timeout]) : signal) : timeout ?? new AbortController().signal;
       callSignal.throwIfAborted();
       const key = `${nodeId}:${name}`;
       const entry = registry.get(key);

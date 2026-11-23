@@ -5,6 +5,7 @@ import { ElMessage } from "element-plus";
 import { invalidateNodeModels } from "@toonflow/nodes-scaffold/nodeAi";
 import { canvasShortcutFields, defaultCanvasShortcuts, isShortcutAllowed, normalizeShortcut, shortcutConflicts, shortcutsMayShareBinding, type CanvasShortcuts } from "@/lib/canvasShortcuts";
 import { normalizeNodeMenu, type StoredNodeMenuItem } from "@toonflow/server/nodeMenu";
+import { normalizeDispatchMaxDepth } from "@toonflow/server/agent/dispatchLimits";
 import type { ReasoningEfforts, ThinkingLevel } from "@toonflow/server/modelReasoning";
 import "element-plus/es/components/message/style/css";
 
@@ -162,7 +163,14 @@ export const agentSettings = computed(() => {
 
 export const developerSettings = computed(() => {
   const developer = record(settings.value.developer);
-  return { agentFullAccess: developer.agentFullAccess === true };
+  return {
+    agentFullAccess: developer.agentFullAccess === true,
+    // ACT: 直接复用服务端的钳制函数，杜绝设置页、画布与服务端三套常量漂移。
+    dispatchMaxDepth: normalizeDispatchMaxDepth(developer.dispatchMaxDepth),
+    dispatchUnlimited: developer.dispatchUnlimited === true,
+    // ACT: 画布性能诊断浮层，只在开发者选项里开；用来在真机上量帧耗时与 DOM 规模。
+    canvasPerfHud: developer.canvasPerfHud === true,
+  };
 });
 
 // ACT: 隐藏状态是旁路设置，不进供应商或模型对象；媒体供应商配置会原样传给插件运行时。

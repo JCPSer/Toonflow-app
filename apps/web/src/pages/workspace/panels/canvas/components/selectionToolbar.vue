@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, ref } from "vue";
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { getRectOfNodes, useVueFlow, type GraphNode, type Node, type XYPosition } from "@vue-flow/core";
 import { ElButton, ElCard, ElMessage, ElTooltip } from "element-plus";
 import {
@@ -114,11 +114,36 @@ async function setSelectionDisabled(value: boolean) {
 }
 const visible = computed(() => !props.disabled && !flow.userSelectionActive.value && flow.getSelectedNodes.value.length > 0
   && (flow.nodesSelectionActive.value || hasGroup.value));
+// ACT: 工具条尺寸缓存到 ResizeObserver。以前在 computed 里读 offsetWidth/offsetHeight，
+// 平移时每帧都会触发一次同步布局；选择区一大、节点层一变，这个布局就会把平移拖慢。
+const toolbarSize = ref({ width: 0, height: 0 });
+let toolbarObserver: ResizeObserver | undefined;
+watch(() => toolbar.value?.$el, element => {
+  toolbarObserver?.disconnect();
+  if (!(element instanceof HTMLElement)) {
+    toolbarSize.value = { width: 0, height: 0 };
+    return;
+  }
+  toolbarObserver = new ResizeObserver(() => {
+    toolbarSize.value = { width: element.offsetWidth, height: element.offsetHeight };
+  });
+  toolbarObserver.observe(element);
+  toolbarSize.value = { width: element.offsetWidth, height: element.offsetHeight };
+  // ACT: 挂载那一帧先量一次，避免首次渲染用 0 尺寸定位、等下一次视口变化才纠正。
+  void nextTick(() => {
+    if (element.isConnected) toolbarSize.value = { width: element.offsetWidth, height: element.offsetHeight };
+  });
+});
+onBeforeUnmount(() => toolbarObserver?.disconnect());
+
+// ACT: 选区包围盒用 computed 缓存。平移时节点坐标不变，只有视口在变；
+// 以前每帧都重新遍历选中节点求外接框，全选 201 个节点时会白白做一次 O(N)。
+const selectionBounds = computed(() => getRectOfNodes(flow.getSelectedNodes.value));
+
 const toolbarStyle = computed(() => {
-  const bounds = getRectOfNodes(flow.getSelectedNodes.value);
+  const bounds = selectionBounds.value;
   const { x, y, zoom } = flow.viewport.value;
-  const width = toolbar.value?.$el.offsetWidth ?? 0;
-  const height = toolbar.value?.$el.offsetHeight ?? 0;
+  const { width, height } = toolbarSize.value;
   const left = Math.max(width / 2 + 8, Math.min(x + (bounds.x + bounds.width / 2) * zoom, flow.dimensions.value.width - width / 2 - 8));
   // ACT: 顶部导航约占 56px，留出 8px 间隔；高度变化时再按导航实际尺寸定位。
   const top = Math.max(height + 64, Math.min(y + bounds.y * zoom - 12 - (hasGroup.value ? 30 * zoom : 0), flow.dimensions.value.height - 8));

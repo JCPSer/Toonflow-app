@@ -7,8 +7,10 @@ import type { AgentEvent, AgentMention, AgentSubAgent, AgentToolCall } from "@/a
 import { agentMentionsSchema } from "@/agent/runtime/mentions";
 import { createAgentModel } from "@/agent/runtime/model";
 import { createAgentResources, createAgentSettings } from "@/agent/runtime/resources";
+import { compactReserveTokens, getAgentPreferences } from "@/agent/runtime/preferences";
 import { snapshotSessionEntries } from "@/agent/runtime/cloneSnapshot";
 import { pruneSessionEntries } from "@/agent/runtime/toolResultPrune";
+import { createLruCache } from "@/agent/runtime/lruCache";
 import { getAgentHost } from "@/agent/host";
 import { getReadableFileMimeType } from "@toonflow/formats/documentFormats";
 import { thinkingLevels } from "@toonflow/formats/modelReasoning";
@@ -47,6 +49,8 @@ type SessionMessage = {
 // ACT: 复用正在运行的 SDK 会话，文件锁仍由 run 持有；多进程部署时需共享会话所有权。
 const activeSessions = new Map<string, ActiveAgentSession>();
 const sessionKey = (path: string) => process.platform === "win32" ? resolve(path).toLowerCase() : resolve(path);
+// ACT: 活动会话集合变化时自增；缓存投影里的 running / subAgents 状态依赖它，命中前必须比对。
+let agentLiveEpoch = 0;
 
 export function getActiveAgentSession(path: string) {
   return activeSessions.get(sessionKey(path));
@@ -78,7 +82,36 @@ export function trackAgentEvent(cwd: string, file: string | undefined, event: Ag
 export function registerAgentSession(path: string, active: ActiveAgentSession) {
   const key = sessionKey(path);
   activeSessions.set(key, active);
-  return () => { if (activeSessions.get(key) === active) activeSessions.delete(key); };
+  agentLiveEpoch++;
+  // ACT: 运行开始即让历史投影缓存失效，避免运行前的投影在结束后被命中。
+  sessionProjectionCache.delete(resolve(path));
+  return () => {
+    if (activeSessions.get(key) === active) {
+      activeSessions.delete(key);
+      agentLiveEpoch++;
+      sessionProjectionCache.delete(resolve(path));
+    }
+  };
+}
+
+export type AgentAbortResult = "none" | "finished" | "timeout";
+
+/**
+ * ACT: 打断某个会话正在进行的运行（用户面板或画布派发都可能持有它）。
+ * "finished" 表示 run 已完整收尾——会话注销、文件锁释放、磁盘淘汰也跑完，
+ * 调用方可以立刻对同一会话发新请求，不会撞 steer 或 EBUSY。
+ * "timeout" 表示旧 run 在超时内没退干净，调用方需要自行退避或提示，不能当作已空闲。
+ */
+export async function abortAgentSession(path: string, timeoutMs = 20_000): Promise<AgentAbortResult> {
+  const active = getActiveAgentSession(path);
+  if (!active) return "none";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const finished = await Promise.race([
+    active.abort().then(() => true).catch(() => true),
+    new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); }),
+  ]);
+  if (timer) clearTimeout(timer);
+  return finished ? "finished" : "timeout";
 }
 
 export function getSubAgentInfo(history: SessionManager) {
@@ -550,6 +583,7 @@ export async function forkAgentSession(cwd: string, path: string, entryId: strin
     const sessionInfo = { type: "session_info", id: newEntryId(used), parentId: copied.at(-1)?.id ?? null, timestamp, name };
     const target = await getAgentHost().workspace.resolveWorkspacePath(directory, fileName, true);
     await getAgentHost().workspace.writeWorkspaceFile(target.path, [header, ...copied, sessionInfo].map((entry) => JSON.stringify(entry)).join("\n") + "\n", true);
+    invalidateAgentSessionList(dirname(target.path));
     return { file: basename(target.path), name, conversation: await getAgentSession(cwd, target.path) };
   } finally {
     release();
@@ -569,6 +603,7 @@ export async function createAgentConversation(cwd: string, child?: Omit<AgentSub
   }
   // ACT: SDK 默认等首条回复才落盘；先保存会话头，让空对话也能被历史列表读取。
   await getAgentHost().workspace.writeWorkspaceFile(path, [history.getHeader(), ...history.getEntries()].map(entry => JSON.stringify(entry)).join("\n") + "\n", true);
+  invalidateAgentSessionList(dirname(path));
   return getAgentSession(cwd, path);
 }
 
@@ -579,6 +614,7 @@ export async function renameAgentSession(cwd: string, path: string, name: string
     if (entries[0]?.type !== "session") throw Object.assign(new Error("会话文件无效"), { status: 400 });
     const history = SessionManager.open(path, dirname(path), cwd);
     history.appendSessionInfo(name);
+    invalidateAgentSessionList(dirname(path));
     return { name: history.getSessionName()! };
   } finally {
     release();
@@ -598,20 +634,37 @@ export function appendAgentNodeMarker(history: SessionManager, binding: AgentNod
   return true;
 }
 
+// ACT: 历史列表每个会话都要读 8KB 判断节点标记；按 path+size+mtime 缓存，文件追加后自动失效。
+const agentNodeMarkerCache = createLruCache<string, { size: number; mtimeMs: number; marked: boolean }>(512);
+
 /** 只读前 8 KB 判断标记；读失败按普通会话处理，宁可多显示也不误藏用户历史。 */
 async function hasAgentNodeMarkerOnDisk(path: string) {
+  const key = resolve(path);
+  let info: { size: number; mtimeMs: number } | undefined;
+  try {
+    const value = await stat(key);
+    info = { size: value.size, mtimeMs: value.mtimeMs };
+    const hit = agentNodeMarkerCache.get(key);
+    if (hit && hit.size === info.size && hit.mtimeMs === info.mtimeMs) return hit.marked;
+    agentNodeMarkerCache.delete(key);
+  } catch {
+    return false;
+  }
+  let marked = false;
   try {
     const handle = await open(path, "r");
     try {
       const buffer = Buffer.alloc(agentNodeScanBytes);
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-      return buffer.subarray(0, bytesRead).includes(agentNodeMarkerToken);
+      marked = buffer.subarray(0, bytesRead).includes(agentNodeMarkerToken);
     } finally {
       await handle.close();
     }
   } catch {
     return false;
   }
+  if (info) agentNodeMarkerCache.set(key, { ...info, marked });
+  return marked;
 }
 
 // ACT: 超过这个体积直接跳过：整文件读 + 解析 + 重写会把事件循环和几百 MB 内存占在收尾路径上。
@@ -748,14 +801,37 @@ export async function removeAgentSession(cwd: string, path: string) {
     await unlink(path).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== "ENOENT") throw error;
     });
+    invalidateAgentSessionList(dirname(path));
   } finally {
     release();
   }
 }
 
+// ACT: SDK 的 list 会逐行读完每个会话文件来算名称/消息数，会话多了每次打开历史都要重付。
+// 原始结果缓存 5 秒，创建/克隆/删除/重命名时主动失效；过滤与投影仍每次按当前目录内容计算。
+const SESSION_LIST_TTL_MS = 5_000;
+const sessionListCache = createLruCache<string, Awaited<ReturnType<typeof SessionManager.list>>>(16, SESSION_LIST_TTL_MS);
+
+function sessionListCacheKey(cwd: string, directory: string) {
+  return `${resolve(cwd)}\0${resolve(directory)}`;
+}
+
+/** 会话增删改重命名后调用，避免历史列表在 TTL 内看到旧数据。 */
+export function invalidateAgentSessionList(directory: string) {
+  const suffix = `\0${resolve(directory)}`;
+  for (const key of sessionListCache.keys()) {
+    if (key.endsWith(suffix)) sessionListCache.delete(key);
+  }
+}
+
 export async function listAgentSessions(cwd: string, directory: string, options: { includeAgentNodes?: boolean } = {}) {
   const files = new Set((await readdir(directory, { withFileTypes: true })).filter((item) => item.isFile()).map((item) => item.name));
-  const sessions = await SessionManager.list(cwd, directory);
+  const cacheKey = sessionListCacheKey(cwd, directory);
+  let sessions = sessionListCache.get(cacheKey);
+  if (!sessions) {
+    sessions = await SessionManager.list(cwd, directory);
+    sessionListCache.set(cacheKey, sessions);
+  }
   const visible = [];
   for (const item of sessions) {
     if (!files.has(basename(item.path)) || item.parentSessionPath) continue;
@@ -773,7 +849,85 @@ export async function listAgentSessions(cwd: string, directory: string, options:
     }));
 }
 
+// ACT: 面板一次返回整段历史；工具结果和思考块常是几十 KB，6 个面板同时解析会明显卡主线程。
+// 只截断展示副本，会话文件与模型上下文不受影响。
+// ACT: 展示副本按 UTF-16 字符截断（中文约等于字数），只影响前端传输体积，不触碰会话文件与模型上下文。
+const SESSION_TOOL_TEXT_LIMIT = 32 * 1024;
+const SESSION_THINKING_LIMIT = 64 * 1024;
+
+function clipSessionText(text: string | undefined, limit: number) {
+  if (!text || text.length <= limit) return text;
+  let end = limit;
+  // ACT: 避免在代理对（emoji 等）中间切断，前端会显示替换符。
+  if ((text.charCodeAt(end - 1) & 0xfc00) === 0xd800) end--;
+  return `${text.slice(0, end)}\n\n…（内容过长，已截断 ${text.length - end} 字；完整内容请查看会话文件或工具日志）`;
+}
+
+// ACT: 历史面板对非运行会话反复整文件读取+全量投影；按文件 size+mtime 缓存结果。
+// 运行中会话不进缓存（流式内容必须实时），超过 8MB 的会话不缓存，LRU 上限 6 条控制内存。
+const SESSION_PROJECTION_LIMIT = 6;
+const SESSION_PROJECTION_MAX_BYTES = 8 * 1024 * 1024;
+// ACT: 10 分钟兜底 TTL：极端情况下（等长覆盖 + 保留 mtime 的拷贝/还原）避免旧投影永久命中。
+const SESSION_PROJECTION_TTL_MS = 10 * 60 * 1000;
+type SessionProjectionEntry = {
+  size: number;
+  mtimeMs: number;
+  liveEpoch: number;
+  settingsKey: string;
+  value: Awaited<ReturnType<typeof buildAgentSession>>;
+};
+const sessionProjectionCache = createLruCache<string, SessionProjectionEntry>(SESSION_PROJECTION_LIMIT, SESSION_PROJECTION_TTL_MS);
+
+// ACT: 投影里的上下文阈值/模型窗口来自设置而非会话文件，命中前必须比对当前设置；取不到 host 时退化为空串。
+function sessionSettingsKey(providerId?: string, modelId?: string) {
+  try {
+    const providers = getAgentHost().settings.get("settings", {}).customProviders;
+    const provider = Array.isArray(providers)
+      ? providers.find((item) => (item as { id?: string } | undefined)?.id === providerId) as { models?: readonly { id?: string; contextWindow?: number; maxOutputTokens?: number }[] } | undefined
+      : undefined;
+    const model = provider?.models?.find((item) => item.id === modelId);
+    return `${providerId ?? ""}|${modelId ?? ""}|${model?.contextWindow ?? ""}|${model?.maxOutputTokens ?? ""}|${getAgentPreferences().compactPercent}`;
+  } catch {
+    return "";
+  }
+}
+
 export async function getAgentSession(cwd: string, path: string) {
+  if (getActiveAgentSession(path)) return buildAgentSession(cwd, path);
+  const key = resolve(path);
+  let info: { size: number; mtimeMs: number };
+  try {
+    const value = await stat(key);
+    info = { size: value.size, mtimeMs: value.mtimeMs };
+  } catch {
+    sessionProjectionCache.delete(key);
+    return buildAgentSession(cwd, path);
+  }
+  const hit = sessionProjectionCache.get(key);
+  if (
+    hit
+    && hit.size === info.size
+    && hit.mtimeMs === info.mtimeMs
+    && hit.liveEpoch === agentLiveEpoch
+    && hit.settingsKey === sessionSettingsKey(hit.value.providerId, hit.value.modelId)
+  ) return hit.value;
+  const value = await buildAgentSession(cwd, path);
+  // ACT: stat 期间可能已有 run 注册并开始流式；运行中的投影（含 streaming 占位）不能写入缓存。
+  // 文件 8MB 以上不缓存，同时清掉可能存在的旧条目。
+  if (!getActiveAgentSession(path) && info.size <= SESSION_PROJECTION_MAX_BYTES) {
+    sessionProjectionCache.set(key, {
+      ...info,
+      liveEpoch: agentLiveEpoch,
+      settingsKey: sessionSettingsKey(value.providerId, value.modelId),
+      value,
+    });
+  } else {
+    sessionProjectionCache.delete(key);
+  }
+  return value;
+}
+
+async function buildAgentSession(cwd: string, path: string) {
   const active = getActiveAgentSession(path);
   const entries = active
     ? [active.history.getHeader()!, ...active.history.getEntries()]
@@ -825,18 +979,21 @@ export async function getAgentSession(cwd: string, path: string) {
             .map((part, index) => {
               const id = `${messageIndices.get(entry.id) ?? entry.id}:${index}`;
               if (part.type === "text") return { id, type: "text" as const, content: part.text };
-              if (part.type === "thinking") return { id, type: "thinking" as const, content: part.thinking, collapsed: true };
+              if (part.type === "thinking") return { id, type: "thinking" as const, content: clipSessionText(part.thinking, SESSION_THINKING_LIMIT) ?? "", collapsed: true };
               if (part.type === "toolCall") {
                 const result = toolResults.get(part.id);
                 return {
                   id,
                   type: "tool" as const,
-                  tool: active?.tools.get(part.id) ?? {
+                  tool: (() => {
+                    const live = active?.tools.get(part.id);
+                    return live ? { ...live, result: clipSessionText(live.result, SESSION_TOOL_TEXT_LIMIT) } : undefined;
+                  })() ?? {
                     id: part.id,
                     name: part.name,
                     args: part.arguments,
                     status: result ? (result.isError ? "error" as const : "success" as const) : "interrupted" as const,
-                    result: result ? getToolResultText(result.content) : undefined,
+                    result: result ? clipSessionText(getToolResultText(result.content), SESSION_TOOL_TEXT_LIMIT) : undefined,
                   },
                 };
               }
@@ -888,15 +1045,26 @@ export async function getAgentSession(cwd: string, path: string) {
   if (activeReply) activeReply.streaming = true;
   const messages = groupedMessages.filter((message) => message.content || message.parts.length || message.error || message.attachments?.length || message.mentions?.length);
   const firstUserMessage = messages.find((item) => item.role === "user");
-  const context = history.buildSessionContext();
-  const lastReply = history.getBranch().findLast((entry) => entry.type === "message" && entry.message.role === "assistant");
+  // ACT: 打开历史面板时不再 buildSessionContext() 全量物化 messages，只在分支上推导模型/思考档位，
+  // 与 SDK getSessionContextSettings 同口径。大会话下这一步原本是每次请求的固定开销。
+  let contextModel: { provider: string; modelId: string } | null = null;
+  let contextThinkingLevel = "off";
+  for (const entry of branch) {
+    if (entry.type === "thinking_level_change") contextThinkingLevel = entry.thinkingLevel;
+    else if (entry.type === "model_change") contextModel = { provider: entry.provider, modelId: entry.modelId };
+    else if (entry.type === "message" && entry.message.role === "assistant") {
+      contextModel = { provider: entry.message.provider, modelId: entry.message.model };
+    }
+  }
+  const lastReply = branch.findLast((entry) => entry.type === "message" && entry.message.role === "assistant");
   const model =
     lastReply?.type === "message" && lastReply.message.role === "assistant"
       ? { provider: lastReply.message.provider, modelId: lastReply.message.model }
-      : context.model;
+      : contextModel;
   const providers = getAgentHost().settings.get("settings", {}).customProviders;
   const provider = getAgentHost().models.providerSchema.safeParse(Array.isArray(providers) ? providers.find((item) => item?.id === model?.provider) : undefined);
   const configuredModel = provider.success ? provider.data.models.find((item) => item.id === model?.modelId) : undefined;
+  const modelLimits = configuredModel && model ? getAgentHost().models.getModelLimits(model.provider, configuredModel) : undefined;
   const subAgents = new Map<string, AgentSubAgent>();
   for (const entry of history.getEntries()) {
     if (entry.type !== "custom" || entry.customType !== "toonflowSubAgent") continue;
@@ -908,11 +1076,17 @@ export async function getAgentSession(cwd: string, path: string) {
     file: basename(path),
     name: history.getSessionName() || (firstUserMessage?.content.trim() || firstUserMessage?.attachments?.[0]?.name)?.slice(0, 60) || "新对话",
     messages,
-    stats: getAgentStats(history),
-    contextUsage: getAgentContext(history, active?.session?.model?.contextWindow ?? (configuredModel && model ? getAgentHost().models.getModelLimits(model.provider, configuredModel).contextWindow : 0)),
+    stats: getAgentStats(history, undefined, branch),
+    contextUsage: getAgentContext(
+      history,
+      active?.session?.model?.contextWindow ?? modelLimits?.contextWindow ?? 0,
+      active?.session?.model?.maxTokens ?? modelLimits?.maxTokens ?? 0,
+      undefined,
+      branch,
+    ),
     providerId: model?.provider,
     modelId: model?.modelId,
-    thinkingLevel: reasoningSelection.success ? reasoningSelection.data.thinkingLevel ?? undefined : context.thinkingLevel,
+    thinkingLevel: reasoningSelection.success ? reasoningSelection.data.thinkingLevel ?? undefined : contextThinkingLevel,
     parentFile: getParentSessionFile(history),
     subAgents: [...subAgents.values()],
     running: Boolean(active),
@@ -923,11 +1097,12 @@ export function getToolResultText(content: { type: string; text?: string }[]) {
   return content.map((part) => (part.type === "text" ? part.text : `[${part.type}]`)).join("\n");
 }
 
-export function getAgentStats(history: SessionManager, timing?: { outputTokens: number; decodeMs: number }) {
+// ACT: branch 可由调用方传入，stats 与 contextUsage 共用一次遍历，避免每次刷新重复扫描全分支。
+export function getAgentStats(history: SessionManager, timing?: { outputTokens: number; decodeMs: number }, branch?: SessionEntry[]) {
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
   let outputTokens = timing?.outputTokens ?? 0;
   let decodeMs = timing?.decodeMs ?? 0;
-  for (const entry of history.getBranch()) {
+  for (const entry of branch ?? history.getBranch()) {
     const usage =
       entry.type === "compaction" || entry.type === "branch_summary"
         ? entry.usage
@@ -959,24 +1134,59 @@ export function getAgentStats(history: SessionManager, timing?: { outputTokens: 
   return { tokens, tokensPerSecond: decodeMs > 0 ? (outputTokens * 1000) / decodeMs : undefined };
 }
 
-export function getAgentContext(history: SessionManager, contextWindow = 0) {
+/** ACT: 只估算单条目，避免为了统计上下文把整条分支物化成 messages（大会话会周期性卡住主线程）。 */
+function estimateEntryTokens(entry: SessionEntry) {
+  if (entry.type === "message") {
+    // ACT: 会话文件不校验，旧版本/手工编辑可能出现 content 为 null；SDK 会归一化成 []，这里必须一致，
+    // 否则定时器里的估算会抛未捕获异常。
+    const message = entry.message;
+    const hasContent = message.role === "user" || message.role === "assistant" || message.role === "toolResult";
+    if (hasContent && (message as { content?: unknown }).content == null) {
+      return estimateTokens({ ...message, content: [] } as typeof message);
+    }
+    return estimateTokens(message);
+  }
+  if (entry.type === "custom_message") {
+    const content = entry.content == null
+      ? ""
+      : typeof entry.content === "string" ? entry.content : getToolResultText(entry.content);
+    return Math.ceil(content.length / 4);
+  }
+  return 0;
+}
+
+export function getAgentContext(history: SessionManager, contextWindow = 0, maxOutputTokens = 0, compactPercentSetting?: number, branchInput?: SessionEntry[]) {
   if (contextWindow <= 0) return undefined;
-  const branch = history.getBranch();
+  const branch = branchInput ?? history.getBranch();
   const compactionIndex = branch.findLastIndex((entry) => entry.type === "compaction");
   const recent = branch.slice(compactionIndex + 1);
   const usage = getLastAssistantUsage(recent);
-  const messages = history.buildSessionContext().messages;
-  const usageIndex = messages.findLastIndex((message) => message.role === "assistant" && message.usage === usage);
-  const deletedAfterReply = branch.some(
-    (entry) =>
-      entry.type === "custom" &&
-      (entry.customType === "toonflowDeletedUser" || entry.customType === "toonflowDeletedEntry") &&
-      Date.parse(entry.timestamp) >= (messages[usageIndex]?.timestamp ?? 0)
-  );
-  // ACT: 压缩后先按摘要与保留消息估算，首条新回复后再使用模型 usage。
-  const tokens =
-    usage && usageIndex >= 0 && !deletedAfterReply
-      ? calculateContextTokens(usage) + messages.slice(usageIndex + 1).reduce((total, message) => total + estimateTokens(message), 0)
-      : messages.reduce((total, message) => total + estimateTokens(message), 0);
-  return { tokens, contextWindow, percent: (tokens / contextWindow) * 100 };
+  // ACT: 直接在分支条目上定位 usage 与尾部消息，不再调用 buildSessionContext() 全量构建。
+  const usageIndex = usage
+    ? recent.findLastIndex((entry) => entry.type === "message" && entry.message.role === "assistant" && entry.message.usage === usage)
+    : -1;
+  // ACT: usage 来自模型，含 system prompt/工具定义等静态前缀；删除消息后它只会偏高不会偏低，
+  // 下一条回复会立即校正。不能因为看到删除标记就换成不含静态前缀的估算（会骤降误导压缩判断）。
+  const compaction = compactionIndex >= 0 ? branch[compactionIndex] : undefined;
+  // ACT: 压缩后先按摘要与保留条目估算，首条新回复后再使用模型 usage。
+  // ACT: SDK 的上下文 = 摘要 + firstKeptEntryId 起的保留条目 + 压缩之后的条目，估算要与之同构，否则压缩后会被低估。
+  const keptStart = compaction?.type === "compaction"
+    ? branch.findIndex((entry) => entry.id === compaction.firstKeptEntryId)
+    : -1;
+  const keptEntries = compaction?.type === "compaction"
+    ? branch.slice(keptStart >= 0 && keptStart < compactionIndex ? keptStart : compactionIndex, compactionIndex)
+    : [];
+  const tokens = usage && usageIndex >= 0
+    ? calculateContextTokens(usage) + recent.slice(usageIndex + 1).reduce((total, entry) => total + estimateEntryTokens(entry), 0)
+    : (compaction?.type === "compaction" ? Math.ceil((compaction.summary?.length ?? 0) / 4) : 0)
+      + keptEntries.reduce((total, entry) => total + estimateEntryTokens(entry), 0)
+      + recent.reduce((total, entry) => total + estimateEntryTokens(entry), 0);
+  // ACT: 触发点 = (窗口 - reserve) / 窗口；reserve 会被 maxOutput 抬高，所以有效百分比可能低于设置值。
+  // 前端横幅要用这个值，不能再直接读 compactPercent，否则 512k 线会显示“阈值 80%”而实际 50%。
+  const percent = compactPercentSetting ?? getAgentPreferences().compactPercent;
+  const reserveTokens = compactReserveTokens(contextWindow, percent, maxOutputTokens);
+  const compactPercent = contextWindow > 0
+    ? Math.min(100, Math.max(0, ((contextWindow - reserveTokens) / contextWindow) * 100))
+    : undefined;
+  return { tokens, contextWindow, percent: (tokens / contextWindow) * 100, compactPercent };
 }

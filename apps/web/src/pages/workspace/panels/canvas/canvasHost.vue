@@ -533,6 +533,9 @@ defineExpose({ canvasId, canvasReady, canvasListReady, getCanvasContext, readDoc
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
+      // ACT: visibility:hidden 只跳过绘制，后台画布的 201 个节点仍参与样式重算与布局。
+      // content-visibility 让浏览器整块跳过内容渲染，切回来时再按需补布局；组件与运行态都不销毁。
+      content-visibility: hidden;
     }
   }
 }

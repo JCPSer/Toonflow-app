@@ -19,7 +19,13 @@ export type AgentStats = {
   tokensPerSecond?: number;
 };
 
-export type AgentContext = { tokens: number | null; contextWindow: number; percent: number | null };
+export type AgentContext = {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+  /** 实际生效的压缩触发百分比：受 maxOutput 抬高 reserve 影响，可能低于设置值。 */
+  compactPercent?: number;
+};
 
 export type AgentSubAgent = {
   file: string;
@@ -39,7 +45,8 @@ export type AgentEvent =
   | { type: "tool"; blockId: string; tool: AgentToolCall }
   | ({ type: "canvasCall"; callId: string } & CanvasToolCall)
   | ({ type: "question"; callId: string; toolCallId: string } & QuestionRequest)
-  | { type: "error"; message: string }
+  // ACT: code 让客户端能按机器可读原因重试（如 EBUSY=会话仍在收尾），不靠本地化文案。
+  | { type: "error"; message: string; code?: string }
   | { type: "retry"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
   | { type: "session"; file: string }
   | { type: "userMessage"; id: string; content?: string; attachments?: { name: string; path: string; mimeType: string }[]; mentions?: AgentMention[] }
@@ -56,6 +63,8 @@ export type AgentEvent =
   | {
       type: "agentDispatch"; taskId: string; fromNodeId: string; toNodeId: string;
       fromSession: string; message: string; depth: number;
+      /** 服务端本次生效的任务链上限；画布据此兜底，避免中途改设置造成两端判断不一致。 */
+      maxDepth?: number;
       model: { providerId: string; modelId: string; thinkingLevel?: string };
     }
   | { type: "done" };

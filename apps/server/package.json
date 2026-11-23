@@ -16,7 +16,8 @@
     "./agent/types": "./src/agent/runtime/types.ts",
     "./singleAgent/types": "./src/modules/agentAccess/singleAgent/types.ts",
     "./agent/mentionSources": "./src/agent/mentionSources.ts",
-    "./i18n": "./src/lib/i18n.ts"
+    "./i18n": "./src/lib/i18n.ts",
+    "./agent/dispatchLimits": "./src/agent/runtime/dispatchLimits.ts"
   },
   "scripts": {
     "routes": "bun src/core.ts",

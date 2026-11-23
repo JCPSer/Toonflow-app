@@ -25,16 +25,9 @@
       </div>
     </section>
     <section class="settingSection" aria-labelledby="canvasCompositingTitle">
-      <div class="settingHeader">
-        <div class="settingInfo">
-          <h3 id="canvasCompositingTitle">画布合成优化</h3>
-          <p class="description">优化大量节点时的平移和缩放，可能增加显存占用并导致模糊，立即生效。</p>
-        </div>
-        <el-switch
-          :modelValue="generalSettings.canvasCompositingEnabled"
-          aria-label="画布合成优化"
-          @change="(value) => updateGeneralSettings({ canvasCompositingEnabled: value === true })" />
-      </div>
+      <!-- ACT: 「画布合成优化」已下线。实测（WebKit + 真实 206 节点画布）给整层加
+           will-change: transform 会让每帧主线程从 5ms 涨到 9ms：超大图层的分块重建比
+           合成层提升更贵。开关保留在存储里只为兼容旧设置，不再影响渲染。 -->
     </section>
     <section class="settingSection" aria-labelledby="canvasEdgeAnimationTitle">
       <div class="settingHeader">

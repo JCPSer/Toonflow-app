@@ -4,10 +4,14 @@ import { toValue, type MaybeRefOrGetter } from "vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { registerApiLanguage } from "@/lib/i18n";
 import { bumpFileVersion, fileVersion, normalizeWorkspacePath } from "./fileVersions";
-import { withBusyRetry } from "./busyRetry";
+import { withBusyRetry, type BusyRetryOptions } from "./busyRetry";
 
 type WorkspaceEntry = { name: string; path: string; type: "file" | "directory" };
 export type TextSnapshot = { text: string; revision: string; encoding: "utf-8" | "utf-8-bom" | "utf-16le" | "utf-16be" };
+/** 单次写入可覆盖的 EBUSY 重试策略；其它调用点不传则沿用默认 4 次。 */
+export type WriteRetry = Pick<BusyRetryOptions, "attempts" | "baseDelayMs">;
+// ACT: 画布 JSON 常被 Agent 写入短暂加锁，默认 4×60ms 太短；统一 6 次 × 120ms 指数退避（最坏约 4 秒）。
+export const CANVAS_WRITE_RETRY: WriteRetry = { attempts: 6, baseDelayMs: 120 };
 const client = axios.create({ baseURL: "/api/workspaces/files", headers: { "x-toonflow-workspace": "1" } });
 registerApiLanguage(client);
 const fileUrls = new Map<string, { directory: string; path: string; url: Promise<string>; users: number }>();
@@ -125,14 +129,14 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
     return data.data.revision;
   }
 
-  async function write(path: string, content: string | Blob | ArrayBuffer, exclusive = false, signal?: AbortSignal) {
+  async function write(path: string, content: string | Blob | ArrayBuffer, exclusive = false, signal?: AbortSignal, retry?: WriteRetry) {
     const directory = getDirectory();
-    await withBusyRetry(() => client.put("/write", content, { params: { directory, path, exclusive }, signal, headers: { "Content-Type": "application/octet-stream" } }));
+    await withBusyRetry(() => client.put("/write", content, { params: { directory, path, exclusive }, signal, headers: { "Content-Type": "application/octet-stream" } }), retry);
     invalidateUrls(directory, path);
   }
 
-  function writeJson(path: string, data: unknown, exclusive = false) {
-    return write(path, `${JSON.stringify(data, null, 2)}\n`, exclusive);
+  function writeJson(path: string, data: unknown, exclusive = false, retry?: WriteRetry) {
+    return write(path, `${JSON.stringify(data, null, 2)}\n`, exclusive, undefined, retry);
   }
 
   async function rename(path: string, target: string) {
@@ -142,9 +146,9 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
     invalidateUrls(directory, target);
   }
 
-  async function copy(path: string, target: string) {
+  async function copy(path: string, target: string, retry?: WriteRetry) {
     const directory = getDirectory();
-    await withBusyRetry(() => client.post("/copy", { directory, path, target }));
+    await withBusyRetry(() => client.post("/copy", { directory, path, target }), retry);
     invalidateUrls(directory, target);
   }
 

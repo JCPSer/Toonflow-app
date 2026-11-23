@@ -106,11 +106,11 @@
   </nodeSkeleton>
   <imageLighting v-if="lightingVisible" ref="lighting" :src="previewUrl" :source="outputFile" :target="lightingTarget" :disabled="nodeDisabled || cropping || scaling || generating || deleting || uploading || gridSplit?.splitting" @close="lightingVisible = false" />
   <imageMultiAngle v-if="multiAngleVisible" ref="multiAngle" :src="previewUrl" :source="outputFile" :target="multiAngleTarget" :disabled="nodeDisabled || cropping || scaling || generating || deleting || uploading || gridSplit?.splitting" @close="multiAngleVisible = false" />
-  <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="nodeDisabled || cropping || scaling || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting" @open="openPanorama" />
-  <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="nodeDisabled || cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
-  <imageCrop ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || scaling || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
-  <imageAdjust ref="adjust" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || scaling || generating || deleting || uploading || cropping || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleAdjustApplied" @restore="handleAdjustRestore" />
-  <imageScale ref="scale" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || cropping || adjusting || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleScaleApplied" @restore="handleScaleRestore" />
+  <imagePanorama v-if="previewReady" ref="panorama" :src="previewUrl" :source="outputFile" :disabled="nodeDisabled || cropping || scaling || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting" @open="openPanorama" />
+  <imageGridSplit v-if="previewReady" ref="gridSplit" :src="previewUrl" :disabled="nodeDisabled || cropping || scaling || generating || deleting || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
+  <imageCrop v-if="previewReady" ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || scaling || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
+  <imageAdjust v-if="previewReady" ref="adjust" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || scaling || generating || deleting || uploading || cropping || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleAdjustApplied" @restore="handleAdjustRestore" />
+  <imageScale v-if="previewReady" ref="scale" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || cropping || adjusting || generating || deleting || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || panorama?.busy" @applied="handleScaleApplied" @restore="handleScaleRestore" />
   <el-image-viewer v-if="inpaintPreviewVisible && inpaintGuideUrl" :urlList="[inpaintGuideUrl]" teleported @close="inpaintPreviewVisible = false" />
   <el-image-viewer
     v-if="previewVisible && previewUrl"
@@ -153,7 +153,7 @@ defineOptions({
   ] satisfies NodeHandle[],
 });
 const vLoading = ElLoading.directive;
-const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals } = useNode({
+const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals, previewReady } = useNode({
   label: "图片生成",
 });
 type CropState = { last?: { url: string; x: number; y: number; width: number; height: number; flipped?: boolean; flippedV?: boolean }; previous?: { url: string; mimeType: string }; appliedUrl?: string };
@@ -279,12 +279,13 @@ const previewUrl = files.useFileUrl(
   (error) => showNodeError(error, "图片读取失败")
 );
 // ACT: 画布卡片只解码缩略图（原图 3072×4096 解码会阻塞主线程约 160ms）；编辑/导出仍用 previewUrl。
-const thumbUrl = files.useThumbUrl(outputFile);
+// ACT: 卡片最大显示 240px 高，512 在 2x 屏上仍清晰，同时比 1024 少一半解码内存。
+const thumbUrl = files.useThumbUrl(outputFile, 512);
 // ACT: 输出变化即预热缩略图，下次打开画布直接命中服务端缓存。
 watch(thumbUrl, url => {
   const file = outputFile.value;
   if (!url || !file) return;
-  try { files.getWorkspaceFiles().warmThumb?.(file.url, 1024); } catch {}
+  try { files.getWorkspaceFiles().warmThumb?.(file.url, 512); } catch {}
 });
 
 onMounted(() => {
@@ -680,7 +681,7 @@ nodeTools.register({
 
 nodeTools.register({
   name: "generateImage",
-  description: "启动此节点的后台普通图片生成，使用普通生成提示词、模型、分辨率、比例和参考图片；局部重绘模式下须先退出；立即返回已开始，用 getGenerationStatus 查询完成结果，cancelGeneration 停止生成",
+  description: "启动此节点的后台普通图片生成，使用普通生成提示词、模型、分辨率、比例和参考图片；局部重绘模式下须先退出；立即返回已开始，随后用 waitForGeneration 阻塞等待结束（不要 sleep 或轮询），cancelGeneration 停止生成",
   parameters: z.strictObject({}),
   execute(_args, { signal }) {
     signal?.throwIfAborted();

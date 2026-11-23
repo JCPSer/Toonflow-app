@@ -31,6 +31,8 @@ export const defaultCanvasShortcuts = {
   undo: `${primaryModifier}+KeyZ`,
   redo: isMac ? "Shift+Meta+KeyZ" : "Ctrl+Shift+KeyZ",
   toggleDisabled: `${primaryModifier}+Shift+KeyD`,
+  // ACT: 连线显隐是纯视觉开关，工具条已有按钮；裸字母键 L 当前未被占用（V/H 工具、Q/W/E 面板），排在工具键旁边。
+  toggleEdges: "KeyL",
   // ACT: 空格默认同时是「按住平移」。两者靠手势区分：轻点（未拖动）预览，按住/拖动才平移。
   preview: "Space",
   zoomIn: isMac ? "Meta+Equal / Shift+Meta+Equal" : "Ctrl+Equal / Ctrl+Shift+Equal",
@@ -80,6 +82,7 @@ export const canvasShortcutFields: {
   { id: "undo", label: "撤销" },
   { id: "redo", label: "重做" },
   { id: "toggleDisabled", label: "禁用/解除禁用节点" },
+  { id: "toggleEdges", label: "显示/隐藏连线" },
   { id: "search", label: "画布节点搜索" },
   { id: "preview", label: "预览选中节点", allowNone: true },
   { id: "projectPicker", label: "项目下拉" },

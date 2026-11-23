@@ -65,11 +65,11 @@
   <imageInpaintPrompt v-if="editor?.mode === 'inpaint'" ref="inpaintPrompt" :target="inpaintTarget" :createDraft="createInpaint" :disabled="nodeDisabled || cropping || scaling || uploading" />
   <imageLighting v-if="lightingVisible" ref="lighting" :src="previewUrl" :source="outputFile" :target="lightingTarget" :disabled="nodeDisabled || cropping || scaling || uploading || gridSplit?.splitting" @close="lightingVisible = false" />
   <imageMultiAngle v-if="multiAngleVisible" ref="multiAngle" :src="previewUrl" :source="outputFile" :target="multiAngleTarget" :disabled="nodeDisabled || cropping || scaling || uploading || gridSplit?.splitting" @close="multiAngleVisible = false" />
-  <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="nodeDisabled || cropping || scaling || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating" @open="openPanorama" />
-  <imageGridSplit ref="gridSplit" :src="previewUrl" :disabled="nodeDisabled || cropping || scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
-  <imageScale ref="scale" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || cropping || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleScaleApplied" @restore="handleScaleRestore" />
-  <imageCrop ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || uploading || scaling || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
-  <imageAdjust ref="adjust" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || uploading || scaling || cropping || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleAdjustApplied" @restore="handleAdjustRestore" />
+  <imagePanorama v-if="previewReady" ref="panorama" :src="previewUrl" :source="outputFile" :disabled="nodeDisabled || cropping || scaling || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating" @open="openPanorama" />
+  <imageGridSplit v-if="previewReady" ref="gridSplit" :src="previewUrl" :disabled="nodeDisabled || cropping || scaling || uploading || lighting?.generating || multiAngle?.generating || panorama?.busy" :active="node.selected" />
+  <imageScale v-if="previewReady" ref="scale" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || cropping || uploading || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleScaleApplied" @restore="handleScaleRestore" />
+  <imageCrop v-if="previewReady" ref="crop" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || uploading || scaling || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleCropApplied" @restore="handleCropRestore" />
+  <imageAdjust v-if="previewReady" ref="adjust" :src="previewUrl" :source="outputFile" :active="node.selected" :disabled="nodeDisabled || uploading || scaling || cropping || editor?.busy || lighting?.generating || multiAngle?.generating || gridSplit?.splitting || inpaintPrompt?.creating || panorama?.busy" @applied="handleAdjustApplied" @restore="handleAdjustRestore" />
   <el-image-viewer
     v-if="previewVisible && previewUrl"
     :urlList="[previewUrl]"
@@ -109,7 +109,7 @@ defineOptions({
     { id: "image", type: "source", dataType: "IMAGE", label: "图片输出" },
   ] satisfies NodeHandle[],
 });
-const { node, nodeProps, outputs, nodeEvent, files, updateNodeInternals } = useNode({
+const { node, nodeProps, outputs, nodeEvent, files, updateNodeInternals, previewReady } = useNode({
   label: "图片",
 });
 const fileInput = ref<HTMLInputElement>();
@@ -149,12 +149,13 @@ const previewUrl = files.useFileUrl(
   (error) => showError(error, "图片读取失败")
 );
 // ACT: 画布卡片只解码缩略图（原图 3072×4096 解码会阻塞主线程约 160ms）；编辑/导出仍用 previewUrl。
-const thumbUrl = files.useThumbUrl(outputFile);
+// ACT: 卡片最大显示 240px 高，512 在 2x 屏上足够清晰；1024 会让 200 个节点多占几百 MB 解码内存。
+const thumbUrl = files.useThumbUrl(outputFile, 512);
 // ACT: 输出变化即预热缩略图，下次打开画布直接命中服务端缓存。
 watch(thumbUrl, url => {
   const file = outputFile.value;
   if (!url || !file) return;
-  try { files.getWorkspaceFiles().warmThumb?.(file.url, 1024); } catch {}
+  try { files.getWorkspaceFiles().warmThumb?.(file.url, 512); } catch {}
 });
 const scaling = computed(() => !!scale.value?.applying);
 const cropping = computed(() => !!crop.value?.applying);

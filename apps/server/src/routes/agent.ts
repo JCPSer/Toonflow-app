@@ -6,6 +6,9 @@ import { validateFields } from "@/lib/middleware";
 import u from "@/utils";
 import { translateError, translateMessage } from "@/lib/i18n";
 import { thinkingLevels } from "@/lib/modelReasoning";
+import { dispatchDepthSchema } from "@/agent/dispatchDepthSchema";
+import { success } from "@/lib/responseFormat";
+import { hasBus, publishBus, registerBusRun, unregisterBusRun } from "@/agent/bus";
 
 const inputSchema = z.object({
   prompt: z.string().trim(), directory: z.string().min(1),
@@ -16,8 +19,9 @@ const inputSchema = z.object({
   sessionFile: z.string().regex(/^[\w-]+\.jsonl$/).optional(),
   resendFrom: z.string().min(1).max(128).optional(),
   nodeBinding: u.agent.agentNodeBindingSchema.optional(),
-  // ACT: 画布 dispatcher 派发时为父任务深度 +1；面板直接发送为 0。上限在 sendToAgent 工具里再判。
-  dispatchDepth: z.number().int().min(0).max(8).optional(),
+  // ACT: 画布 dispatcher 派发时为父任务深度 +1；面板直接发送为 0。
+  // 这里只做硬边界（0 至设置允许的最大值），具体用户上限由 sendToAgent 在本次运行内判断。
+  dispatchDepth: dispatchDepthSchema,
   // ACT: 全局角色库 id；服务端按 id 解析提示词，不接受前端拼好的整段系统提示。
   roleId: z.string().min(1).max(64).optional(),
   canvas: z.strictObject({
@@ -36,6 +40,54 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
   const { directory, canvas, ...options } = req.body as z.infer<typeof inputSchema>;
   const cwd = await u.workspace.resolveWorkspace(req, directory);
   u.agentRuntime.getAgentModelConfiguration(options.providerId, options.modelId, options.thinkingLevel);
+
+  // ACT: 事件总线模式：启动请求短返回 runId，整轮事件走窗口唯一的长连接。
+  // 这样多个 Agent 并行时不再各占一条 HTTP/1.1 连接（WebKit 同源上限 6 条）。
+  const busId = req.get("x-agent-bus-id");
+  if (busId) {
+    if (!hasBus(busId)) return void res.status(409).json({ code: 409, reason: "bus_closed", message: translateMessage("事件通道已断开，请重试") });
+    // ACT: runId 由客户端生成并在启动前就登记订阅，避免「事件早于订阅」丢掉 session/stats；
+    // 同时也让启动响应丢失时仍能按 runId 取消。
+    const requestedRunId = req.get("x-agent-run-id");
+    if (requestedRunId && !z.string().uuid().safeParse(requestedRunId).success) {
+      return void res.status(400).json({ code: 400, message: translateMessage("运行标识无效") });
+    }
+    const runId = requestedRunId ?? crypto.randomUUID();
+    const controller = new AbortController();
+    const send = (event: AgentEvent) => {
+      if (event.type === "error") event = { ...event, message: translateMessage(event.message) };
+      if (event.type === "session") options.sessionFile = event.file;
+      u.agent.trackAgentEvent(cwd, options.sessionFile, event);
+      publishBus(busId, runId, event);
+    };
+    const bridge = canvas ? u.canvas.createCanvasContext(cwd, canvas as CanvasInfo, send) : undefined;
+    const questions = u.question.createQuestionContext(cwd, send, () => controller.abort());
+    // ACT: 初始化完成后再登记，避免初始化抛错留下未注销的 controller。
+    if (!registerBusRun(busId, runId, controller)) {
+      bridge?.dispose();
+      questions.dispose();
+      return void res.status(409).json({ code: 409, reason: "duplicate_run", message: translateMessage("运行标识重复，请重试") });
+    }
+    res.json(success({ runId }));
+    void (async () => {
+      try {
+        await u.agent.run(
+          { ...options, cwd, canvas: bridge?.context, question: questions.context, signal: controller.signal },
+          send,
+        );
+        send({ type: "done" });
+      } catch (error) {
+        const code = typeof error === "object" && error && "code" in error && typeof error.code === "string" ? error.code : undefined;
+        send({ type: "error", message: error instanceof Error ? translateError(error) : translateMessage("Agent 运行失败"), ...(code ? { code } : {}) });
+      } finally {
+        bridge?.dispose();
+        questions.dispose();
+        unregisterBusRun(busId, runId);
+      }
+    })();
+    return;
+  }
+
   res.set({ "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" });
   res.flushHeaders();
   const send = (event: AgentEvent) => {
@@ -58,7 +110,9 @@ export default Router().post("/", validateFields(inputSchema.shape), async (req,
     await u.agent.run({ ...options, cwd, canvas: bridge?.context, question: questions.context, signal: controller.signal, onCancel: close }, send);
     send({ type: "done" });
   } catch (error) {
-    send({ type: "error", message: error instanceof Error ? translateError(error) : translateMessage("Agent 运行失败") });
+    // ACT: 响应头已经 flush，状态码不可能再改；把机器码放进事件里，客户端才能可靠地判断"会话忙、可重试"。
+    const code = typeof error === "object" && error && "code" in error && typeof error.code === "string" ? error.code : undefined;
+    send({ type: "error", message: error instanceof Error ? translateError(error) : translateMessage("Agent 运行失败"), ...(code ? { code } : {}) });
   } finally {
     clearInterval(heartbeat);
     res.off("close", close);

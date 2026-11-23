@@ -30,6 +30,7 @@
         ref="player"
         class="audioPreview"
         :src="previewUrl"
+        :active="previewReady"
         @loadedmetadata="updateNodeInternals" />
       <input ref="fileInput" class="fileInput" type="file" accept="audio/*" aria-label="选择音频" :disabled="uploading || transcribing || actions?.processing" @change="uploadAudio" />
       <el-button
@@ -64,7 +65,7 @@ defineOptions({
   icon: IconMusic,
   handles: [{ id: "audio", type: "source", dataType: "AUDIO", label: "音频输出" }] satisfies NodeHandle[],
 });
-const { node, nodeProps, outputs, nodeEvent, files, updateNodeInternals } = useNode({
+const { node, nodeProps, outputs, nodeEvent, files, updateNodeInternals, previewReady } = useNode({
   label: "音频",
 });
 const fileInput = ref<HTMLInputElement>();

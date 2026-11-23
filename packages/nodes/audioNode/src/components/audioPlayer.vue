@@ -1,6 +1,6 @@
 <template>
   <div class="audioPlayer" @keydown.stop>
-    <audio ref="audio" :src="src" preload="auto" :aria-label="label" @loadedmetadata="readMetadata" @durationchange="readDuration" @timeupdate="readTime" @play="startProgress(); emit('play')" @pause="stopProgress" @ended="stopProgress" @volumechange="readVolume" @error="mediaError" />
+    <audio ref="audio" :src="src" preload="metadata" :aria-label="label" @loadedmetadata="readMetadata" @durationchange="readDuration" @timeupdate="readTime" @play="startProgress(); emit('play')" @pause="stopProgress" @ended="stopProgress" @volumechange="readVolume" @error="mediaError" />
     <div class="waveformPanel" :class="{ unavailable: !duration || failed }">
       <div class="waveformTrack">
         <slot name="track" :duration="duration" :currentTime="currentTime" :peaks="peaks">
@@ -46,7 +46,9 @@ import { ElButton, ElMessage } from "element-plus";
 import { IconPlayerPlay, IconPlayerPause, IconVolume, IconVolumeOff } from "@tabler/icons-vue";
 import { getWaveformPeaks } from "../audioWaveform";
 
-const { src, label = "节点音频" } = defineProps<{ src: string; label?: string }>();
+// ACT: 波形需要整段解码 + 逐样本扫描，以前 src 一就绪就无条件跑；201 个音频节点会卡住首屏。
+// 现在只在卡片进入视口（active）时解码，缓存当前 src 的结果，离开视口不重复解。
+const { src, label = "节点音频", active = true } = defineProps<{ src: string; label?: string; active?: boolean }>();
 const emit = defineEmits<{ loadedmetadata: [event: Event]; play: [] }>();
 const audio = ref<HTMLAudioElement>();
 const peaks = shallowRef<number[]>([]);
@@ -61,14 +63,24 @@ const progress = computed(() => duration.value ? Math.min(100, Math.max(0, curre
 let animationFrame = 0;
 let disposed = false;
 
-watch(() => src, async (value, _previous, onCleanup) => {
+let loadedSrc = "";
+watch([() => src, () => active], async ([value, visible], previous, onCleanup) => {
   const controller = new AbortController();
   onCleanup(() => controller.abort());
-  audio.value?.pause();
-  stopProgress();
-  currentTime.value = duration.value = 0;
-  failed.value = false;
-  peaks.value = [];
+  const srcChanged = !previous || previous[0] !== value;
+  if (srcChanged) {
+    audio.value?.pause();
+    stopProgress();
+    currentTime.value = duration.value = 0;
+    failed.value = false;
+    peaks.value = [];
+    loadedSrc = "";
+  }
+  if (!value || !visible) {
+    waveformLoading.value = false;
+    return;
+  }
+  if (loadedSrc === value) return;
   waveformLoading.value = true;
   try {
     const response = await fetch(value, { signal: controller.signal });
@@ -80,6 +92,7 @@ watch(() => src, async (value, _previous, onCleanup) => {
     const buffer = await context.decodeAudioData(content);
     controller.signal.throwIfAborted();
     peaks.value = getWaveformPeaks(Array.from({ length: buffer.numberOfChannels }, (_, index) => buffer.getChannelData(index)));
+    loadedSrc = value;
   } catch {
     // ACT: 浏览器能播放但不能解码的格式仍保留播放和定位，波形区域提示不可用。
   } finally {

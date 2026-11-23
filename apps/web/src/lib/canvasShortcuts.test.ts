@@ -98,6 +98,25 @@ describe("面板入口快捷键", () => {
   });
 });
 
+describe("连线显隐快捷键", () => {
+  test("默认裸 L，普通动作、可改键，且与现有默认键不冲突", () => {
+    expect(defaultCanvasShortcuts.toggleEdges).toBe("KeyL");
+    const field = canvasShortcutFields.find(item => item.id === "toggleEdges")!;
+    expect(field.label).toBe("显示/隐藏连线");
+    expect(field.hold).toBeUndefined();
+    expect(isShortcutAllowed(field, defaultCanvasShortcuts.toggleEdges)).toBe(true);
+    const others = canvasShortcutFields.filter(item => item.id !== "toggleEdges").map(item => ({ binding: defaultCanvasShortcuts[item.id], hold: item.hold }));
+    expect(shortcutConflicts(defaultCanvasShortcuts.toggleEdges, others)).toBe(false);
+  });
+
+  test("裸 L 命中、带修饰键或多按 Shift 不命中", () => {
+    const base = { type: "keydown", code: "KeyL", key: "l", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false };
+    expect(shortcutMatches(base as KeyboardEvent, defaultCanvasShortcuts.toggleEdges)).toBe(true);
+    expect(shortcutMatches({ ...base, metaKey: true } as KeyboardEvent, defaultCanvasShortcuts.toggleEdges)).toBe(false);
+    expect(shortcutMatches({ ...base, shiftKey: true } as KeyboardEvent, defaultCanvasShortcuts.toggleEdges)).toBe(false);
+  });
+});
+
 describe("运行选中节点快捷键", () => {
   const base = { type: "keydown", code: "Enter", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false };
 

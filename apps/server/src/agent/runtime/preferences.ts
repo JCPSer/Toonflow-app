@@ -1,4 +1,5 @@
 import { getAgentHost } from "@/agent/host";
+import { normalizeDispatchMaxDepth } from "@/agent/runtime/dispatchLimits";
 
 /**
  * ACT: 上下文与权限相关的用户偏好集中在这里读取，避免各调用点各自解析 settings 结构。
@@ -10,6 +11,10 @@ export type AgentPreferences = {
   toolOutputMaxBytes: number;
   toolOutputPreviewBytes: number;
   fullAccess: boolean;
+  /** Agent 任务链最大深度；服务端工具与画布 dispatcher 共用。 */
+  dispatchMaxDepth: number;
+  /** 不限制任务链深度（实际取 UNLIMITED_DISPATCH_MAX_DEPTH）。 */
+  dispatchUnlimited: boolean;
 };
 
 const DEFAULT_COMPACT_PERCENT = 80;
@@ -29,6 +34,8 @@ export function getAgentPreferences(): AgentPreferences {
     toolOutputMaxBytes: pickNumber(agent.toolOutputMaxBytes, 4096, 4 * 1024 * 1024, DEFAULT_TOOL_OUTPUT_MAX_BYTES),
     toolOutputPreviewBytes: pickNumber(agent.toolOutputPreviewBytes, 1024, 64 * 1024, DEFAULT_TOOL_OUTPUT_PREVIEW_BYTES),
     fullAccess: settings.developer?.agentFullAccess === true,
+    dispatchMaxDepth: normalizeDispatchMaxDepth(settings.developer?.dispatchMaxDepth),
+    dispatchUnlimited: settings.developer?.dispatchUnlimited === true,
   };
 }
 
@@ -56,8 +63,10 @@ export function autoCompactStrategy(contextWindow: number, maxOutputTokens = 0, 
   const budget = contextWindow - reserveTokens;
   // ACT: 摘要之后保留窗口的 1/4，最多 6 万 token。旧的 2 万上限在 200k 以上窗口只占 2%–10%，
   // 压缩后模型会丢掉刚做完的细节，又得立刻重新读文件；保留量仍受 budget 约束，避免压完即再压。
+  // ACT: SDK 的摘要预算取 0.8×reserve，必须一起扣掉；否则「保留 + 摘要」可能仍高于压缩阈值，压完立刻再压一次。
+  const summaryBudget = Math.floor(reserveTokens * 0.8);
   const byQuarter = Math.floor(contextWindow / 4);
-  const keepRecentTokens = Math.max(1000, Math.min(MAX_KEEP_RECENT_TOKENS, byQuarter, budget - 2048));
+  const keepRecentTokens = Math.max(1000, Math.min(MAX_KEEP_RECENT_TOKENS, byQuarter, budget - 2048 - summaryBudget));
   return { enabled: true, reserveTokens, keepRecentTokens };
 }
 

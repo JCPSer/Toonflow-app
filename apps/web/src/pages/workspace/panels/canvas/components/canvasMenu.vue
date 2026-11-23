@@ -108,7 +108,7 @@ import { ElMessage, ElMessageBox, type DropdownInstance, type FilterNodeMethodFu
 import { IconVector, IconCheck, IconChevronDown, IconChevronUp, IconChevronRight, IconDots, IconFolder, IconFolderOpen, IconFolderPlus, IconPlus, IconSearch } from "@tabler/icons-vue";
 import { filterVisibleProjects } from "@/lib/projectPrivacy";
 import { useWorkspaceStore } from "@/stores/workspace";
-import useWorkspaceFiles from "@/lib/workspaceFiles";
+import useWorkspaceFiles, { CANVAS_WRITE_RETRY } from "@/lib/workspaceFiles";
 import { readLastCanvas } from "@/lib/projectUi";
 import { getCanvasAssetDirectories, isCanvasFile } from "@/pages/workspace/canvasFile";
 import tfAccount from "@/components/settings/tfAccount.vue";
@@ -653,7 +653,7 @@ async function createCanvasFile(directory: string, name?: string, signal?: Abort
     const canvasName = name ?? `画布${number}`;
     const id = `${canvasName}.json`;
     try {
-      await files.writeJson(id, { toonflowCanvas: true, ...flow }, true);
+      await files.writeJson(id, { toonflowCanvas: true, ...flow }, true, CANVAS_WRITE_RETRY);
       return { id, name: canvasName, flow };
     } catch (err) {
       if (name !== undefined || !axios.isAxiosError<{ data?: { code?: string } }>(err) || err.response?.status !== 409 || err.response.data.data?.code !== "EEXIST") throw err;

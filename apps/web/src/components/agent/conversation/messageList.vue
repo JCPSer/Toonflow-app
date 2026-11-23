@@ -1,6 +1,6 @@
 <template>
   <div class="messageViewport t-chat t-chat--normal">
-    <div ref="messageList" class="messageList t-chat__list" :class="{ hasTurnRail: turns.length > 1 }" role="region" aria-label="对话消息" tabindex="0" @wheel.passive="cancelJump" @touchstart.passive="cancelJump">
+    <div ref="messageList" class="messageList t-chat__list" :class="{ hasTurnRail: turns.length > 1 }" role="region" aria-label="对话消息" tabindex="0" @wheel.passive="cancelJump" @touchstart.passive="cancelJump" @keydown="onListKeydown">
       <chat-item v-if="!messages.length && !disabled" role="assistant" variant="text">
         <template #content>
           <section class="welcomeMessage" aria-label="开始新对话">
@@ -112,12 +112,12 @@
         </button>
       </div>
     </nav>
-    <el-button v-if="messages.length && !atLatestMessage" class="scrollBottom" circle aria-label="回到最新消息" title="回到最新消息" @click="messageVirtualizer.scrollToEnd()"><icon-arrow-down :size="18" /></el-button>
+    <el-button v-if="messages.length && !atLatestMessage" class="scrollBottom" circle aria-label="回到最新消息" title="回到最新消息" @click="scrollToLatest()"><icon-arrow-down :size="18" /></el-button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from "vue";
 import { defaultRangeExtractor, measureElement, observeElementRect, useVirtualizer } from "@tanstack/vue-virtual";
 import { IconArrowBackUp, IconArrowDown, IconArrowUpRight, IconAtom, IconChevronDown, IconChevronRight, IconCopy, IconGitFork, IconMovie, IconPencil, IconPhoto, IconTrash, IconUsersGroup, IconVector, IconWorld, IconX } from "@tabler/icons-vue";
 import logoUrl from "@toonflow/assets/logo.svg";
@@ -260,9 +260,12 @@ function toggleBrowser(message: AgentMessage, collapsed: boolean) {
 const messageList = ref<HTMLDivElement>();
 const atLatestMessage = ref(true);
 let messageListInitialized = false;
-// 目录跳转收敛期间独占滚动位置（虚拟器的 onChange 会读它，因此声明在使用之前）。
+// ACT: 两个程序化滚动（目录跳转、打开后贴最新）共用一把「滚动所有权」：
+// 谁启动谁就作废旧 epoch，用户滚轮/键盘/失活也会作废。以前只给目录跳转做了 token，
+// 贴最新再开一个独立循环就会两边同时写滚动位置、互相拉扯。
 let jumping = false;
-let messageScrollOffset = 0;
+let pinning = false;
+let scrollEpoch = 0;
 const messageKeys = computed(() => displayedMessages.value.map(item => item.id));
 // ACT: 只常驻当前轮的实时画面，历史浏览器消息仍按需挂载，避免长对话累积连接和 DOM。
 const retainedMessages = computed(() => displayedMessages.value.flatMap((item, index) => item.streaming || item.id === props.editingId || item.id === browserMessages.value.liveMessageId ? [index] : []));
@@ -287,11 +290,10 @@ const messageVirtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>(comput
     observeElementRect: (instance, onChange) => observeElementRect(instance, rect => { if (rect.height) onChange(rect); }),
     rangeExtractor: range => [...new Set([...defaultRangeExtractor(range), ...retained])].sort((left, right) => left - right),
     onChange(instance) {
-      // ACT: 跳转收敛期间由 jumpToTurn 独占滚动位置，这里不要用 isAtEnd 把贴底标志改回去。
-      if (jumping) return;
+      // ACT: 程序化滚动期间由发起方独占滚动位置，这里不要用 isAtEnd 把贴底标志改回去。
+      if (jumping || pinning) return;
       if (!messageListInitialized || !props.active || !messageList.value?.clientHeight) return;
       atLatestMessage.value = instance.isAtEnd();
-      messageScrollOffset = instance.scrollOffset ?? 0;
     },
   };
 }));
@@ -323,22 +325,25 @@ const turns = computed(() => displayedMessages.value.flatMap((message, index) =>
 // 落点误差随行号累积，且实时行测量/图片加载还会把位置再推开一次。
 // 所以粗跳之后按真实 DOM 位置收敛：每轮用 setTimeout 让一次渲染落地，最多 24 轮（约 1s），
 // 连续 3 次 |delta| ≤ 2px 才收手（冷启动时总高会连续变化，只到位一次等于没到位）。
-let jumpToken = 0;
 function nextFrame() {
   // 用定时器而不是 rAF：窗口被遮挡时 rAF 会被节流甚至暂停，跳转就会卡在中间。
   return new Promise<void>(resolve => setTimeout(resolve, 40));
 }
 function cancelJump() {
-  if (!jumping) return;
-  jumpToken++;
+  // 用户一滚/一按键就放弃程序化滚动：目录跳转与打开贴最新都靠 epoch 失效。
+  scrollEpoch++;
   jumping = false;
+  pinning = false;
+  // 取消时没有后续 onChange 兜底（比如内容不满一屏、按键没产生位移），按真实位置重算一次。
+  atLatestMessage.value = messageVirtualizer.value.isAtEnd();
 }
 async function jumpToTurn(index: number) {
   const instance = messageVirtualizer.value;
   const list = messageList.value;
   if (!list || index < 0 || index >= messageKeys.value.length) return;
-  const token = ++jumpToken;
+  const token = ++scrollEpoch;
   jumping = true;
+  pinning = false;
   // ACT: 先退出「贴底」状态，否则跳转后实时行测量完成会把视图拉回最新消息。
   atLatestMessage.value = false;
   instance.scrollToIndex(index, { align: "start" });
@@ -347,7 +352,7 @@ async function jumpToTurn(index: number) {
   try {
     for (let attempt = 0; attempt < 24; attempt++) {
       await nextFrame();
-      if (token !== jumpToken) return;
+      if (token !== scrollEpoch) return;
       const listTop = list.getBoundingClientRect().top;
       // 行是绝对定位 + transform，offsetTop 不反映真实位置，只能用 rect 差值。
       const row = messageId ? list.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`) : null;
@@ -378,11 +383,48 @@ async function jumpToTurn(index: number) {
       list.scrollTop += step || Math.sign(index - nearest.index) * list.clientHeight * 0.8;
     }
   } finally {
-    if (token === jumpToken) {
+    if (token === scrollEpoch) {
       jumping = false;
       // 内容不满一屏、或点的就是当前位置时不会产生位移，也就没有 scroll 事件，
       // atLatestMessage 会一直停在 false，右下角就会挂出一个点不掉的「回到最新消息」。
       // 这里按跳转后的真实位置重算一次即可。
+      atLatestMessage.value = instance.isAtEnd();
+    }
+  }
+}
+// ACT: scrollToEnd() 的终点是「未测量行的 240px 估算 + 已测量行实测」拼出来的总高，
+// 长对话或含图片/工具卡片时第一落点会停在中段；虚拟器随后的目标收敛可能停在旧目标上。
+// 这里每帧重新贴底，直到最后一条消息完整进入视口且 isAtEnd 连续两帧成立。
+// 只调 virtualizer 的滚动 API，不裸写 scrollTop，避免绕过它的滚动记账。
+async function scrollToLatest() {
+  const list = messageList.value;
+  if (!list || !displayedMessages.value.length) return;
+  const instance = messageVirtualizer.value;
+  const token = ++scrollEpoch;
+  jumping = false;
+  pinning = true;
+  atLatestMessage.value = true;
+  const lastId = messageKeys.value[messageKeys.value.length - 1];
+  let stable = 0;
+  try {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      if (token !== scrollEpoch) return;
+      // v-show 切换/面板刚显示时容器还没有高度，等它可测量再定位，否则会"稳定"地停在顶部。
+      if (!list.clientHeight) {
+        await nextFrame();
+        continue;
+      }
+      instance.scrollToEnd();
+      await nextFrame();
+      if (token !== scrollEpoch) return;
+      const row = lastId ? list.querySelector<HTMLElement>(`[data-message-id="${lastId}"]`) : null;
+      const visible = row ? row.getBoundingClientRect().bottom <= list.getBoundingClientRect().bottom + 2 : true;
+      stable = visible && instance.isAtEnd() ? stable + 1 : 0;
+      if (stable >= 2) break;
+    }
+  } finally {
+    if (token === scrollEpoch) {
+      pinning = false;
       atLatestMessage.value = instance.isAtEnd();
     }
   }
@@ -410,13 +452,32 @@ function measureMessage(element: Element | ComponentPublicInstance | null) {
 }
 
 watch([() => props.active, messageList], async ([active, element]) => {
-  if (!active || !element) return;
+  // 失活/未挂载时取消在途的程序化滚动，避免面板隐藏期间还在改 scrollTop。
+  if (!active || !element) {
+    scrollEpoch++;
+    jumping = false;
+    pinning = false;
+    return;
+  }
   await nextTick();
   if (!props.active) return;
-  if (!messageListInitialized || atLatestMessage.value) messageVirtualizer.value.scrollToEnd();
-  else messageVirtualizer.value.scrollToOffset(messageScrollOffset);
   messageListInitialized = true;
+  // ACT: 用户确认「打开面板总是贴最新消息」：不再恢复上次阅读偏移，
+  // 主 Agent 面板与画布节点面板共用本组件，行为保持一致。
+  await scrollToLatest();
 }, { immediate: true, flush: "post" });
+
+// 键盘滚动（PageUp/PageDown/Home/End/方向键）同样要打断贴底收敛。
+// 提问卡片里也有输入框，键盘事件从它们冒泡上来时不能当成滚动。
+function onListKeydown(event: KeyboardEvent) {
+  if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])")) return;
+  if (["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown", " "].includes(event.key)) cancelJump();
+}
+onBeforeUnmount(() => {
+  scrollEpoch++;
+  jumping = false;
+  pinning = false;
+});
 const welcomeSuggestions = [
   { label: "搭建创作画布", description: "把创意串成清晰的节点流程", icon: IconVector, prompt: "帮我搭建一个创作画布，先和我确认需要的节点与流程。" },
   { label: "梳理故事分镜", description: "拆解故事，安排画面与镜头", icon: IconMovie, prompt: "帮我把故事整理成分镜，先和我确认故事内容、时长和画面风格。" },

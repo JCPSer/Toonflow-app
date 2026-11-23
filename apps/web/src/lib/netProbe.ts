@@ -21,6 +21,8 @@ const BLOCKED_MS = 200;
 const installed = Symbol.for("toonflow.netProbe.installed");
 
 function sameOrigin(url: string) {
+  // ACT: 纯逻辑单测（bun test）没有 window；探针只服务浏览器，这里直接按跨域处理。
+  if (typeof window === "undefined") return undefined;
   try {
     const parsed = new URL(url, window.location.href);
     return parsed.origin === window.location.origin ? parsed.pathname + parsed.search : undefined;
@@ -191,8 +193,8 @@ function installStallWatch() {
   }, 1000);
 }
 
-const probeWindow = window as typeof window & { [installed]?: boolean; __toonflowNet?: unknown };
-if (!probeWindow[installed]) {
+const probeWindow = typeof window === "undefined" ? undefined : window as typeof window & { [installed]?: boolean; __toonflowNet?: unknown };
+if (probeWindow && !probeWindow[installed]) {
   probeWindow[installed] = true;
   installFetch();
   installXhr();
