@@ -1,0 +1,82 @@
+{
+  "task_id": "task_261122_canvas_render_arch",
+  "created": "2026-11-22T09:30:00+08:00",
+  "project": "/Users/liyuhang/Documents/git_projects/Toonflow-app",
+  "spec": ".claude/development_docs/liyuhang/4_bugs_fix/bug_solution-2026-11-22-09-30-canvas-render-arch.md",
+  "analysis": ".claude/development_docs/liyuhang/4_bugs_fix/bug_analysis-2026-11-22-09-25-canvas-render-arch.md",
+  "status": "in_progress",
+  "tasks": [
+    {
+      "id": "T1",
+      "name": "诊断浮层：持续主线程采样 + 纯合成基准按钮",
+      "owner": "self",
+      "status": "done",
+      "depends": []
+    },
+    {
+      "id": "T2",
+      "name": "节点内容降级（canvasNodeTiers 纯函数 + 应用 + CSS + 单测）",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T1"
+      ]
+    },
+    {
+      "id": "T3",
+      "name": "批次 1 构建、同步、归档",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T2"
+      ]
+    },
+    {
+      "id": "T4",
+      "name": "edgePaths 纯函数（几何/样式/命中）+ 单测",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T3"
+      ]
+    },
+    {
+      "id": "T5",
+      "name": "edgeCanvasLayer 组件（栅格快照 + transform 跟随 + 绘制）",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T4"
+      ]
+    },
+    {
+      "id": "T6",
+      "name": "index.vue 接入：隐藏库边层、点击/悬停/显隐对齐",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T5"
+      ]
+    },
+    {
+      "id": "T7",
+      "name": "批次 2 构建、同步、归档",
+      "owner": "self",
+      "status": "done",
+      "depends": [
+        "T6"
+      ]
+    },
+    {
+      "id": "T8",
+      "name": "代码审查子agent + 测试记录 + 记忆归档 + INDEX 更新",
+      "owner": "self",
+      "status": "in_progress",
+      "depends": [
+        "T7"
+      ]
+    }
+  ],
+  "notes": "用户已确认：可逆降级带保护例外、目标 500 节点、连线 Canvas 自绘。不改画布 JSON 格式。",
+  "updated": "2026-11-22T09:36:00+08:00"
+}

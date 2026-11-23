@@ -2,7 +2,7 @@
   <div
     ref="canvasElement"
     class="canvas"
-    :class="{ edgesHidden: !showEdges, handMode, multiSelectionMode: flow.multiSelectionActive.value, compositingEnabled: generalSettings.canvasCompositingEnabled, hideDisabledNodeTitles: generalSettings.hideDisabledNodeTitles, dragPaused: dragActive }"
+    :class="{ edgesHidden: !showEdges, handMode, multiSelectionMode: flow.multiSelectionActive.value, compositingEnabled: generalSettings.canvasCompositingEnabled, hideDisabledNodeTitles: generalSettings.hideDisabledNodeTitles, dragPaused: dragActive, viewportMoving: viewportMoving }"
     :style="{ '--canvasEdgeColor': generalSettings.canvasEdgeColorMode === 'custom' ? generalSettings.canvasEdgeColor : 'var(--el-color-primary)' }"
     @dblclick="openNodeMenu"
     @wheel.capture="zoomCanvas"
@@ -10,7 +10,7 @@
     @gesturechange.capture="zoomCanvas"
     @gestureend.capture="zoomCanvas"
     @pointerdown.capture="onCanvasPointerDown"
-    @click.capture="updateCanvasSelection"
+    @click.capture="onCanvasClickCapture"
     @auxclick.capture="preventMiddleClick"
     @pointermove="onCanvasPointerMove"
     @pointerleave="onCanvasPointerLeave"
@@ -64,7 +64,24 @@
           :error="nodeErrors[type]"
           :loading="nodeLoads.has(type) || (nodeListLoading && !nodeTypes[type] && !nodeErrors[type])" />
       </template>
+      <!-- ACT: 连线已改由 edgeCanvasLayer 用单张 Canvas 绘制（见 bug_solution-2026-11-22-09-30-canvas-render-arch.md）。
+           这里接住 default 边类型并渲染空组件：库里每条边仍会有自己的 <svg> 壳，但不再生成任何 path，
+           省下 2×边数 的 SVG 元素；边的数据、保存格式、撤销历史全部保持不变。 -->
+      <template #edge-simplebezier>
+        <edgePlaceholder />
+      </template>
       <background :gap="16" pattern-color="var(--el-border-color)" />
+      <edgeCanvasLayer
+        ref="edgeLayerRef"
+        :edges="flow.getEdges.value"
+        :nodes="flow.getNodes.value"
+        :viewport="viewport"
+        :dimensions="flow.dimensions.value"
+        :visible="showEdges"
+        :active="!!active"
+        :moving="viewportMoving || dragActive"
+        :revision="edgeRevision"
+        :tone="edgeToneOf" />
       <canvasEmpty
         v-if="active && !settingsVisible && project?.directory && canvasReady && !flow.getNodes.value.length"
         :availableNodes="availableNodes"
@@ -105,6 +122,12 @@
         :style="taskAlertBannerStyle"
         @select="focusTaskAlert"
         @clear="taskAlertsStore.clear()" />
+      <!-- ACT: Agent 派发队列的可见化与撤销；队列只在页面内存里，关闭画布即丢弃。 -->
+      <agentQueuePanel
+        v-if="active === true"
+        :items="agentQueueItems"
+        :notices="agentQueueNotices"
+        @cancel="cancelAgentQueued" />
       <!-- ACT: 空格轻点预览选中节点；媒体播放互斥由全局 installMediaPlayback 收敛。 -->
       <nodePreview :target="previewTarget" :directory="project?.directory" @close="previewTarget = undefined" />
       <canvasControls
@@ -140,16 +163,34 @@
       <nodeSearch ref="nodeSearchRef" :disabled="!active || settingsVisible || !canvasId || !project?.directory" />
       <!-- ACT: Agent 派发/回传关系层；只存在于任务期间，不写入画布 JSON。
            放在 vue-flow 插槽里，z-index 低于对话面板（10），线不会盖住面板。 -->
-      <agentLinkLayer :links="agentLinks" :nodes="flow.getNodes.value" :viewport="viewport" :pointer-source="canvasElement" />
-      <agentNodePanel
-        ref="agentNodePanelRef"
-        :runtime-key="runtimeKey"
-        :active="active === true"
-        :canvas-id="canvasId"
-        :statuses="agentNodeStatuses"
-        @questions="syncAgentQuestions"
-        @pendingQuestions="pendingQuestionIds = $event" />
+      <agentLinkLayer
+        :links="agentLinks"
+        :nodes="flow.getNodes.value"
+        :viewport="viewport"
+        :pointer-source="canvasElement"
+        :paused="viewportMoving || dragActive || active !== true"
+        :animate="generalSettings.canvasEdgeAnimationEnabled" />
     </vue-flow>
+    <!-- ACT: 对话面板必须放在 .vue-flow 外面。.vue-flow 自带 position:relative + z-index:0，
+         是独立的层叠上下文；节点所在的 transformationpane 被 transform（开着「画布合成优化」时还有
+         will-change）提升成合成层，WKWebView 下偶发越过面板的 z-index 顺序重绘，表现为面板被下方节点
+         盖住、打开瞬间或不定时出现。挪到画布根节点后，整棵 .vue-flow 只在它下面一层，
+         节点内部 z-index 再高也出不了自己的上下文。.canvas 用 isolation:isolate 兜住边界。 -->
+    <agentNodePanel
+      ref="agentNodePanelRef"
+      :runtime-key="runtimeKey"
+      :active="active === true"
+      :canvas-id="canvasId"
+      :statuses="agentNodeStatuses"
+      @questions="syncAgentQuestions"
+      @pendingQuestions="pendingQuestionIds = $event" />
+    <!-- ACT: 开发者选项里的画布性能诊断；放在 .vue-flow 外面，避免自己跟着画布变换。 -->
+    <canvasPerfHud
+      v-if="developerSettings.canvasPerfHud"
+      :nodes="flow.getNodes.value.length"
+      :edges="flow.getEdges.value.length"
+      :moving="viewportMoving"
+      :root-el="canvasElement" />
     <teleport to="body">
       <div
         v-if="agentPortMenu"
@@ -245,6 +286,11 @@ import { useCanvasTools } from "./useCanvasTools";
 import { AGENT_DISPATCHER_KEY, createAgentDispatcher } from "./agentDispatcher";
 import type { CanvasContext } from "@toonflow/tool-canvas/runtime";
 import { loadNodeComponent } from "./loadNodeComponent";
+import { viewBoxOfViewport } from "./edgeVisibility";
+import { planNodeTiers, type TierNodeBox } from "./nodeTiers";
+import edgePlaceholder from "./components/edgePlaceholder";
+import edgeCanvasLayer from "./components/edgeCanvasLayer.vue";
+import canvasPerfHud from "./components/canvasPerfHud.vue";
 import { pauseMediaIn } from "@/lib/mediaPlayback";
 import { useCanvasHistory } from "./useCanvasHistory";
 import { copyNodeToClipboard, copyNodesToClipboard, nodeClipboardCommand, readClipboardNodes } from "./nodeClipboard";
@@ -267,6 +313,7 @@ import agentNodePanel from "./components/agentNodePanel.vue";
 import agentLinkLayer from "./components/agentLinkLayer.vue";
 import type { AgentLink } from "./agentLinks";
 import taskAlertBanner from "./components/taskAlertBanner.vue";
+import agentQueuePanel from "./components/agentQueuePanel.vue";
 import { useTaskAlertsStore } from "@/stores/taskAlerts";
 import { useAgentQuestionsStore, type CanvasAgentQuestion } from "@/stores/agentQuestions";
 import { setNodeLabelResolver } from "@/lib/taskAlerts";
@@ -290,9 +337,10 @@ import { getNodeRename } from "@toonflow/nodes-scaffold/nodeRename";
 import { boundingRect, nodeRect, pickNodeInDirection, pickNodeNearestPoint, rectCenter, type NavDirection } from "./nodeNavigation";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { requestExitProject } from "../../exitProject";
-import { generalSettings } from "@/stores/settings";
+import { developerSettings, generalSettings, uiSettings } from "@/stores/settings";
+import { UNLIMITED_DISPATCH_MAX_DEPTH } from "@toonflow/server/agent/dispatchLimits";
 import { getShortcutBindings, shortcutLabel, shortcutMatches, shortcutPressed } from "@/lib/canvasShortcuts";
-import useWorkspaceFiles from "@/lib/workspaceFiles";
+import useWorkspaceFiles, { CANVAS_WRITE_RETRY } from "@/lib/workspaceFiles";
 import anonymousData from "@/lib/anonymousData";
 import { createClipboardMediaFile, dropCanvasFiles, dropWorkspaceFile, getClipboardMediaFiles, importCanvasFiles, isCanvasFileDrag, workspaceFileDropEvent, type WorkspaceFileDrop } from "./canvasDrop";
 import "@vue-flow/core/dist/style.css";
@@ -394,6 +442,8 @@ flow.onNodeDrag(({ event, nodes }) => {
   // ACT: 先锁轴再更新副本——拖动复制的副本读取的是原节点坐标。
   axisLock.apply(event, nodes);
   dragCopy?.update();
+  // ACT: 端点位移会改连线路径；Canvas 层按 rAF 合并重绘，不会每次 pointermove 都画。
+  touchEdges();
 });
 flow.onNodeDragStop(({ nodes }) => {
   axisLock.reset();
@@ -403,6 +453,7 @@ flow.onNodeDragStop(({ nodes }) => {
   else finishGroupDrag(flow.getNodes.value, nodes);
   // 收回拖动期间给禁用节点的临时抬升。
   syncDisabledNodeZ();
+  touchEdges();
 });
 const requestNodeAssetsCleanup = inject<((directory: string, nodeIds: string[]) => void) | undefined>("requestNodeAssetsCleanup");
 // ACT: 文档面板是画布的兄弟节点，禁用节点时要 flush/关闭它的标签只能由 workspace 页 provide 下来。
@@ -501,6 +552,153 @@ watch([() => flow.getNodes.value, groupMembershipKey], () => {
 }, { flush: "post" });
 const getNodeTools = useNodeToolsContext();
 const { addNodes, addEdges, removeEdges, findEdge, findNode, toObject, viewport, screenToFlowCoordinate } = flow;
+// ACT: 连线的视口裁剪已由 edgeCanvasLayer 在快照重绘时一次算完（不再有 culledEdge 组件）。
+// 这里只保留缩放手势用的 rect 缓存，供 zoomCanvas 复用。
+let canvasRect: DOMRect | undefined;
+let canvasRectAt = 0;
+// ACT: 平移/缩放进行中给连线降级：不渲染透明的交互命中路径、不跑虚线动画、整层不接收指针事件。
+// 手势结束留 180ms 尾巴——d3 的滚轮缩放每一下都会发 end，立刻恢复会让边在连续滚动时反复重绘。
+const viewportMoving = ref(false);
+/** 视口只改了位置、还没随任何一次整份保存落盘。 */
+let viewportDirty = false;
+let viewportMoveTimer: number | undefined;
+let lastViewportChangeAt = 0;
+// ACT: 定时器只在手势开始时创建一次，之后靠时间戳判断是否结束；以前每帧 clearTimeout+setTimeout，
+// 高频滚轮下会持续重建定时器。
+function scheduleViewportMoveEnd() {
+  if (viewportMoveTimer !== undefined) return;
+  viewportMoveTimer = window.setTimeout(() => {
+    viewportMoveTimer = undefined;
+    if (performance.now() - lastViewportChangeAt < 180) {
+      scheduleViewportMoveEnd();
+      return;
+    }
+    viewportMoving.value = false;
+    scheduleNodeTierUpdate(0);
+  }, 180);
+}
+// ACT: 不用 viewportChangeStart/End 钩子：它们只覆盖带 sourceEvent 的手势，setCenter/setViewport
+// 这类程序化改动不一定触发；直接看 viewport 才能覆盖全部来源。
+watch(
+  () => [viewport.value.x, viewport.value.y, viewport.value.zoom],
+  () => {
+    lastViewportChangeAt = performance.now();
+    viewportDirty = true;
+    if (!viewportMoving.value) viewportMoving.value = true;
+    scheduleViewportMoveEnd();
+    tickNodeTiers();
+  },
+  { flush: "post" },
+);
+// ACT: 视口外节点内容分级降级（架构级，见 bug_solution-2026-11-22-09-30-canvas-render-arch.md）。
+// 在节点元素上打 canvasNodeFar 类，让 `.contentCard`（el-card 正文容器）走 content-visibility: hidden：
+// 整棵内容子树的样式计算与绘制被跳过，但 DOM、端口、标题栏、播放器与编辑器状态全部保留，随时可逆。
+// 端口 handle 是 .contentCard 的兄弟节点，节点尺寸由「标题栏 + 显式尺寸的卡片」决定，
+// 因此 Vue Flow 的 offset 测量与 handleBounds 不受影响。
+const NODE_TIER_RENDER_MARGIN = 0.6;
+const NODE_TIER_RESTORE_MARGIN = 0.25;
+const contentVisibilitySupported = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("content-visibility", "hidden");
+const farNodeIds = new Set<string>();
+let nodeTierTimer: number | undefined;
+let lastTierTick = 0;
+
+function scheduleNodeTierUpdate(delay = 120) {
+  if (!contentVisibilitySupported) return;
+  if (nodeTierTimer !== undefined) window.clearTimeout(nodeTierTimer);
+  nodeTierTimer = window.setTimeout(() => {
+    nodeTierTimer = undefined;
+    applyNodeTiers();
+  }, delay);
+}
+
+/** 正在交互或正在出声的节点不能降级：降级只跳过渲染，但这些状态必须保持真实。 */
+function isNodeTierProtected(element: HTMLElement) {
+  if (element.contains(document.activeElement)) return true;
+  for (const media of element.querySelectorAll<HTMLMediaElement>("video, audio")) {
+    if (!media.paused && !media.ended) return true;
+  }
+  return false;
+}
+
+/**
+ * ACT: 平移过程中也做完整的降级/恢复判定。改 visibility:hidden 之后降级不再读任何尺寸，
+ * 整个判定只剩 200 次包围盒相交，比读一次 offsetWidth 还便宜；
+ * 这样连续平移时"被画过又离开视口"的节点会及时退场，不会越拖越慢。
+ */
+function tickNodeTiers() {
+  if (!contentVisibilitySupported || !props.active) return;
+  const now = performance.now();
+  if (now - lastTierTick < 50) return;
+  lastTierTick = now;
+  applyNodeTiers();
+}
+
+function applyNodeTiers() {
+  if (!contentVisibilitySupported || !props.active) return;
+  const root = canvasElement.value;
+  if (!root) return;
+  const renderBox = viewBoxOfViewport(viewport.value, flow.dimensions.value, NODE_TIER_RENDER_MARGIN);
+  const restoreBox = viewBoxOfViewport(viewport.value, flow.dimensions.value, NODE_TIER_RESTORE_MARGIN);
+  if (!renderBox || !restoreBox) return;
+  const nodesLayer = root.querySelector<HTMLElement>(".vue-flow__nodes");
+  if (!nodesLayer) return;
+
+  const nodes = flow.getNodes.value;
+  const boxes: TierNodeBox[] = [];
+  const protectedIds = new Set<string>();
+  for (const node of nodes) {
+    const position = node.computedPosition ?? node.position;
+    boxes.push({ id: node.id, x: position.x, y: position.y, width: node.dimensions.width ?? 0, height: node.dimensions.height ?? 0 });
+    if (node.selected || node.dragging || node.resizing || node.type === "canvasGroup") protectedIds.add(node.id);
+  }
+  const agentPanelNodeId = agentNodePanelRef.value?.nodeId?.();
+  if (agentPanelNodeId) protectedIds.add(agentPanelNodeId);
+
+  const plan = planNodeTiers(boxes, renderBox, restoreBox, farNodeIds);
+  if (!plan.demote.length && !plan.restore.length) return;
+
+  const elements = new Map<string, HTMLElement>();
+  for (const element of nodesLayer.children) {
+    const id = element.getAttribute("data-id");
+    if (id) elements.set(id, element as HTMLElement);
+  }
+  // ACT: 节点被 Vue 重建（换 key / 重新挂载）时我们挂的 data 属性会丢，集合必须跟着修正，
+  // 否则这个节点会一直被当成"已降级"，永远不会再降级。
+  for (const id of farNodeIds) {
+    if (!elements.get(id)?.hasAttribute("data-canvas-tier")) farNodeIds.delete(id);
+  }
+
+  for (const id of plan.restore) {
+    // ACT: 用 data 属性而不是 class：Vue 重渲染节点时会把 class 整体改写，直接挂的类会被冲掉；
+    // 自定义 data-* 不在 Vue 的 vnode props 里，永远不会被清理。
+    elements.get(id)?.removeAttribute("data-canvas-tier");
+    farNodeIds.delete(id);
+  }
+
+  // visibility:hidden 不需要读任何尺寸，整个判定不触发同步布局。
+  for (const id of plan.demote) {
+    if (protectedIds.has(id)) continue;
+    const element = elements.get(id);
+    if (!element) continue;
+    if (isNodeTierProtected(element)) continue;
+    element.setAttribute("data-canvas-tier", "far");
+    farNodeIds.add(id);
+  }
+}
+
+watch(
+  () => [flow.dimensions.value.width, flow.dimensions.value.height],
+  () => scheduleNodeTierUpdate(60),
+  { flush: "post" },
+);
+watch(() => flow.getNodes.value.length, () => scheduleNodeTierUpdate(200), { flush: "post" });
+watch(() => props.active, (active) => { if (active) scheduleNodeTierUpdate(0); }, { flush: "post" });
+flow.onNodesInitialized(() => scheduleNodeTierUpdate(0));
+
+onScopeDispose(() => {
+  if (viewportMoveTimer !== undefined) window.clearTimeout(viewportMoveTimer);
+  if (nodeTierTimer !== undefined) window.clearTimeout(nodeTierTimer);
+});
 provide("copyNodeToClipboard", async (node: Parameters<typeof copyNodeToClipboard>[0]) => {
   const directory = project.value?.directory;
   if (!directory) throw new Error("请先选择工作目录");
@@ -788,6 +986,9 @@ const agentDispatcher = createAgentDispatcher({
   getCanvasContext,
   statuses: agentNodeStatuses,
   links: agentLinks,
+  maxDepth: () => developerSettings.value.dispatchUnlimited
+    ? UNLIMITED_DISPATCH_MAX_DEPTH
+    : developerSettings.value.dispatchMaxDepth,
   panel: () => agentNodePanelRef.value,
   onQuestions: (nodeId, event) => {
     const label = (flow.findNode(nodeId)?.data as { label?: string } | undefined)?.label ?? nodeId;
@@ -797,6 +998,16 @@ const agentDispatcher = createAgentDispatcher({
   },
   onQuestionDone: nodeId => agentQuestionsStore.removeQuestion(questionCanvasKey.value, nodeId),
 });
+// ACT: 解构出来的 ref 才是模板能自动解包的顶层绑定；嵌套在普通对象里的 ref 不会。
+const {
+  queueView: agentQueueItems,
+  queueNotices: agentQueueNotices,
+  cancelQueued,
+} = agentDispatcher;
+// ACT: 确认窗口内任务可能已经出队开始执行，撤销会失败；不能让按钮看起来「点了没反应」。
+function cancelAgentQueued(taskId: string) {
+  if (!cancelQueued(taskId)) ElMessage.info("任务已开始执行，无法撤销");
+}
 provide(AGENT_DISPATCHER_KEY, agentDispatcher);
 onScopeDispose(() => agentDispatcher.dispose());
 /** 禁用态的唯一口径：node.data.disabled === true。 */
@@ -1310,7 +1521,7 @@ async function saveDocumentNode(directory: string, canvasPath: string, nodeId: s
       const output = data.outputs?.[handleId];
       if (output?.dataType === "STRING") output.value = text;
       else (data.outputs ??= {})[handleId] = { dataType: "STRING", value: text };
-      await files.writeJson(canvasPath, canvas);
+      await files.writeJson(canvasPath, canvas, false, CANVAS_WRITE_RETRY);
     }
     checkDocumentDirectory(directory);
   });
@@ -1376,7 +1587,10 @@ function selectFiles(position: { x: number; y: number }) {
 }
 
 function openNodeMenu(event: MouseEvent) {
-  if (event.target instanceof Element && event.target.classList.contains("vue-flow__pane")) nodeMenuRef.value?.openMenu(event, true);
+  if (!(event.target instanceof Element) || !event.target.classList.contains("vue-flow__pane")) return;
+  // ACT: 连线没有 DOM 元素，双击落在画布空白上；命中一条线时不该顺手弹「新建节点」。
+  if (edgeLayerRef.value?.hitTest(event.clientX, event.clientY)) return;
+  nodeMenuRef.value?.openMenu(event, true);
 }
 
 function createEmptyNode(type: string) {
@@ -1436,7 +1650,7 @@ const saveCanvas = debounce((directory: string, fileName: string) => {
   // ACT: 同页保存按顺序完成，防止慢请求覆盖后续修改；不处理多个客户端的并发编辑。
   saving = saving.then(async () => {
     try {
-      await useWorkspaceFiles(directory).writeJson(fileName, { toonflowCanvas: true, nodes: flow.nodes, edges: flow.edges, viewport: flow.viewport });
+      await useWorkspaceFiles(directory).writeJson(fileName, { toonflowCanvas: true, nodes: flow.nodes, edges: flow.edges, viewport: flow.viewport }, false, CANVAS_WRITE_RETRY);
       saveError = undefined;
       canvasSaveError.value = "";
       if (revision === saveRevision) canvasDirty.value = false;
@@ -1466,9 +1680,32 @@ function scheduleCanvasSave() {
   if (directory && canvasId.value) saveCanvas(directory, canvasId.value);
 }
 
+// ACT: Canvas 连线层的被动失效信号。选中态、节点位移、连线增删、样式设置变化都会改连线外观，
+// 但它们不会让 edges 数组换引用，所以用一个自增计数通知图层重绘。
+const edgeLayerRef = ref<InstanceType<typeof edgeCanvasLayer>>();
+const edgeRevision = ref(0);
+function touchEdges() {
+  edgeRevision.value += 1;
+}
+watch(
+  () => [
+    flow.getSelectedNodes.value,
+    flow.getEdges.value.length,
+    generalSettings.value.canvasEdgeAnimationEnabled,
+    generalSettings.value.canvasEdgeColorMode,
+    generalSettings.value.canvasEdgeColor,
+    uiSettings.value.theme,
+    uiSettings.value.primaryColor,
+  ] as const,
+  () => touchEdges(),
+  { flush: "post" },
+);
+
 function scheduleCanvasChange() {
   scheduleCanvasSave();
   canvasHistory.record();
+  // ACT: 节点位移/连线增删/属性变化都会让 Canvas 连线层的几何或外观过期。
+  touchEdges();
 }
 
 const elementSaveWatchers = new Map<Node | Edge, () => void>();
@@ -1514,7 +1751,11 @@ watch(
         // ACT: 禁用状态也进撤销历史；与 label 合并成同一条记录链，不能落进只保存的 stopData。
         ? watch(
             () => [element.data?.label, element.data?.disabled],
-            () => canvasHistory.record(),
+            () => {
+              canvasHistory.record();
+              // ACT: 任一端点禁用会让连线整体降透明度，Canvas 层必须跟着重绘。
+              touchEdges();
+            },
             { flush: "post" }
           )
         : () => {};
@@ -1529,7 +1770,14 @@ watch(
   { immediate: true, flush: "post" }
 );
 onScopeDispose(() => elementSaveWatchers.forEach((stop) => stop()));
-watch(() => [viewport.value.x, viewport.value.y, viewport.value.zoom], scheduleCanvasSave, { flush: "post" });
+// ACT: dimensions / handleBounds 属于运行态字段，不进保存与撤销，所以逐元素深监测里被排除；
+// 但节点长高（生成结果落地、编辑器展开）或端口位置变化时连线端点必须跟着动，单独订阅一次。
+flow.onNodesChange((changes) => {
+  if (changes.some(change => change.type === "dimensions")) touchEdges();
+});
+// ACT: 只改视口不值得重写整个画布文件，也不该让「未保存」圆点亮起来：以前平移停下 500ms 就
+// toObject()（整画布 JSON stringify+parse）+ pretty 序列化 + 写盘。现在视口只在切画布 / 关窗时随
+// flushCanvasSave 落盘（那时本来就写整份文件），平移过程中零写入、零脏标记。
 
 watch(
   [() => project.value?.directory, canvasId],
@@ -1632,6 +1880,12 @@ async function saveNodeStates() {
 
 async function saveCanvasState(action?: () => Promise<void>) {
   if (saveCancelled) throw new Error("画布保存已取消");
+  // ACT: 平移/缩放不再实时写盘，但关窗、切画布时必须把视口带上；没有其它待保存改动时
+  // 下面的 flush 是空操作，所以这里显式补一次调度。
+  if (viewportDirty && project.value?.directory && canvasId.value) {
+    viewportDirty = false;
+    saveCanvas(project.value.directory, canvasId.value);
+  }
   await saveNodeStates();
   await nextTick();
   if (saveCancelled) throw new Error("画布保存已取消");
@@ -1911,8 +2165,16 @@ function zoomCanvas(event: WheelEvent | (Event & { scale: number })) {
   event.preventDefault();
   event.stopPropagation();
   if (factor === 1) return;
-  const bounds = selection.node()?.getBoundingClientRect();
-  if (!bounds) return;
+  // ACT: 缩放事件每秒可达 100+ 次，逐次 getBoundingClientRect 会在有样式失效时升级为同步布局。
+  // 画布元素本身不随视口变化，缓存 300ms 足够覆盖一次滚轮/捏合手势。
+  const zoomElement = selection.node();
+  if (!zoomElement) return;
+  const now = performance.now();
+  if (!canvasRect || now - canvasRectAt > 300) {
+    canvasRect = zoomElement.getBoundingClientRect();
+    canvasRectAt = now;
+  }
+  const bounds = canvasRect;
   point ??= { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
   selection.call<[number, [number, number], Event]>(zoom.scaleBy, factor, [point.x - bounds.left, point.y - bounds.top], event);
 }
@@ -1925,17 +2187,82 @@ function onCanvasPointerMove(event: PointerEvent) {
   pointerPosition = { x: event.clientX, y: event.clientY };
   pointerInCanvas.value = true;
   if (!event.buttons) updateCanvasSelection(event);
+  // ACT: 只在画布空白上做连线悬停命中；节点、工具条、浮层上方不做 O(边数) 的路径测试。
+  const target = event.target;
+  const onEmptyPane = target instanceof Element && !!target.closest(".vue-flow__pane")
+    && !target.closest(".vue-flow__node, .vue-flow__selection, .vue-flow__nodesselection-rect");
+  if (!event.buttons && onEmptyPane) scheduleEdgeHover(event.clientX, event.clientY);
+  else if (!onEmptyPane) cancelEdgeHover();
 }
 
 function onCanvasPointerLeave() {
   pointerPosition = undefined;
   pointerInCanvas.value = false;
+  cancelEdgeHover();
 }
+
+// ACT: 连线没有 DOM 元素，鼠标移上去不再自带 pointer 光标；用 rAF 合并的几何命中测试补回来。
+// 只在没有按键、非手型模式、未拖动节点时跑，避免和拖拽/框选抢帧。
+let edgeHoverFrame = 0;
+let edgeHoverPoint: { x: number; y: number } | undefined;
+
+function scheduleEdgeHover(clientX: number, clientY: number) {
+  if (!props.active || props.settingsVisible || handMode.value || dragActive.value || viewportMoving.value) {
+    cancelEdgeHover();
+    return;
+  }
+  edgeHoverPoint = { x: clientX, y: clientY };
+  if (edgeHoverFrame) return;
+  edgeHoverFrame = requestAnimationFrame(() => {
+    edgeHoverFrame = 0;
+    const point = edgeHoverPoint;
+    const root = canvasElement.value;
+    if (!point || !root) return;
+    // ACT: 用 data 属性而非 class：画布根元素的 class 由 Vue 整体改写，直接挂的类会被冲掉。
+    if (edgeLayerRef.value?.hitTest(point.x, point.y)) root.dataset.edgeHover = "1";
+    else delete root.dataset.edgeHover;
+  });
+}
+
+function cancelEdgeHover() {
+  edgeHoverPoint = undefined;
+  if (edgeHoverFrame) {
+    cancelAnimationFrame(edgeHoverFrame);
+    edgeHoverFrame = 0;
+  }
+  if (canvasElement.value) delete canvasElement.value.dataset.edgeHover;
+}
+
+// ACT: 连线改 Canvas 绘制后没有可点击的边元素，命中改走几何测试；记录按下点，
+// 只有「没怎么移动的 click」才算点击连线，避免平移结束的 click 误弹断开气泡。
+let canvasClickStart: { x: number; y: number } | undefined;
+const EDGE_CLICK_MAX_DRIFT = 6;
 
 function onCanvasPointerDown(event: PointerEvent) {
   // ACT: 记下本次手势的指针起点，拖动开始后按「相对按下点的位移」判定 Shift 主轴。
   axisLock.press(event);
   updateCanvasSelection(event);
+  canvasClickStart = event.button === 0 ? { x: event.clientX, y: event.clientY } : undefined;
+}
+
+function onCanvasClickCapture(event: MouseEvent) {
+  updateCanvasSelection(event);
+  const start = canvasClickStart;
+  canvasClickStart = undefined;
+  if (!start || !props.active || props.settingsVisible || handMode.value) return;
+  if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > EDGE_CLICK_MAX_DRIFT) return;
+  // ACT: 只有「点在画布空白」才做连线命中。正向判定而不是黑名单：工具条、横幅、队列、
+  // 空画布引导、诊断浮层都挂在 .vue-flow 根层，不在 pane 里，天然被排除；
+  // 节点与框选矩形在 pane 里，也要排除，否则从节点下方穿过的线会抢走节点点击。
+  if (!(event.target instanceof Element) || !event.target.closest(".vue-flow__pane")) return;
+  if (event.target.closest(".vue-flow__node, .vue-flow__selection, .vue-flow__nodesselection-rect")) return;
+  const edge = edgeLayerRef.value?.hitTest(event.clientX, event.clientY);
+  if (!edge) return;
+  // ACT: 必须在这里截断：图层是 pointer-events: none，click 的 target 会落到画布空白，
+  // Vue Flow 随即发 paneClick，既会清掉刚弹的断开气泡，也会清空节点选区。
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+  edgeDisconnect.value = { id: edge.id, x: event.clientX, y: event.clientY };
 }
 
 function updateCanvasSelection(event: MouseEvent | KeyboardEvent) {
@@ -2081,7 +2408,7 @@ function updateCanvasKeys(event: KeyboardEvent) {
   const action = (rename ? "renameNode" : undefined) ?? ([
     "group", "mergeGroup", "ungroup", "addNode", "moveTool", "handTool", "arrange", "search",
     "projectPicker", "canvasPicker",
-    "delete", "copy", "cut", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView", "toggleDisabled", "clearAlerts", "runNode",
+    "delete", "copy", "cut", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView", "toggleDisabled", "toggleEdges", "clearAlerts", "runNode",
   ] as const).find((action) =>
     shortcutMatches(event, shortcuts[action])
   );
@@ -2162,6 +2489,11 @@ function updateCanvasKeys(event: KeyboardEvent) {
   else if (action === "cut") void cutSelectedNodes();
   else if (action === "paste") void pasteNodeAtCenter();
   else if (action === "toggleDisabled") toggleDisabledSelection();
+  else if (action === "toggleEdges") {
+    // ACT: 与工具条按钮保持同一套收尾——隐藏连线时，正在悬停的断开气泡失去锚点，必须一起收起。
+    showEdges.value = !showEdges.value;
+    edgeDisconnect.value = undefined;
+  }
   else if (action === "undo" || action === "redo") void changeHistory(action);
   else if (action === "group" || action === "mergeGroup" || action === "ungroup") {
     void selectionToolbarRef.value?.operate(action);
@@ -2398,25 +2730,44 @@ async function loadRemoteNodes(reloadName?: string) {
 // 用节点自身的 dragging 派生而不是手动状态，分组拖动（子节点 dragging 仍为 false）也能覆盖。
 // 冻结走根节点类名 + CSS 停动画（见样式里的 .dragPaused），保留虚线样式，边不必因拖动态变化重渲染。
 const dragActive = computed(() => flow.nodes.value.some(node => node.dragging));
+
+/**
+ * ACT: 连线外观的唯一判定源。SVG 版（defaultEdgeOptions.class）与 Canvas 版（edgeCanvasLayer 的 tone）
+ * 共用这一份，避免两套渲染规则漂移：任一端点禁用就整体降透明度；端点被选中/拖动算活跃，
+ * 活跃且开了连线动画才走虚线。
+ */
+function edgeToneOf(sourceNode: GraphNode | undefined, targetNode: GraphNode | undefined) {
+  const disabled = (!!sourceNode && isNodeDisabled(sourceNode)) || (!!targetNode && isNodeDisabled(targetNode));
+  const active = !!((sourceNode?.selected || sourceNode?.dragging) || (targetNode?.selected || targetNode?.dragging));
+  return {
+    disabled,
+    active,
+    animated: active && generalSettings.value.canvasEdgeAnimationEnabled,
+    // ACT: 连线配色设为「不区分」时，活跃边也保持默认灰，与 SVG 版 .edgeActive 的判定一致。
+    colored: active && generalSettings.value.canvasEdgeColorMode !== "none",
+  };
+}
 const defaultEdgeOptions = markRaw({
   type: "simplebezier",
   animated: false,
   class: ({ sourceNode, targetNode }: GraphEdge) => {
-    // ACT: 任一端点禁用就连线一起降透明度；只改 stroke-opacity，不拦截点击/断开。
-    const disabled = isNodeDisabled(sourceNode) || isNodeDisabled(targetNode);
-    const active = sourceNode.selected || sourceNode.dragging || targetNode.selected || targetNode.dragging;
+    // ACT: 库内仍会算一次类名（边层虽已隐藏，数据与撤销历史还要保持原样），规则交给 edgeToneOf。
+    const tone = edgeToneOf(sourceNode, targetNode);
     return [
-      disabled && "edgeDisabled",
-      active && "edgeNodeActive",
-      active && generalSettings.value.canvasEdgeColorMode !== "none" && "edgeActive",
-      active && generalSettings.value.canvasEdgeAnimationEnabled && "animated",
+      tone.disabled && "edgeDisabled",
+      tone.active && "edgeNodeActive",
+      tone.active && generalSettings.value.canvasEdgeColorMode !== "none" && "edgeActive",
+      tone.animated && "animated",
     ].filter(Boolean).join(" ");
   },
   focusable: false,
   selectable: false,
   updatable: false,
+  // ACT: 保持 40px：命中带宽是画布坐标，min-zoom 0.2 时屏幕上只剩 8px，再缩会让缩小视图下点不中断线。
+  // 平移/缩放的命中开销已经由 .viewportMoving 整层关闭，不需要再牺牲静态可点性。
   interactionWidth: 40,
 });
+
 </script>
 
 <style lang="scss" scoped>
@@ -2426,13 +2777,28 @@ const defaultEdgeOptions = markRaw({
   height: 100%;
   // ACT: 画布内的一切（浮层、状态条、节点浮动面板）都不允许撑出页面，否则会触发窗口级滚动条。
   overflow: hidden;
+  /* ACT: 显式钉住层叠边界。对话面板已移到 .vue-flow 外层，z-index 10 需要以画布为界，
+     不能溢出到工作区 chrome（画布/文档切换器、底部工具条也是 z-index 5）；
+     这条边界以前依赖外层 container 查询的隐式 containment，删掉那段样式面板就会盖住工作区。 */
+  isolation: isolate;
   // ACT: 画布容器必须禁用原生文本选择。框选空白区域时浏览器仍会选中画布里的文字，
   // macOS 的选中高亮是灰蓝色，WKWebView 在缩放层上重绘该高亮会留下残影（Chromium 不会）。
   -webkit-user-select: none;
   user-select: none;
 
-  &.compositingEnabled :deep(.vue-flow__transformationpane) {
-    will-change: transform;
+  // ACT: 不再给整层加 will-change: transform。实测（WebKit，206 节点真实画布）：
+  // 同一手势每帧主线程基线 9ms，去掉 will-change 后 5ms —— 超大图层的分块反而更贵，
+  // 与「画布合成优化」开关的直觉相反。合成层提升对平移没有收益。
+  // 保留 .compositingEnabled 类名只为兼容旧设置，不再产生任何声明。
+
+  // ACT: 视口外节点整块不绘制。实测（WebKit，真实 206 节点画布）每帧主线程：
+  // 基线 9ms → 视口外节点 visibility:hidden 后 2ms，与把节点层整个 display:none 持平。
+  // 选 visibility 而不是 display:none / content-visibility：
+  // - 盒子仍在布局里，Vue Flow 的 offset 测量与端口 handleBounds 不受影响（display:none 会归零）；
+  // - 不产生额外布局，也不用像 content-visibility 那样钉尺寸；
+  // - !important 压过 Vue Flow 写在节点上的内联 visibility:visible，而 data-* 不会被重渲染冲掉。
+  :deep(.vue-flow__node[data-canvas-tier="far"]) {
+    visibility: hidden !important;
   }
 
   // ACT: 只移除禁用节点的名称与“已禁用”徽标，保留标题栏图标和删除按钮；
@@ -2453,6 +2819,11 @@ const defaultEdgeOptions = markRaw({
   &.handMode :deep(.vue-flow__transformationpane),
   &.handMode :deep(.vue-flow__transformationpane *) {
     pointer-events: none !important;
+  }
+
+  // ACT: 连线改 Canvas 后没有边元素，悬停光标由几何命中测试补上（见 scheduleEdgeHover）。
+  &[data-edge-hover="1"] :deep(.vue-flow__pane) {
+    cursor: pointer;
   }
 
   &.handMode :deep(.vue-flow__pane) {
@@ -2540,6 +2911,11 @@ const defaultEdgeOptions = markRaw({
     }
   }
 
+  // ACT: 连线改由 edgeCanvasLayer 单张 Canvas 绘制后，库里每条边的 <svg> 壳整体隐藏。
+  // 只排除连接预览线（拖动端口时的临时线，同为一个 svg.vue-flow__edges），它必须继续显示。
+  :deep(.vue-flow__edges:not(.vue-flow__connectionline)) {
+    display: none;
+  }
   &.edgesHidden :deep(.vue-flow__edges:not(:has(.edgeNodeActive))) {
     display: none;
   }
@@ -2547,6 +2923,25 @@ const defaultEdgeOptions = markRaw({
     // Vue Flow 仍会测量隐藏端口，必须保留布局以免零尺寸污染连线坐标。
     visibility: hidden !important;
   }
+
+  // ACT: 平移/缩放期间连线降级。每条边默认渲染两根 path：可见曲线 + 几十像素宽的透明命中路径；
+  // 手势期间命中路径没有意义，摘掉后 SVG 元素直接减半，同时整层不接收指针事件，
+  // 几百条边时每帧的命中测试与光栅化都能省下来。手势结束由 180ms 尾巴恢复。
+  &.viewportMoving :deep(.vue-flow__edge-interaction) {
+    display: none;
+  }
+  // ACT: 要关的是每条边自己的 <g>.vue-flow__edge（库样式在它上面写了 pointer-events: visibleStroke），
+  // 不是外层 .vue-flow__edges —— 那个 <svg> 本来就是 pointer-events: none，改它没有效果。
+  &.viewportMoving :deep(.vue-flow__edge) {
+    pointer-events: none;
+  }
+  // ACT: 手势期间不再自动提升合成层。实测在 WKWebView 里给整棵画布加 will-change 与不加没有区别，
+  // 反而可能因为超大图层的纹理上限掉帧；需要时由「画布合成优化」开关常驻。
+  &.viewportMoving :deep(.vue-flow__edge.animated path) {
+    animation: none;
+  }
+  // ACT: 诊断浮层的四路 A/B 改为直接写目标元素的 inline display（见 canvasPerfHud），
+  // 不走画布根 class——根 class 由 :class 绑定管理，会被重渲染整体覆盖。
 
   :deep(.vue-flow__edge.edgeActive .vue-flow__edge-path) {
     stroke: var(--canvasEdgeColor);

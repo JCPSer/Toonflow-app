@@ -1,5 +1,5 @@
 <template>
-  <div v-if="paths.length" class="agentLinkLayer" aria-hidden="true">
+  <div v-if="paths.length" class="agentLinkLayer" :class="{ paused, flowOff: !animateFlow }" aria-hidden="true">
     <svg class="agentLinkSvg">
       <defs>
         <marker v-for="status in STATUSES" :id="markerId(status)" :key="status" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -50,7 +50,20 @@ const props = defineProps<{
   viewport: { x: number; y: number; zoom: number };
   /** 画布根元素：用于在不拦截事件的前提下做悬停命中测试。 */
   pointerSource?: HTMLElement;
+  /** 平移/缩放/拖动节点/画布在后台：暂停流动动画，避免和手势抢重绘。 */
+  paused?: boolean;
+  /** 跟随「节点连线动画」设置：关掉后关系线也保持静态虚线。 */
+  animate?: boolean;
 }>();
+
+/**
+ * ACT: 流动虚线用的是 stroke-dashoffset 动画，浏览器每一帧都要重绘整段 path 的包围盒；
+ * 一条关系线横跨几千像素时，这就是每帧一次大面积重绘（实测会把 WKWebView 的 GPU 进程顶到高位）。
+ * 两道降级：动画从每帧改成 10Hz 离散跳变（视觉仍是流动虚线），
+ * 关系线超过 16 条时直接不流动，避免任务风暴时画面被动画拖死。
+ */
+const FLOW_ANIMATED_LIMIT = 16;
+const animateFlow = computed(() => props.animate !== false && props.links.length <= FLOW_ANIMATED_LIMIT);
 
 const STATUSES: AgentLinkStatus[] = ["queued", "running", "completed", "cancelled", "failed"];
 const COLORS: Record<AgentLinkStatus, string> = {
@@ -77,37 +90,60 @@ function setPathElement(id: string, element: unknown) {
   else pathElements.delete(id);
 }
 
+// ACT: 关系线悬停要对每条线做 isPointInStroke，指针每秒几十上百次事件时没必要逐次算。
+// 合并到一帧一次，并缓存画布 rect（画布位置只在窗口尺寸变化时变）。
+let hoverFrame = 0;
+let pointerAt: { x: number; y: number } | undefined;
+let sourceRect: DOMRect | undefined;
 function onPointerMove(event: PointerEvent) {
   const source = props.pointerSource;
   if (!source || !paths.value.length) {
     hoverId.value = "";
     return;
   }
-  const rect = source.getBoundingClientRect();
-  const x = event.clientX - rect.left;
-  const y = event.clientY - rect.top;
-  for (const link of paths.value) {
-    const path = pathElements.get(link.id);
-    if (path && path.isPointInStroke(new DOMPoint(x, y))) {
-      hoverId.value = link.id;
-      return;
+  pointerAt = { x: event.clientX, y: event.clientY };
+  if (hoverFrame) return;
+  hoverFrame = requestAnimationFrame(() => {
+    hoverFrame = 0;
+    const point = pointerAt;
+    if (!point) return;
+    if (!sourceRect) sourceRect = source.getBoundingClientRect();
+    const x = point.x - sourceRect.left;
+    const y = point.y - sourceRect.top;
+    for (const link of paths.value) {
+      const path = pathElements.get(link.id);
+      if (path && path.isPointInStroke(new DOMPoint(x, y))) {
+        hoverId.value = link.id;
+        return;
+      }
     }
-  }
-  hoverId.value = "";
+    hoverId.value = "";
+  });
 }
-function onPointerLeave() { hoverId.value = ""; }
+function onPointerLeave() {
+  hoverId.value = "";
+  pointerAt = undefined;
+  if (hoverFrame) { cancelAnimationFrame(hoverFrame); hoverFrame = 0; }
+}
+function onWindowResize() { sourceRect = undefined; }
 function detach() {
   const source = props.pointerSource;
   if (!source) return;
   source.removeEventListener("pointermove", onPointerMove);
   source.removeEventListener("pointerleave", onPointerLeave);
+  sourceRect = undefined;
 }
+window.addEventListener("resize", onWindowResize, { passive: true });
 watch(() => props.pointerSource, source => {
   detach();
   source?.addEventListener("pointermove", onPointerMove, { passive: true });
   source?.addEventListener("pointerleave", onPointerLeave, { passive: true });
 }, { immediate: true });
-onBeforeUnmount(detach);
+onBeforeUnmount(() => {
+  detach();
+  window.removeEventListener("resize", onWindowResize);
+  if (hoverFrame) { cancelAnimationFrame(hoverFrame); hoverFrame = 0; }
+});
 
 const nodeMap = computed(() => new Map(props.nodes.map(node => [node.id, node])));
 
@@ -172,7 +208,8 @@ const tipStyle = computed(() => {
   fill: none;
   stroke-width: 1.6;
   stroke-dasharray: 5 4;
-  animation: agentLinkFlow 1.1s linear infinite;
+  // ACT: steps(11) 把连续插值变成 10Hz 跳变，重绘频率降到 1/6，视觉上仍是流动虚线。
+  animation: agentLinkFlow 1.1s steps(11) infinite;
 
   &.is-completed,
   &.is-cancelled,
@@ -190,6 +227,15 @@ const tipStyle = computed(() => {
   .agentLinkLine {
     animation: none !important;
   }
+}
+
+.agentLinkLayer.paused .agentLinkLine,
+.agentLinkLayer.flowOff .agentLinkLine {
+  animation-play-state: paused;
+}
+
+.agentLinkLayer.flowOff .agentLinkLine {
+  animation: none;
 }
 
 @keyframes agentLinkFlow {
